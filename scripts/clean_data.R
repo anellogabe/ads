@@ -8,7 +8,7 @@ source(here("scripts", "functions.R"))
 
 
 # ----- TIME DATA:  Load time data ----------------------------------------------
-time1 <- read_excel(here("data/raw/Cardona Time.xlsx"))
+time1 <- read_excel(here("data/raw/YOUR_TIME_FILE.xlsx"))
 
 cat("✓ Loaded", nrow(time1), "time records\n")
 cat("\n=== Columns in Time Data ===\n")
@@ -188,7 +188,7 @@ if(length(existing_cols) > 0) {
 
 # ----- PAY DATA:   Load payroll data --------------------------------------------
 
-pay1 <- read_excel(here("data/raw/Cardona Pay.xlsx"))
+pay1 <- read_excel(here("data/raw/YOUR_PAY_FILE.xlsx"))
 
 cat("✓ Loaded", nrow(pay1), "pay records\n")
 cat("\n=== Columns in Pay Data ===\n")
@@ -430,7 +430,7 @@ if(length(existing_cols) > 0) {
 # ----- CLASS LIST: Load Class List or create one -------------------------------
 
 # Load raw class data
-class1 <- read_excel(here("data/raw/Cardona Class List.xlsx"))
+class1 <- read_excel(here("data/raw/YOUR_EMPLOYEE_LIST.xlsx"))
 
 # # Create a "Class List" from unique list of all time and pay data IDs (then add names)
 # setDT(time1); setDT(pay1)
