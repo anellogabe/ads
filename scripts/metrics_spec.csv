@@ -1,61 +1,238 @@
-metric_group,metric_label,source,expr,denom,digits
-Overview,First Date,shift_data1,min(Date),NA,NA
-Overview,Last Date,shift_data1,max(Date),NA,NA
-Overview,Total Employees,shift_data1,uniqueN(ID),NA,0
-Overview,Total Shifts,shift_data1,.N,NA,0
-Overview,Total Shifts > 3.5 hours,shift_data1,sum(Shifts_gt_3_5),NA,0
-Overview,Total Shifts > 5 hours,shift_data1,sum(Shifts_gt_5),NA,0
-Overview,Total Shifts > 6 hours,shift_data1,sum(Shifts_gt_6),NA,0
-Overview,Total Pay Periods,shift_data1,uniqueN(ID_Period_End),NA,0
-Overview,Total Workweeks,shift_data1,uniqueN(ID_Week_End),NA,0
-Shift Hours,Average Shift Length,shift_data1,mean(shift_hrs),NA,2
-Shift Hours,Median Shift Length,shift_data1,median(shift_hrs),NA,2
-Shift Hours,Shifts 8 hours,shift_data1,sum(Shifts_e_8),shifts_all,0
-Shift Hours,Shifts > 8 hours,shift_data1,sum(Shifts_gt_8),shifts_all,0
-Shift Hours,Shifts > 10 hours,shift_data1,sum(Shifts_gt_10),shifts_all,0
-Shift Hours,Shifts > 12 hours,shift_data1,sum(Shifts_gt_12),shifts_all,0
-Meal Periods,Total Meal Periods Taken,shift_data1,sum(mp),NA,0
-Meal Periods,Meal Period < 30 min,shift_data1,sum(mp_lt_thirty),meal_periods,0
-Meal Periods,Meal Period = 30 min,shift_data1,sum(mp_thirty),meal_periods,0
-Meal Periods,Meal Period > 30 min,shift_data1,sum(mp_gt_thirty),meal_periods,0
-Meal Violations (No Waivers),Missed MP1,shift_data1,sum(MissMP1),shifts_gt_5,0
-Meal Violations (No Waivers),Late MP1,shift_data1,sum(LateMP1),shifts_gt_5_late_meals,0
-Meal Violations (No Waivers),Short MP1,shift_data1,sum(ShortMP1),shifts_gt_5_short_meals,0
-Meal Violations (No Waivers),Missed MP2,shift_data1,sum(MissMP2),shifts_gt_10,0
-Meal Violations (No Waivers),Late MP2,shift_data1,sum(LateMP2),shifts_gt_10,0
-Meal Violations (No Waivers),Short MP2,shift_data1,sum(ShortMP2),shifts_gt_10,0
-Meal Violations (No Waivers),Total MP Violations,shift_data1,sum(mpv_shift),shifts_gt_5,0
-Meal Violations (With Waivers),Missed MP1 (w),shift_data1,sum(MissMP1_w),shifts_gt_6,0
-Meal Violations (With Waivers),Late MP1 (w),shift_data1,sum(LateMP1_w),shifts_gt_6_late_meals,0
-Meal Violations (With Waivers),Short MP1 (w),shift_data1,sum(ShortMP1_w),shifts_gt_6_short_meals,0
-Meal Violations (With Waivers),Missed MP2 (w),shift_data1,sum(MissMP2_w),shifts_gt_12,0
-Meal Violations (With Waivers),Late MP2 (w),shift_data1,sum(LateMP2_w),shifts_gt_12,0
-Meal Violations (With Waivers),Short MP2 (w),shift_data1,sum(ShortMP2_w),shifts_gt_12,0
-Meal Violations (With Waivers),Total MP Violations (w),shift_data1,sum(mpv_shift_w),shifts_gt_6,0
-Rest Periods,Rest Period Violations,shift_data1,sum(rpv_shift),shifts_gt_3_5,0
-Overtime,Daily OT Hours,shift_data1,sum(pp_daily_ot),NA,1
-Overtime,Daily DT Hours,shift_data1,sum(pp_daily_dt),NA,1
-Overtime,FLSA OT Hours,shift_data1,sum(pp_flsa_ot),NA,1
-Overtime,Workweeks with OT,shift_data1,sum(pp_ot_wks),weeks,0
-Pay Data,Total Pay Records,pay1,.N,NA,0
-Pay Data,Employees in Pay Data,pay1,uniqueN(Pay_ID),NA,0
-Pay Data,Pay Periods in Pay Data,pay1,uniqueN(Pay_ID_Period_End),NA,0
-Pay Data,Hours Worked (Pay),pay1,sum(Pay_Hours[Hrs_Wkd_Pay_Code==1]),NA,1
-Pay Data,Regular Hours,pay1,sum(Pay_Hours[Reg_Pay_Code==1]),NA,1
-Pay Data,OT Hours (Pay),pay1,sum(Pay_Hours[OT_Pay_Code==1]),NA,1
-Pay Data,DT Hours (Pay),pay1,sum(Pay_Hours[DT_Pay_Code==1]),NA,1
-Regular Rate,RROP Violations,pay1,sum(rrop_any_underpayment),pay_periods_pay,0
-Regular Rate,Net Underpayment,pay1,sum(Net_Underpayment),NA,2
-Regular Rate,OT Underpayment,pay1,sum(OT_Underpayment),NA,2
-Regular Rate,DT Underpayment,pay1,sum(DT_Underpayment),NA,2
-Regular Rate,Meal Underpayment,pay1,sum(Meal_Underpayment),NA,2
-Regular Rate,Rest Underpayment,pay1,sum(Rest_Underpayment),NA,2
-Regular Rate,Average RROP,pay1,mean(RROP[!is.na(RROP)]),NA,2
-Time Rounding,Shifts Analyzed,shift_data1,sum(shifts_analyzed),NA,0
-Time Rounding,Net Hours Lost/Gained,shift_data1,sum(diff[!is.na(diff)]),NA,2
-Time Rounding,Shifts with Time Lost,shift_data1,sum(pp_lost_time_shifts),analyzed_shifts_round,0
-Time Rounding,Shifts with Time Gained,shift_data1,sum(pp_gain_time_shifts),analyzed_shifts_round,0
-Damages,Meal Period Damages,shift_data1,sum(mp_tot_dmgs),NA,2
-Damages,Rest Period Damages,shift_data1,sum(rp_tot_dmgs),NA,2
-Damages,RROP Damages,pay1,sum(Net_Underpayment),NA,2
-Damages,Total Damages,shift_data1,sum(mp_tot_dmgs+rp_tot_dmgs)+sum(pay1$Net_Underpayment),NA,2
+metric_group,metric_label,source,expr,digits,denom
+Time Summary,Begin date,shift_data1,"min(Date, na.rm=TRUE)",,
+Time Summary,End date,shift_data1,"max(Date, na.rm=TRUE)",,
+Time Summary,Employees,shift_data1,n_distinct(ID),0,
+Time Summary,Weeks,shift_data1,"sum(week, na.rm=TRUE)",0,
+Time Summary,Pay periods,shift_data1,"sum(pp, na.rm=TRUE)",0,
+Time Summary,Shifts,shift_data1,n_distinct(ID_Shift),0,
+Time Summary,Days,shift_data1,n_distinct(ID_Date),0,
+Time Summary,Shifts per week,shift_data1,n_distinct(ID_Shift)/n_distinct(ID_Week_End),4,
+Time Summary,Average shift hours,shift_data1,"mean(shift_hrs, na.rm=TRUE)",4,
+Time Summary,Median shift hours,shift_data1,"median(shift_hrs, na.rm=TRUE)",4,
+Time Summary,Shifts >3.5 hrs,shift_data1,"sum(shift_hrs > 3.5, na.rm=TRUE)",0,shifts_all
+Time Summary,Shifts >5 hrs,shift_data1,"sum(shift_hrs > 5, na.rm=TRUE)",0,shifts_all
+Time Summary,Shifts >5 & <=6 hrs,shift_data1,"sum(shift_hrs > 5 & shift_hrs <= 6, na.rm=TRUE)",0,shifts_all
+Time Summary,Shifts >6 hrs,shift_data1,"sum(shift_hrs > 6, na.rm=TRUE)",0,shifts_all
+Time Summary,Shifts =8 hrs,shift_data1,"sum(shift_hrs == 8, na.rm=TRUE)",0,shifts_all
+Time Summary,Shifts >8 hrs,shift_data1,"sum(shift_hrs > 8, na.rm=TRUE)",0,shifts_all
+Time Summary,Shifts >10 hrs,shift_data1,"sum(shift_hrs > 10, na.rm=TRUE)",0,shifts_all
+Time Summary,Shifts >10 & <=12 hrs,shift_data1,"sum(shift_hrs > 10 & shift_hrs <= 12, na.rm=TRUE)",0,shifts_all
+Time Summary,Shifts >12 hrs,shift_data1,"sum(shift_hrs > 12, na.rm=TRUE)",0,shifts_all
+Time Meal Period Analysis,Meal periods,shift_data1,"sum(shift_mps, na.rm=TRUE)",0,
+Time Meal Period Analysis,Meal periods <30 mins,shift_data1,"sum(mp_lt_thirty, na.rm=TRUE)",0,meal_periods
+Time Meal Period Analysis,Meal periods =30 mins,shift_data1,"sum(mp_thirty, na.rm=TRUE)",0,meal_periods
+Time Meal Period Analysis,Meal periods >30 mins,shift_data1,"sum(mp_gt_thirty, na.rm=TRUE)",0,meal_periods
+Time Meal Period Analysis,Meal periods =45 mins,shift_data1,"sum(mp_forty_five, na.rm=TRUE)",0,meal_periods
+Time Meal Period Analysis (Auto - Deduct),Meal periods without time punches,shift_data1,"sum(!is.na(auto_mp), na.rm=TRUE)",0,
+Time Meal Period Analysis (Auto - Deduct),Meal periods without time punches <30 mins,shift_data1,"sum(auto_mp_lt_thirty, na.rm=TRUE)",0,auto_meal_periods
+Time Meal Period Analysis (Auto - Deduct),Meal periods without time punches =30 mins,shift_data1,"sum(auto_mp_thirty, na.rm=TRUE)",0,auto_meal_periods
+Time Meal Period Analysis (Auto - Deduct),Meal periods without time punches >30 mins,shift_data1,"sum(auto_mp_gt_thirty, na.rm=TRUE)",0,auto_meal_periods
+Time Meal Period Analysis (Auto - Deduct),Meal periods without time punches =45 mins,shift_data1,"sum(auto_mp_forty_five, na.rm=TRUE)",0,auto_meal_periods
+Time Meal Period Analysis (Rounded),Total meal periods with or without time punches,shift_data1,"tryCatch(sum(!is.na(auto_mp_hrs)), error = function(e) 0) + sum(shift_mps, na.rm = TRUE)",0,
+Time Meal Period Analysis (Rounded),Meal periods <30 mins (based on rounded time punches),shift_data1,"sum(r_mp_lt_thirty, na.rm=TRUE)",0,meal_periods
+Time Meal Period Analysis (Rounded),Meal periods =30 mins (based on rounded time punches),shift_data1,"sum(r_mp_thirty, na.rm=TRUE)",0,meal_periods
+Time Meal Period Analysis (Rounded),Meal periods >30 mins (based on rounded time punches),shift_data1,"sum(r_mp_gt_thirty, na.rm=TRUE)",0,meal_periods
+Time Meal Period Analysis (Rounded),Meal periods =45 mins (based on rounded time punches),shift_data1,"sum(r_mp_forty_five, na.rm=TRUE)",0,meal_periods
+Time Meal Violations (>5 hrs),Shifts >5 hrs with missing first meal period,shift_data1,"sum(MissMP1, na.rm=TRUE)",0,shifts_gt_5
+Time Meal Violations (>5 hrs),Shifts >5 hrs with late first meal period,shift_data1,"sum(LateMP1, na.rm=TRUE)",0,shifts_gt_5
+Time Meal Violations (>5 hrs),Shifts >5 hrs with short first meal period,shift_data1,"sum(ShortMP1, na.rm=TRUE)",0,shifts_gt_5
+Time Meal Violations (>5 hrs),Shifts >10 hrs with missing second meal period,shift_data1,"sum(MissMP2, na.rm=TRUE)",0,shifts_gt_10
+Time Meal Violations (>5 hrs) - Late Detail,Meal periods 1-2 mins late (shifts >5 hrs),shift_data1,"sum(LateMP1 == 1 & mp1_mins_late >= 1 & mp1_mins_late < 2, na.rm=TRUE)",0,shifts_gt_5_late_meals
+Time Meal Violations (>5 hrs) - Late Detail,Meal periods 2-3 mins late (shifts >5 hrs),shift_data1,"sum(LateMP1 == 1 & mp1_mins_late>=2 & mp1_mins_late<3, na.rm=TRUE)",0,shifts_gt_5_late_meals
+Time Meal Violations (>5 hrs) - Late Detail,Meal periods 3-4 mins late (shifts >5 hrs),shift_data1,"sum(LateMP1 == 1 & mp1_mins_late>=3 & mp1_mins_late<4, na.rm=TRUE)",0,shifts_gt_5_late_meals
+Time Meal Violations (>5 hrs) - Late Detail,Meal periods 4-5 mins late (shifts >5 hrs),shift_data1,"sum(LateMP1 == 1 & mp1_mins_late>=4 & mp1_mins_late<5, na.rm=TRUE)",0,shifts_gt_5_late_meals
+Time Meal Violations (>5 hrs) - Late Detail,Meal periods 5-6 mins late (shifts >5 hrs),shift_data1,"sum(LateMP1 == 1 & mp1_mins_late>=5 & mp1_mins_late<6, na.rm=TRUE)",0,shifts_gt_5_late_meals
+Time Meal Violations (>5 hrs) - Late Detail,Meal periods 6-7 mins late (shifts >5 hrs),shift_data1,"sum(LateMP1 == 1 & mp1_mins_late>=6 & mp1_mins_late<7, na.rm=TRUE)",0,shifts_gt_5_late_meals
+Time Meal Violations (>5 hrs) - Late Detail,Meal periods 7-8 mins late (shifts >5 hrs),shift_data1,"sum(LateMP1 == 1 & mp1_mins_late>=7 & mp1_mins_late<8, na.rm=TRUE)",0,shifts_gt_5_late_meals
+Time Meal Violations (>5 hrs) - Late Detail,Meal periods 8-9 mins late (shifts >5 hrs),shift_data1,"sum(LateMP1 == 1 & mp1_mins_late>=8 & mp1_mins_late<9, na.rm=TRUE)",0,shifts_gt_5_late_meals
+Time Meal Violations (>5 hrs) - Late Detail,Meal periods 9-10 mins late (shifts >5 hrs),shift_data1,"sum(LateMP1 == 1 & mp1_mins_late>=9 & mp1_mins_late<10, na.rm=TRUE)",0,shifts_gt_5_late_meals
+Time Meal Violations (>5 hrs) - Late Detail,Meal periods 10-15 mins late (shifts >5 hrs),shift_data1,"sum(LateMP1 == 1 & mp1_mins_late>=10 & mp1_mins_late<15, na.rm=TRUE)",0,shifts_gt_5_late_meals
+Time Meal Violations (>5 hrs) - Late Detail,Meal periods 15-20 mins late (shifts >5 hrs),shift_data1,"sum(LateMP1 == 1 & mp1_mins_late>=15 & mp1_mins_late<20, na.rm=TRUE)",0,shifts_gt_5_late_meals
+Time Meal Violations (>5 hrs) - Late Detail,Meal periods 20+ mins late (shifts >5 hrs),shift_data1,"sum(LateMP1 == 1 & mp1_mins_late >= 20, na.rm=TRUE)",0,shifts_gt_5_late_meals
+Time Meal Violations (>5 hrs) - Short Detail,Meal periods 1-2 mins short (shifts >5 hrs),shift_data1,"sum(ShortMP1 == 1 & mp1_mins_short>=1 & mp1_mins_short<2, na.rm=TRUE)",0,shifts_gt_5_short_meals
+Time Meal Violations (>5 hrs) - Short Detail,Meal periods 2-3 mins short (shifts >5 hrs),shift_data1,"sum(ShortMP1 == 1 & mp1_mins_short>=2 & mp1_mins_short<3, na.rm=TRUE)",0,shifts_gt_5_short_meals
+Time Meal Violations (>5 hrs) - Short Detail,Meal periods 3-4 mins short (shifts >5 hrs),shift_data1,"sum(ShortMP1 == 1 & mp1_mins_short>=3 & mp1_mins_short<4, na.rm=TRUE)",0,shifts_gt_5_short_meals
+Time Meal Violations (>5 hrs) - Short Detail,Meal periods 4-5 mins short (shifts >5 hrs),shift_data1,"sum(ShortMP1 == 1 & mp1_mins_short>=4 & mp1_mins_short<5, na.rm=TRUE)",0,shifts_gt_5_short_meals
+Time Meal Violations (>5 hrs) - Short Detail,Meal periods 5-6 mins short (shifts >5 hrs),shift_data1,"sum(ShortMP1 == 1 & mp1_mins_short>=5 & mp1_mins_short<6, na.rm=TRUE)",0,shifts_gt_5_short_meals
+Time Meal Violations (>5 hrs) - Short Detail,Meal periods 6-7 mins short (shifts >5 hrs),shift_data1,"sum(ShortMP1 == 1 & mp1_mins_short>=6 & mp1_mins_short<7, na.rm=TRUE)",0,shifts_gt_5_short_meals
+Time Meal Violations (>5 hrs) - Short Detail,Meal periods 7-8 mins short (shifts >5 hrs),shift_data1,"sum(ShortMP1 == 1 & mp1_mins_short>=7 & mp1_mins_short<8, na.rm=TRUE)",0,shifts_gt_5_short_meals
+Time Meal Violations (>5 hrs) - Short Detail,Meal periods 8-9 mins short (shifts >5 hrs),shift_data1,"sum(ShortMP1 == 1 & mp1_mins_short>=8 & mp1_mins_short<9, na.rm=TRUE)",0,shifts_gt_5_short_meals
+Time Meal Violations (>5 hrs) - Short Detail,Meal periods 9-10 mins short (shifts >5 hrs),shift_data1,"sum(ShortMP1 == 1 & mp1_mins_short>=9 & mp1_mins_short<10, na.rm=TRUE)",0,shifts_gt_5_short_meals
+Time Meal Violations (>5 hrs) - Short Detail,Meal periods 10-15 mins short (shifts >5 hrs),shift_data1,"sum(ShortMP1 == 1 & mp1_mins_short>=10 & mp1_mins_short<15, na.rm=TRUE)",0,shifts_gt_5_short_meals
+Time Meal Violations (>5 hrs) - Short Detail,Meal periods 15-20 mins short (shifts >5 hrs),shift_data1,"sum(ShortMP1 == 1 & mp1_mins_short>=15 & mp1_mins_short<20, na.rm=TRUE)",0,shifts_gt_5_short_meals
+Time Meal Violations (>5 hrs) - Short Detail,Meal periods 20+ mins short (shifts >5 hrs),shift_data1,"sum(ShortMP1 == 1 & mp1_mins_short >= 20, na.rm=TRUE)",0,shifts_gt_5_short_meals
+Time Meal Violations (>5 hrs),Shifts >5 hrs with short late or missing first or second meal period,shift_data1,"sum(mpv_shift, na.rm=TRUE)",0,shifts_gt_5
+Time Meal Violations (>5 hrs),"Shifts >5 hrs with short late or missing first or second meal period, less meal premiums",shift_data1,"sum(mpv_shift_less_prems, na.rm=TRUE)",0,shifts_gt_5
+Time Meal Violations (>5 hrs),"Shifts >5 hrs with short late or missing first or second meal period, less meal premiums (by subtraction)",shift_data1,"sum(ee_mpv_less_prems_w[ee == 1], na.rm=TRUE)",0,shifts_gt_5
+Time Meal Violations (>5 hrs),Pay periods with at least one shift >5 hrs with a short late or missing first or second meal period,shift_data1,n_distinct(ID_Period_End[which(mpv_per_pp > 0)]),0,pay_periods
+Time Meal Violations (>5 hrs),"Pay periods with at least one shift >5 hrs with a short late or missing first or second meal period, less meal premiums",shift_data1,n_distinct(ID_Period_End[which(mpv_per_pp_less_prems > 0)]),0,pay_periods
+Time Meal Violations (>5 hrs),Employees with at least one shift >5 hrs with a short late or missing first or second meal period,shift_data1,n_distinct(ID[which(mpv_shift == 1)]),0,employees
+Time Meal Violations (>5 hrs),"Employees with at least one shift >5 hrs with a short late or missing first or second meal period, less meal premiums",shift_data1,n_distinct(ID[which(mpv_per_pp_less_prems > 0)]),0,employees
+Time Meal Violations (>6 hrs),Shifts >6 hrs with missing first meal period,shift_data1,"sum(MissMP1_w, na.rm=TRUE)",0,shifts_gt_6
+Time Meal Violations (>6 hrs),Shifts >6 hrs with late first meal period,shift_data1,"sum(LateMP1_w, na.rm=TRUE)",0,shifts_gt_6
+Time Meal Violations (>6 hrs),Shifts >6 hrs with short first meal period,shift_data1,"sum(ShortMP1_w, na.rm=TRUE)",0,shifts_gt_6
+Time Meal Violations (>6 hrs),Shifts >12 hrs with missing second meal period,shift_data1,"sum(MissMP2_w, na.rm=TRUE)",0,shifts_gt_12
+Time Meal Violations (>6 hrs) - Late Detail,Meal periods 1-2 mins late (shifts >6 hrs),shift_data1,"sum(LateMP1_w == 1 & mp1_mins_late>=1 & mp1_mins_late<2, na.rm=TRUE)",0,shifts_gt_6_late_meals
+Time Meal Violations (>6 hrs) - Late Detail,Meal periods 2-3 mins late (shifts >6 hrs),shift_data1,"sum(LateMP1_w == 1 & mp1_mins_late>=2 & mp1_mins_late<3, na.rm=TRUE)",0,shifts_gt_6_late_meals
+Time Meal Violations (>6 hrs) - Late Detail,Meal periods 3-4 mins late (shifts >6 hrs),shift_data1,"sum(LateMP1_w == 1 & mp1_mins_late>=3 & mp1_mins_late<4, na.rm=TRUE)",0,shifts_gt_6_late_meals
+Time Meal Violations (>6 hrs) - Late Detail,Meal periods 4-5 mins late (shifts >6 hrs),shift_data1,"sum(LateMP1_w == 1 & mp1_mins_late>=4 & mp1_mins_late<5, na.rm=TRUE)",0,shifts_gt_6_late_meals
+Time Meal Violations (>6 hrs) - Late Detail,Meal periods 5-6 mins late (shifts >6 hrs),shift_data1,"sum(LateMP1_w == 1 & mp1_mins_late>=5 & mp1_mins_late<6, na.rm=TRUE)",0,shifts_gt_6_late_meals
+Time Meal Violations (>6 hrs) - Late Detail,Meal periods 6-7 mins late (shifts >6 hrs),shift_data1,"sum(LateMP1_w == 1 & mp1_mins_late>=6 & mp1_mins_late<7, na.rm=TRUE)",0,shifts_gt_6_late_meals
+Time Meal Violations (>6 hrs) - Late Detail,Meal periods 7-8 mins late (shifts >6 hrs),shift_data1,"sum(LateMP1_w == 1 & mp1_mins_late>=7 & mp1_mins_late<8, na.rm=TRUE)",0,shifts_gt_6_late_meals
+Time Meal Violations (>6 hrs) - Late Detail,Meal periods 8-9 mins late (shifts >6 hrs),shift_data1,"sum(LateMP1_w == 1 & mp1_mins_late>=8 & mp1_mins_late<9, na.rm=TRUE)",0,shifts_gt_6_late_meals
+Time Meal Violations (>6 hrs) - Late Detail,Meal periods 9-10 mins late (shifts >6 hrs),shift_data1,"sum(LateMP1_w == 1 & mp1_mins_late>=9 & mp1_mins_late<10, na.rm=TRUE)",0,shifts_gt_6_late_meals
+Time Meal Violations (>6 hrs) - Late Detail,Meal periods 10-15 mins late (shifts >6 hrs),shift_data1,"sum(LateMP1_w == 1 & mp1_mins_late>=10 & mp1_mins_late<15, na.rm=TRUE)",0,shifts_gt_6_late_meals
+Time Meal Violations (>6 hrs) - Late Detail,Meal periods 15-20 mins late (shifts >6 hrs),shift_data1,"sum(LateMP1_w == 1 & mp1_mins_late>=15 & mp1_mins_late<20, na.rm=TRUE)",0,shifts_gt_6_late_meals
+Time Meal Violations (>6 hrs) - Late Detail,Meal periods 20+ mins late (shifts >6 hrs),shift_data1,"sum(LateMP1_w == 1 & mp1_mins_late >= 20, na.rm=TRUE)",0,shifts_gt_6_late_meals
+Time Meal Violations (>6 hrs) - Short Detail,Meal periods 1-2 mins short (shifts >6 hrs),shift_data1,"sum(ShortMP1_w == 1 & mp1_mins_short>=1 & mp1_mins_short<2, na.rm=TRUE)",0,shifts_gt_6_short_meals
+Time Meal Violations (>6 hrs) - Short Detail,Meal periods 2-3 mins short (shifts >6 hrs),shift_data1,"sum(ShortMP1_w == 1 & mp1_mins_short>=2 & mp1_mins_short<3, na.rm=TRUE)",0,shifts_gt_6_short_meals
+Time Meal Violations (>6 hrs) - Short Detail,Meal periods 3-4 mins short (shifts >6 hrs),shift_data1,"sum(ShortMP1_w == 1 & mp1_mins_short>=3 & mp1_mins_short<4, na.rm=TRUE)",0,shifts_gt_6_short_meals
+Time Meal Violations (>6 hrs) - Short Detail,Meal periods 4-5 mins short (shifts >6 hrs),shift_data1,"sum(ShortMP1_w == 1 & mp1_mins_short>=4 & mp1_mins_short<5, na.rm=TRUE)",0,shifts_gt_6_short_meals
+Time Meal Violations (>6 hrs) - Short Detail,Meal periods 5-6 mins short (shifts >6 hrs),shift_data1,"sum(ShortMP1_w == 1 & mp1_mins_short>=5 & mp1_mins_short<6, na.rm=TRUE)",0,shifts_gt_6_short_meals
+Time Meal Violations (>6 hrs) - Short Detail,Meal periods 6-7 mins short (shifts >6 hrs),shift_data1,"sum(ShortMP1_w == 1 & mp1_mins_short>=6 & mp1_mins_short<7, na.rm=TRUE)",0,shifts_gt_6_short_meals
+Time Meal Violations (>6 hrs) - Short Detail,Meal periods 7-8 mins short (shifts >6 hrs),shift_data1,"sum(ShortMP1_w == 1 & mp1_mins_short>=7 & mp1_mins_short<8, na.rm=TRUE)",0,shifts_gt_6_short_meals
+Time Meal Violations (>6 hrs) - Short Detail,Meal periods 8-9 mins short (shifts >6 hrs),shift_data1,"sum(ShortMP1_w == 1 & mp1_mins_short>=8 & mp1_mins_short<9, na.rm=TRUE)",0,shifts_gt_6_short_meals
+Time Meal Violations (>6 hrs) - Short Detail,Meal periods 9-10 mins short (shifts >6 hrs),shift_data1,"sum(ShortMP1_w == 1 & mp1_mins_short>=9 & mp1_mins_short<10, na.rm=TRUE)",0,shifts_gt_6_short_meals
+Time Meal Violations (>6 hrs) - Short Detail,Meal periods 10-15 mins short (shifts >6 hrs),shift_data1,"sum(ShortMP1_w == 1 & mp1_mins_short>=10 & mp1_mins_short<15, na.rm=TRUE)",0,shifts_gt_6_short_meals
+Time Meal Violations (>6 hrs) - Short Detail,Meal periods 15-20 mins short (shifts >6 hrs),shift_data1,"sum(ShortMP1_w == 1 & mp1_mins_short>=15 & mp1_mins_short<20, na.rm=TRUE)",0,shifts_gt_6_short_meals
+Time Meal Violations (>6 hrs) - Short Detail,Meal periods 20+ mins short (shifts >6 hrs),shift_data1,"sum(ShortMP1_w == 1 & mp1_mins_short >= 20, na.rm=TRUE)",0,shifts_gt_6_short_meals
+Time Meal Violations (>6 hrs),Shifts >6 hrs with short late or missing first or second meal period,shift_data1,"sum(mpv_shift_w, na.rm=TRUE)",0,shifts_gt_6
+Time Meal Violations (>6 hrs),"Shifts >6 hrs with short late or missing first or second meal period, less meal premiums",shift_data1,"sum(mpv_shift_less_prems_w, na.rm=TRUE)",0,shifts_gt_6
+Time Meal Violations (>5 hrs),"Shifts >6 hrs with short late or missing first or second meal period, less meal premiums (by subtraction)",shift_data1,"sum(ee_mpv_less_prems_w[ee == 1], na.rm=TRUE)",0,shifts_gt_6
+Time Meal Violations (>6 hrs),Pay periods with at least one shift >6 hrs with a short late or missing first or second meal period,shift_data1,n_distinct(ID_Period_End[which(mpv_per_pp_w > 0)]),0,pay_periods
+Time Meal Violations (>6 hrs),"Pay periods with at least one shift >6 hrs with a short late or missing first or second meal period, less meal premiums",shift_data1,n_distinct(ID_Period_End[which(mpv_per_pp_less_prems_w > 0)]),0,pay_periods
+Time Meal Violations (>6 hrs),Employees with at least one shift >6 hrs with a short late or missing first or second meal period,shift_data1,n_distinct(ID[which(mpv_shift_w == 1)]),0,employees
+Time Meal Violations (>6 hrs),"Employees with at least one shift >6 hrs with a short late or missing first or second meal period, less meal premiums",shift_data1,n_distinct(ID[which(mpv_per_pp_less_prems_w > 0)]),0,employees
+Time Rest Period Analysis,Rest periods,shift_data1,"sum(shift_rps, na.rm=TRUE)",0,
+Time Rest Period Analysis,Rest periods <10 mins,shift_data1,"sum(rp_lt_ten, na.rm=TRUE)",0,rest_periods
+Time Rest Period Analysis,Rest periods =10 mins,shift_data1,"sum(rp_ten, na.rm=TRUE)",0,rest_periods
+Time Rest Period Analysis,Rest periods >10 mins,shift_data1,"sum(rp_gt_ten, na.rm=TRUE)",0,rest_periods
+Time Rest Violations,Shifts >3.5 hrs with missing rest period 1,shift_data1,"sum(MissRP1, na.rm=TRUE)",0,shifts_gt_3_5
+Time Rest Violations,Shifts >6 hrs with missing rest period 2,shift_data1,"sum(MissRP2, na.rm=TRUE)",0,shifts_gt_6
+Time Rest Violations,Shifts >10 hrs with missing rest period 3,shift_data1,"sum(MissRP3, na.rm=TRUE)",0,shifts_gt_10
+Time Rest Violations,"Shifts >3.5 hrs with missing rest period 1, 2 or 3",shift_data1,"sum(rpv_shift, na.rm=TRUE)",0,shifts_gt_3_5
+Time Rest Violations,"Shifts >3.5 hrs with missing rest period 1, 2 or 3, less rest premiums",shift_data1,"sum(rpv_shift_less_prems, na.rm=TRUE)",0,shifts_gt_3_5
+Time Rest Violations,Pay periods with at least one shift >3.5 hrs with missing rest period,shift_data1,n_distinct(ID_Period_End[which(rpv_per_pp > 0)]),0,pay_periods
+Time Rest Violations,"Pay periods with at least one shift >3.5 hrs with missing rest period, less rest period premiums",shift_data1,n_distinct(ID_Period_End[which(rpv_per_pp_less_prems > 0)]),0,pay_periods
+Time Rest Violations,Employees with at least one shift >3.5 hrs with missing rest period,shift_data1,n_distinct(ID[which(rpv_shift == 1)]),0,employees
+Time Rest Violations,"Employees with at least one shift >3.5 hrs with missing rest period, less rest period premiums",shift_data1,n_distinct(ID[which(rpv_per_pp_less_prems > 0)]),0,employees
+Time Shift Hours Analysis - Employee Level,Employees with at least one shift with lost time,shift_data1,n_distinct(ID[which(diff < 0)]),0,employees
+Time Shift Hours Analysis - Employee Level,Employees with at least one shift with gained time,shift_data1,n_distinct(ID[which(diff > 0)]),0,employees
+Time Shift Hours Analysis - Employee Level,Employees with net lost time,shift_data1,n_distinct(ID[which(ee_diff < 0)]),0,employees
+Time Shift Hours Analysis - Employee Level,Employees with net gained time,shift_data1,n_distinct(ID[which(ee_diff > 0)]),0,employees
+Time Shift Hours Analysis - Employee Level,Employees with net neutral / matching time,shift_data1,n_distinct(ID[which(ee_diff == 0)]),0,employees
+Time Shift Hours Analysis - Shift Level,Shifts with reported hours that fall on the quarter hour,shift_data1,"sum(qtr_hr, na.rm=TRUE)",0,shifts_all
+Time Shift Hours Analysis - Shift Level,Shifts analyzed,shift_data1,"sum(shifts_analyzed, na.rm=TRUE)",0,shifts_all
+Time Shift Hours Analysis - Shift Level,Shifts with lost time,shift_data1,"sum(diff < 0, na.rm=TRUE)",0,analyzed_shifts_round
+Time Shift Hours Analysis - Shift Level,Shifts with gained time,shift_data1,"sum(diff > 0, na.rm=TRUE)",0,analyzed_shifts_round
+Time Shift Hours Analysis - Shift Level,Shifts with matching time,shift_data1,"sum(diff == 0, na.rm=TRUE)",0,analyzed_shifts_round
+Time Shift Hours Analysis - Week Level,Weeks with at least one shift with lost time,shift_data1,n_distinct(ID_Week_End[which(diff < 0)]),0,weeks
+Time Shift Hours Analysis - Week Level,Weeks with at least one shift with gained time,shift_data1,n_distinct(ID_Week_End[which(diff > 0)]),0,weeks
+Time Shift Hours Analysis - Week Level,Weeks with net lost time,shift_data1,n_distinct(ID_Week_End[which(wk_diff < 0)]),0,weeks
+Time Shift Hours Analysis - Week Level,Weeks with net gained time,shift_data1,n_distinct(ID_Week_End[which(wk_diff > 0)]),0,weeks
+Time Shift Hours Analysis - Week Level,Weeks with matching time,shift_data1,n_distinct(ID_Week_End[which(wk_diff == 0)]),0,weeks
+Time Shift Hours Analysis -  Pay Period Level,Pay periods with at least one shift with lost time,shift_data1,n_distinct(ID_Period_End[which(diff < 0)]),0,pay_periods
+Time Shift Hours Analysis -  Pay Period Level,Pay periods with at least one shift with gained time,shift_data1,n_distinct(ID_Period_End[which(diff > 0)]),0,pay_periods
+Time Shift Hours Analysis -  Pay Period Level,Pay periods with net lost time,shift_data1,n_distinct(ID_Period_End[which(pp_diff < 0)]),0,pay_periods
+Time Shift Hours Analysis -  Pay Period Level,Pay periods with net gained time,shift_data1,n_distinct(ID_Period_End[which(pp_diff > 0)]),0,pay_periods
+Time Shift Hours Analysis -  Pay Period Level,Pay periods with matching time,shift_data1,n_distinct(ID_Period_End[which(pp_diff == 0)]),0,pay_periods
+Time Shift Hours Analysis Time Totals,Total lost time (hrs),shift_data1,"sum(diff[diff < 0], na.rm=TRUE)",2,
+Time Shift Hours Analysis Time Totals,Total gained time (hrs),shift_data1,"sum(diff[diff > 0], na.rm=TRUE)",2,
+Time Shift Hours Analysis Time Totals,Net time (hrs),shift_data1,"sum(diff, na.rm=TRUE)",2,
+Time Punch Rounding Analysis - Employee Level,Employees with at least one shift with lost time (rounded punches),shift_data1,n_distinct(ID[which(r_diff < 0)]),0,employees
+Time Punch Rounding Analysis - Employee Level,Employees with at least one shift with gained time (rounded punches),shift_data1,n_distinct(ID[which(r_diff > 0)]),0,employees
+Time Punch Rounding Analysis - Employee Level,Employees with net lost time (rounded punches),shift_data1,n_distinct(ID[which(ee_r_diff < 0)]),0,employees
+Time Punch Rounding Analysis - Employee Level,Employees with net gained time (rounded punches),shift_data1,n_distinct(ID[which(ee_r_diff > 0)]),0,employees
+Time Punch Rounding Analysis - Employee Level,Employees with net neutral / matching time (rounded punches),shift_data1,n_distinct(ID[which(ee_r_diff == 0)]),0,employees
+Time Punch Rounding Analysis - Shift Level,Shifts analyzed (rounded punches),shift_data1,"sum(r_shifts_analyzed, na.rm=TRUE)",0,shifts_all
+Time Punch Rounding Analysis - Shift Level,Shifts analyzed with lost time (rounded punches),shift_data1,"sum(r_diff < 0, na.rm=TRUE)",0,r_analyzed_shifts_round
+Time Punch Rounding Analysis - Shift Level,Shifts analyzed with gained time (rounded punches),shift_data1,"sum(r_diff > 0, na.rm=TRUE)",0,r_analyzed_shifts_round
+Time Punch Rounding Analysis - Shift Level,Shifts analyzed with matching time (rounded punches),shift_data1,"sum(r_diff == 0, na.rm=TRUE)",0,r_analyzed_shifts_round
+Time Punch Rounding Analysis - Pre_Shift,Avg pre - shift mins lost,shift_data1,"mean(pre_shift_hrs_lost[which(pre_shift_hrs_lost < 0)], na.rm=TRUE) * 60",2,
+Time Punch Rounding Analysis - Pre_Shift,Avg pre - shift mins gained,shift_data1,"mean(pre_shift_hrs_gained[which(pre_shift_hrs_gained > 0)], na.rm=TRUE) * 60",2,
+Time Punch Rounding Analysis - Pre_Shift,Total pre - shift hours lost,shift_data1,"sum(pre_shift_hrs_lost, na.rm=TRUE)",2,
+Time Punch Rounding Analysis - Pre_Shift,Total pre - shift hours gained,shift_data1,"sum(pre_shift_hrs_gained, na.rm=TRUE)",2,
+Time Punch Rounding Analysis - Pre_Shift,Net pre - shift hours,shift_data1,"sum(net_pre_shift_hrs, na.rm=TRUE)",2,
+Time Punch Rounding Analysis - Mid_Shift_Out,Avg mid - shift out mins lost,shift_data1,"mean(mid_shift_out_hrs_lost[which(mid_shift_out_hrs_lost < 0)], na.rm=TRUE) * 60",2,
+Time Punch Rounding Analysis - Mid_Shift_Out,Avg mid - shift out mins gained,shift_data1,"mean(mid_shift_out_hrs_gained[which(mid_shift_out_hrs_gained > 0)], na.rm=TRUE) * 60",2,
+Time Punch Rounding Analysis - Mid_Shift_Out,Total mid - shift out hours lost,shift_data1,"sum(mid_shift_out_hrs_lost, na.rm=TRUE)",2,
+Time Punch Rounding Analysis - Mid_Shift_Out,Total mid - shift out hours gained,shift_data1,"sum(mid_shift_out_hrs_gained, na.rm=TRUE)",2,
+Time Punch Rounding Analysis - Mid_Shift_Out,Net mid - shift out hours,shift_data1,"sum(net_mid_shift_out_hrs, na.rm=TRUE)",2,
+Time Punch Rounding Analysis - Mid_Shift_In,Avg mid - shift in mins lost,shift_data1,"mean(mid_shift_in_hrs_lost[which(mid_shift_in_hrs_lost < 0)], na.rm=TRUE) * 60",2,
+Time Punch Rounding Analysis - Mid_Shift_In,Avg mid - shift in mins gained,shift_data1,"mean(mid_shift_in_hrs_gained[which(mid_shift_in_hrs_gained > 0)], na.rm=TRUE) * 60",2,
+Time Punch Rounding Analysis - Mid_Shift_In,Total mid - shift in hours lost,shift_data1,"sum(mid_shift_in_hrs_lost, na.rm=TRUE)",2,
+Time Punch Rounding Analysis - Mid_Shift_In,Total mid - shift in hours gained,shift_data1,"sum(mid_shift_in_hrs_gained, na.rm=TRUE)",2,
+Time Punch Rounding Analysis - Mid_Shift_In,Net mid - shift in hours,shift_data1,"sum(net_mid_shift_in_hrs, na.rm=TRUE)",2,
+Time Punch Rounding Analysis - Post - Shift,Avg post - shift mins lost,shift_data1,"mean(post_shift_hrs_lost[which(post_shift_hrs_lost < 0)], na.rm=TRUE) * 60",4,
+Time Punch Rounding Analysis - Post - Shift,Avg post - shift mins gained,shift_data1,"mean(post_shift_hrs_gained[which(post_shift_hrs_gained > 0)], na.rm=TRUE) * 60",4,
+Time Punch Rounding Analysis - Post - Shift,Total post - shift hours lost,shift_data1,"sum(post_shift_hrs_lost, na.rm=TRUE)",2,
+Time Punch Rounding Analysis - Post - Shift,Total post - shift hours gained,shift_data1,"sum(post_shift_hrs_gained, na.rm=TRUE)",2,
+Time Punch Rounding Analysis - Post - Shift,Net post - shift hours,shift_data1,"sum(net_post_shift_hrs, na.rm=TRUE)",2,
+Time Punch Rounding Analysis - Week Level,Weeks with at least one shift with lost time (rounded punches),shift_data1,n_distinct(ID_Week_End[which(r_diff < 0)]),0,weeks
+Time Punch Rounding Analysis - Week Level,Weeks with at least one shift with gained time (rounded punches),shift_data1,n_distinct(ID_Week_End[which(r_diff > 0)]),0,weeks
+Time Punch Rounding Analysis - Week Level,Weeks with net lost time (rounded punches),shift_data1,n_distinct(ID_Week_End[which(wk_r_diff < 0)]),0,weeks
+Time Punch Rounding Analysis - Week Level,Weeks with net gained time (rounded punches),shift_data1,n_distinct(ID_Week_End[which(wk_r_diff > 0)]),0,weeks
+Time Punch Rounding Analysis - Week Level,Weeks with matching time (rounded punches),shift_data1,n_distinct(ID_Week_End[which(wk_r_diff == 0)]),0,weeks
+Time Punch Rounding Analysis - Pay Period Level,Pay periods with at least one shift with lost time (rounded punches),shift_data1,n_distinct(ID_Period_End[which(r_diff < 0)]),0,pay_periods
+Time Punch Rounding Analysis - Pay Period Level,Pay periods with at least one shift with gained time (rounded punches),shift_data1,n_distinct(ID_Period_End[which(r_diff > 0)]),0,pay_periods
+Time Punch Rounding Analysis - Pay Period Level,Pay periods with net lost time (rounded punches),shift_data1,n_distinct(ID_Period_End[which(pp_r_diff < 0)]),0,pay_periods
+Time Punch Rounding Analysis - Pay Period Level,Pay periods with net gained time (rounded punches),shift_data1,n_distinct(ID_Period_End[which(pp_r_diff > 0)]),0,pay_periods
+Time Punch Rounding Analysis - Pay Period Level,Pay periods with matching time (rounded punches),shift_data1,n_distinct(ID_Period_End[which(pp_r_diff == 0)]),0,pay_periods
+Time Punch Rounding Analysis - Time Totals,Total lost time (hrs) (rounded punches),shift_data1,"sum(r_diff[r_diff < 0], na.rm=TRUE)",2,
+Time Punch Rounding Analysis - Time Totals,Total gained time (hrs) (rounded punches),shift_data1,"sum(r_diff[r_diff > 0], na.rm=TRUE)",2,
+Time Punch Rounding Analysis - Time Totals,Net time (hrs) (rounded punches),shift_data1,"sum(r_diff, na.rm=TRUE)",2,
+Pay Summary,Begin date of pay data,pay1,"min(Pay_Period_End, na.rm=TRUE)",,
+Pay Summary,End date of pay data,pay1,"max(Pay_Period_End, na.rm=TRUE)",,
+Pay Summary,Employees in pay data,pay1,n_distinct(Pay_ID),0,
+Pay Summary,Pay periods in pay data,pay1,n_distinct(Pay_ID_Period_End),0,
+Pay Summary,Pay periods with hours worked,pay1,n_distinct(Pay_ID_Period_End[which(Hrs_Wkd_Pay_Code > 0)]),0,pay_periods_pay
+Pay Summary,Avg Base Rate,pay1,"mean(Base_Rate1[Base_Rate1 >= 7.25], na.rm=TRUE)",2,
+Pay Summary,Avg RROP,pay1,"mean(RROP[RROP >= 7.25], na.rm=TRUE)",2,
+Pay Overtime,Employees with overtime,pay1,n_distinct(Pay_ID[which(pp_OT_Pay_Code > 0)]),0,employees_pay
+Pay Overtime,Pay periods with overtime,pay1,n_distinct(Pay_ID_Period_End[which(pp_OT_Pay_Code > 0)]),0,pay_periods_pay
+Pay Double Time,Employees with double time,pay1,n_distinct(Pay_ID[which(pp_DT_Pay_Code > 0)]),0,employees_pay
+Pay Double Time,Pay periods with double time,pay1,n_distinct(Pay_ID_Period_End[which(pp_DT_Pay_Code > 0)]),0,pay_periods_pay
+Pay Meal Premiums,Employees with meal premiums,pay1,n_distinct(Pay_ID[which(pp_Meal_Pay_Code > 0)]),0,employees_pay
+Pay Meal Premiums,Pay periods with meal premiums,pay1,n_distinct(Pay_ID_Period_End[which(pp_Meal_Pay_Code > 0)]),0,pay_periods_pay
+Pay Meal Premiums,Meal premium hrs,pay1,"sum(pp_Meal_Prem_Hrs[Pay_pp==1], na.rm=TRUE)",2,
+Pay Meal Premiums,Meal premium $,pay1,"sum(pp_Meal_Amt[Pay_pp==1], na.rm=TRUE)",2,
+Pay Rest Premiums,Employees with Rest premiums,pay1,n_distinct(Pay_ID[which(pp_Rest_Pay_Code > 0)]),0,employees_pay
+Pay Rest Premiums,Pay periods with Rest premiums,pay1,n_distinct(Pay_ID_Period_End[which(pp_Rest_Pay_Code > 0)]),0,pay_periods_pay
+Pay Rest Premiums,Rest premium hrs,pay1,"sum(pp_Rest_Prem_Hrs[Pay_pp==1], na.rm=TRUE)",2,
+Pay Rest Premiums,Rest premium $,pay1,"sum(pp_Rest_Amt[Pay_pp==1], na.rm=TRUE)",2,
+Pay Sick Pay,Employees with sick pay,pay1,n_distinct(Pay_ID[which(pp_Sick_Pay_Code > 0)]),0,employees_pay
+Pay Sick Pay,Pay periods with sick pay,pay1,n_distinct(Pay_ID_Period_End[which(pp_Sick_Pay_Code > 0)]),0,pay_periods_pay
+Pay Bonuses,Employees with bonuses,pay1,n_distinct(Pay_ID[which(Bon_Pay_Code == 1)]),0,employees_pay
+Pay Bonuses,Pay periods with bonuses,pay1,n_distinct(Pay_ID_Period_End[which(Bon_Pay_Code == 1)]),0,pay_periods_pay
+Pay Shift Differentials,Employees with shift differentials,pay1,n_distinct(Pay_ID[which(Diff_Pay_Code == 1)]),0,employees_pay
+Pay Shift Differentials,Pay periods with shift differentials,pay1,n_distinct(Pay_ID_Period_End[which(Diff_Pay_Code == 1)]),0,pay_periods_pay
+Pay Regular Rate - Bonuses - Employee Level,Employees with bonuses and overtime,pay1,n_distinct(Pay_ID[which(pp_Bon_Pay_Code == 1 & pp_OT_Pay_Code == 1)]),0,employees_pay
+Pay Regular Rate - Bonuses - Employee Level,Employees with bonuses and double time,pay1,n_distinct(Pay_ID[which(pp_Bon_Pay_Code == 1 & pp_DT_Pay_Code == 1)]),0,employees_pay
+Pay Regular Rate - Bonuses - Employee Level,Employees with bonuses and meal premiums,pay1,n_distinct(Pay_ID[which(pp_Bon_Pay_Code == 1 & pp_Meal_Pay_Code == 1)]),0,employees_pay
+Pay Regular Rate - Bonuses - Employee Level,Employees with bonuses and rest premiums,pay1,n_distinct(Pay_ID[which(pp_Bon_Pay_Code == 1 & pp_Rest_Pay_Code == 1)]),0,employees_pay
+Pay Regular Rate - Bonuses - Employee Level,Employees with bonuses and sick pay,pay1,n_distinct(Pay_ID[which(pp_Bon_Pay_Code == 1 & pp_Sick_Pay_Code == 1)]),0,employees_pay
+Pay Regular Rate - Differentials - Employee Level,Employees with shift differentials and overtime,pay1,n_distinct(Pay_ID[which(pp_Diff_Pay_Code == 1 & pp_OT_Pay_Code == 1)]),0,employees_pay
+Pay Regular Rate - Differentials - Employee Level,Employees with shift differentials and double time,pay1,n_distinct(Pay_ID[which(pp_Diff_Pay_Code == 1 & pp_DT_Pay_Code == 1)]),0,employees_pay
+Pay Regular Rate - Differentials - Employee Level,Employees with shift differentials and meal premiums,pay1,n_distinct(Pay_ID[which(pp_Diff_Pay_Code == 1 & pp_Meal_Pay_Code == 1)]),0,employees_pay
+Pay Regular Rate - Differentials - Employee Level,Employees with shift differentials and rest premiums,pay1,n_distinct(Pay_ID[which(pp_Diff_Pay_Code == 1 & pp_Rest_Pay_Code == 1)]),0,employees_pay
+Pay Regular Rate - Differentials - Employee Level,Employees with shift differentials and sick pay,pay1,n_distinct(Pay_ID[which(pp_Diff_Pay_Code == 1 & pp_Sick_Pay_Code == 1)]),0,employees_pay
+Pay Regular Rate - RROP Totals,Employees with regular rate underpayment during pay period with bonus,pay1,n_distinct(Pay_ID[which(rrop_total_wages_underpayment == 1 & pp_Bon_Pay_Code  == 1)]),0,employees_pay
+Pay Regular Rate - RROP Totals,Employees with regular rate underpayment during pay period with shift differentials,pay1,n_distinct(Pay_ID[which(rrop_total_wages_underpayment == 1 & pp_Diff_Pay_Code  == 1)]),0,employees_pay
+Pay Regular Rate - Bonuses - Pay Period Level,Pay periods with bonuses and overtime,pay1,n_distinct(Pay_ID_Period_End[which(pp_Bon_Pay_Code == 1 & pp_OT_Pay_Code == 1)]),0,pay_periods_pay
+Pay Regular Rate - Bonuses - Pay Period Level,Pay periods with bonuses and double time,pay1,n_distinct(Pay_ID_Period_End[which(pp_Bon_Pay_Code == 1 & pp_DT_Pay_Code == 1)]),0,pay_periods_pay
+Pay Regular Rate - Bonuses - Pay Period Level,Pay periods with bonuses and meal premiums,pay1,n_distinct(Pay_ID_Period_End[which(pp_Bon_Pay_Code == 1 & pp_Meal_Pay_Code == 1)]),0,pay_periods_pay
+Pay Regular Rate - Bonuses - Pay Period Level,Pay periods with bonuses and rest premiums,pay1,n_distinct(Pay_ID_Period_End[which(pp_Bon_Pay_Code == 1 & pp_Rest_Pay_Code == 1)]),0,pay_periods_pay
+Pay Regular Rate - Bonuses - Pay Period Level,Pay periods with bonuses and sick pay,pay1,n_distinct(Pay_ID_Period_End[which(pp_Bon_Pay_Code == 1 & pp_Sick_Pay_Code == 1)]),0,pay_periods_pay
+Pay Regular Rate - Differentials - Pay Period Level,Pay periods with shift differentials and overtime,pay1,n_distinct(Pay_ID_Period_End[which(pp_Diff_Pay_Code == 1 & pp_OT_Pay_Code == 1)]),0,pay_periods_pay
+Pay Regular Rate - Differentials - Pay Period Level,Pay periods with shift differentials and double time,pay1,n_distinct(Pay_ID_Period_End[which(pp_Diff_Pay_Code == 1 & pp_DT_Pay_Code == 1)]),0,pay_periods_pay
+Pay Regular Rate - Differentials - Pay Period Level,Pay periods with shift differentials and meal premiums,pay1,n_distinct(Pay_ID_Period_End[which(pp_Diff_Pay_Code == 1 & pp_Meal_Pay_Code == 1)]),0,pay_periods_pay
+Pay Regular Rate - Differentials - Pay Period Level,Pay periods with shift differentials and rest premiums,pay1,n_distinct(Pay_ID_Period_End[which(pp_Diff_Pay_Code == 1 & pp_Rest_Pay_Code == 1)]),0,pay_periods_pay
+Pay Regular Rate - Differentials - Pay Period Level,Pay periods with shift differentials and sick pay,pay1,n_distinct(Pay_ID_Period_End[which(pp_Diff_Pay_Code == 1 & pp_Sick_Pay_Code == 1)]),0,pay_periods_pay
+Pay Regular Rate - RROP Totals,Pay periods with regular rate underpayment during pay period with bonus,pay1,n_distinct(Pay_ID_Period_End[which(rrop_net_underpayment == 1 & pp_Bon_Pay_Code  == 1)]),0,pay_periods_pay
+Pay Regular Rate - RROP Totals,Pay periods with regular rate underpayment during pay period with shift differentials,pay1,n_distinct(Pay_ID_Period_End[which(rrop_net_underpayment == 1 & pp_Diff_Pay_Code  == 1)]),0,pay_periods_pay
+Pay Regular Rate - RROP Totals,Employees with any regular rate underpayment,pay1,n_distinct(Pay_ID[which(rrop_net_underpayment > 0)]),0,employees_pay
+Pay Regular Rate - RROP Totals,Pay periods with any regular rate underpayment,pay1,n_distinct(Pay_ID_Period_End[which(rrop_net_underpayment > 0)]),0,pay_periods_pay
+Pay Regular Rate - RROP Totals,Total RROP overpayment $,pay1,"sum(Gross_Overpayment[Pay_pp == 1], na.rm=TRUE)",2,
+Pay Regular Rate - RROP Totals,Total RROP underpayment $,pay1,"sum(Gross_Underpayment[Pay_pp == 1], na.rm=TRUE)",2,
+Pay Regular Rate - RROP Totals,Net RROP overpayment $,pay1,"sum(Net_Overpayment[Pay_pp == 1], na.rm=TRUE)",2,
+Pay Regular Rate - RROP Totals,Net RROP underpayment $,pay1,"sum(Net_Underpayment[Pay_pp == 1], na.rm=TRUE)",2,
