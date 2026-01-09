@@ -60,6 +60,11 @@ ui <- dashboardPage(
                    start = if(!is.null(data$shift)) min(data$shift$Date, na.rm = TRUE) else Sys.Date() - 365,
                    end = if(!is.null(data$shift)) max(data$shift$Date, na.rm = TRUE) else Sys.Date()),
 
+    selectInput("year_filter", "Year:",
+                choices = c("All Years" = "all",
+                           if(!is.null(data$shift)) sort(unique(year(data$shift$Date)), decreasing = TRUE) else "All"),
+                selected = "all"),
+
     actionButton("refresh", "Refresh Data", icon = icon("sync"),
                  style = "margin: 15px;")
   ),
@@ -365,8 +370,42 @@ server <- function(input, output, session) {
       df <- df[Date >= input$date_range[1] & Date <= input$date_range[2]]
     }
 
+    # Year filter
+    if(!is.null(input$year_filter) && input$year_filter != "all") {
+      df <- df[year(Date) == as.numeric(input$year_filter)]
+    }
+
     df
   })
+
+  # Helper function to calculate metrics for a dataset
+  calc_metrics <- function(df) {
+    if(is.null(df) || nrow(df) == 0) {
+      return(list(
+        employees = 0, shifts = 0, hours = 0,
+        meal_violations = 0, rest_violations = 0,
+        total_violations = 0, total_damages = 0, avg_damages = 0
+      ))
+    }
+
+    mpv <- if("mpv_shift" %in% names(df)) sum(df$mpv_shift, na.rm = TRUE) else 0
+    rpv <- if("rpv_shift" %in% names(df)) sum(df$rpv_shift, na.rm = TRUE) else 0
+    mp_dmg <- if("mp_tot_dmgs" %in% names(df)) sum(df$mp_tot_dmgs, na.rm = TRUE) else 0
+    rp_dmg <- if("rp_tot_dmgs" %in% names(df)) sum(df$rp_tot_dmgs, na.rm = TRUE) else 0
+    total_dmg <- mp_dmg + rp_dmg
+    n_ee <- if("ID" %in% names(df)) uniqueN(df$ID) else 1
+
+    list(
+      employees = uniqueN(df$ID),
+      shifts = nrow(df),
+      hours = sum(df$shift_hrs, na.rm = TRUE),
+      meal_violations = mpv,
+      rest_violations = rpv,
+      total_violations = mpv + rpv,
+      total_damages = total_dmg,
+      avg_damages = total_dmg / n_ee
+    )
+  }
 
   # === 1. KEY METRICS SUMMARY ===
   output$total_employees <- renderValueBox({
@@ -426,26 +465,55 @@ server <- function(input, output, session) {
   })
 
   output$metrics_table <- renderDT({
-    df <- filtered_data()
-    if(is.null(df)) return(datatable(data.frame(Message = "No data available")))
+    req(data$shift)
 
+    # Calculate metrics for all data
+    all_metrics <- calc_metrics(data$shift)
+
+    # Get all available years
+    years <- sort(unique(year(data$shift$Date)), decreasing = TRUE)
+
+    # Calculate metrics for each year
+    year_metrics <- lapply(years, function(y) {
+      year_df <- data$shift[year(Date) == y]
+      calc_metrics(year_df)
+    })
+    names(year_metrics) <- years
+
+    # Build summary table
     summary_df <- data.frame(
       Metric = c("Total Employees", "Total Shifts", "Total Hours Worked",
                  "Meal Period Violations", "Rest Period Violations",
                  "Total Violations", "Total Damages", "Avg Damages per Employee"),
-      Value = c(
-        format(uniqueN(df$ID), big.mark = ","),
-        format(nrow(df), big.mark = ","),
-        format(round(sum(df$shift_hrs, na.rm = TRUE), 0), big.mark = ","),
-        format(round(sum(df$mpv_shift, na.rm = TRUE), 0), big.mark = ","),
-        format(round(sum(df$rpv_shift, na.rm = TRUE), 0), big.mark = ","),
-        format(round(sum(df$mpv_shift, na.rm = TRUE) + sum(df$rpv_shift, na.rm = TRUE), 0), big.mark = ","),
-        paste0("$", format(round(sum(df$mp_tot_dmgs, na.rm = TRUE) + sum(df$rp_tot_dmgs, na.rm = TRUE), 0), big.mark = ",")),
-        paste0("$", format(round((sum(df$mp_tot_dmgs, na.rm = TRUE) + sum(df$rp_tot_dmgs, na.rm = TRUE)) / uniqueN(df$ID), 0), big.mark = ","))
-      )
+      `All Data` = c(
+        format(all_metrics$employees, big.mark = ","),
+        format(all_metrics$shifts, big.mark = ","),
+        format(round(all_metrics$hours, 0), big.mark = ","),
+        format(round(all_metrics$meal_violations, 0), big.mark = ","),
+        format(round(all_metrics$rest_violations, 0), big.mark = ","),
+        format(round(all_metrics$total_violations, 0), big.mark = ","),
+        paste0("$", format(round(all_metrics$total_damages, 0), big.mark = ",")),
+        paste0("$", format(round(all_metrics$avg_damages, 0), big.mark = ","))
+      ),
+      check.names = FALSE
     )
 
-    datatable(summary_df, options = list(pageLength = 20, dom = 't'), rownames = FALSE)
+    # Add columns for each year
+    for(y in years) {
+      ym <- year_metrics[[as.character(y)]]
+      summary_df[[as.character(y)]] <- c(
+        format(ym$employees, big.mark = ","),
+        format(ym$shifts, big.mark = ","),
+        format(round(ym$hours, 0), big.mark = ","),
+        format(round(ym$meal_violations, 0), big.mark = ","),
+        format(round(ym$rest_violations, 0), big.mark = ","),
+        format(round(ym$total_violations, 0), big.mark = ","),
+        paste0("$", format(round(ym$total_damages, 0), big.mark = ",")),
+        paste0("$", format(round(ym$avg_damages, 0), big.mark = ","))
+      )
+    }
+
+    datatable(summary_df, options = list(pageLength = 20, dom = 't', scrollX = TRUE), rownames = FALSE)
   })
 
   # === 2. TIME SUMMARY ===
