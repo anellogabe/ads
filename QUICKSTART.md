@@ -7,25 +7,16 @@ Get your dashboard up and running in minutes!
 ### 1. Copy Your Code
 ```r
 # Copy your full analysis script content to:
-R/03_analysis/analysis.R
+scripts/analysis.R
 
-# Copy your full Functions.R content to:
-scripts/Functions.R
+# Copy your full functions content to:
+scripts/functions.R
 
-# Copy your clean_data.R content to:
+# Copy your clean_data.R content (includes parameters):
 scripts/clean_data.R
 ```
 
-### 2. Configure Parameters
-Edit `config/parameters.R`:
-```r
-case_name <- "Your Case v Defendant"
-complaint_date <- as.Date("2025-01-01")
-mediation_date <- as.Date("2026-01-01")
-mode_days_btwn_pay_period_ends <- 14  # bi-weekly
-```
-
-### 3. Place Your Data
+### 2. Place Your Data
 ```
 data/raw/
 ├── your_time_data.xlsx
@@ -38,12 +29,12 @@ time1 <- read_excel("data/raw/your_time_data.xlsx")
 pay1 <- read_excel("data/raw/your_pay_data.xlsx")
 ```
 
-### 4. Run Analysis
+### 3. Run Analysis
 ```r
 source("run_analysis.R")
 ```
 
-### 5. Launch Dashboard
+### 4. Launch Dashboard
 ```r
 shiny::runApp("dashboard/app.R")
 ```
@@ -105,7 +96,7 @@ pay1 <- pay1[Pay_Period_End >= "2023-01-01"]
 ```
 
 ### To Add Named Plaintiffs
-Edit `config/parameters.R`:
+Add to your `scripts/clean_data.R`:
 ```r
 key_employees <- c(
   "12345" = "Smith, John",
@@ -128,7 +119,7 @@ Custom,My Metric,shift_data1,sum(my_column),NA,0
 ls()  # Should show time1, pay1, shift_data1, etc.
 
 # Re-run analysis:
-source("R/03_analysis/analysis.R")
+source("scripts/analysis.R")
 ```
 
 ### Dashboard shows no data
@@ -178,7 +169,7 @@ ads/
 
 ```r
 # 1. Configure
-# Edit config/parameters.R with your case details
+# Edit scripts/clean_data.R with your case details and parameters
 
 # 2. Run everything
 source("run_analysis.R")
@@ -204,7 +195,7 @@ shiny::runApp("dashboard/app.R")
 ## ⏭️ Next Steps
 
 1. Review the full [README.md](README.md) for detailed documentation
-2. Customize parameters in `config/parameters.R`
+2. Customize parameters in `scripts/clean_data.R`
 3. Add your own metrics to `scripts/metrics_spec.csv`
 4. Adjust dashboard layout in `dashboard/app.R`
 5. Share the dashboard URL with your team (when deployed)
@@ -213,7 +204,7 @@ shiny::runApp("dashboard/app.R")
 
 1. **Console errors**: Check that all required packages are installed
 2. **Missing data**: Verify file paths in `scripts/clean_data.R`
-3. **Wrong calculations**: Review parameters in `config/parameters.R`
+3. **Wrong calculations**: Review parameters in `scripts/clean_data.R`
 4. **Dashboard issues**: Check browser console (F12) for errors
 
 Happy analyzing! 🎉

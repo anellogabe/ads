@@ -14,14 +14,6 @@ library(data.table)
 library(lubridate)
 library(here)
 
-# Load configuration
-if(file.exists(here("config/parameters.R"))) {
-  source(here("config/parameters.R"))
-  cat("✓ Configuration loaded\n")
-} else {
-  cat("⚠ No configuration file found, using defaults\n")
-}
-
 # STEP 1: DATA CLEANING -------------------------------------------------------
 cat("\n[STEP 1] Data Cleaning & Processing\n")
 cat("═══════════════════════════════════════\n")
@@ -40,13 +32,13 @@ if(file.exists(here("scripts/clean_data.R"))) {
 cat("\n[STEP 2] Running Wage & Hour Analysis\n")
 cat("═══════════════════════════════════════\n")
 
-if(file.exists(here("R/03_analysis/analysis.R"))) {
+if(file.exists(here("scripts/analysis.R"))) {
   cat("Running analysis.R...\n")
-  source(here("R/03_analysis/analysis.R"))
+  source(here("scripts/analysis.R"))
   cat("✓ Analysis complete\n")
 } else {
   cat("✗ analysis.R not found!\n")
-  cat("  Please ensure R/03_analysis/analysis.R exists\n")
+  cat("  Please ensure scripts/analysis.R exists\n")
   stop("Missing analysis.R")
 }
 

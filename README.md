@@ -45,17 +45,11 @@ ads/
 ├── README.md                   # This file
 ├── run_analysis.R              # Master orchestration script
 │
-├── config/
-│   └── parameters.R            # Case parameters and settings
-│
 ├── scripts/
-│   ├── Functions.R             # Helper functions
+│   ├── functions.R             # Helper functions
 │   ├── clean_data.R            # Data cleaning script (USER PROVIDED)
+│   ├── analysis.R              # Main analysis script (USER PROVIDED)
 │   └── metrics_spec.csv        # Metrics specification
-│
-├── R/
-│   └── 03_analysis/
-│       └── analysis.R          # Main analysis script (USER PROVIDED)
 │
 ├── data/
 │   ├── raw/                    # Raw data files (USER PROVIDED)
@@ -107,19 +101,10 @@ install.packages(c(
    - Put raw time/pay data in `data/raw/`
    - Update file paths in `scripts/clean_data.R`
 
-2. **Configure parameters**:
-   - Edit `config/parameters.R` with your case details:
-     ```r
-     case_name <- "Your Case Name"
-     complaint_date <- as.Date("2025-01-01")
-     mediation_date <- as.Date("2026-01-01")
-     # etc.
-     ```
-
-3. **Add your analysis code**:
-   - Copy your full analysis script content into `R/03_analysis/analysis.R`
-   - Copy your full functions into `scripts/Functions.R`
-   - Ensure `scripts/clean_data.R` is complete
+2. **Add your analysis code**:
+   - Copy your full analysis script content into `scripts/analysis.R`
+   - Copy your full functions into `scripts/functions.R`
+   - Ensure `scripts/clean_data.R` is complete (includes parameters)
 
 ## 📊 Usage
 
@@ -152,7 +137,7 @@ If you prefer to run steps individually:
 source("scripts/clean_data.R")
 
 # Step 2: Run analysis
-source("R/03_analysis/analysis.R")
+source("scripts/analysis.R")
 
 # Step 3: Launch dashboard
 shiny::runApp("dashboard/app.R")
@@ -247,12 +232,12 @@ dashboardPage(
 - Review console for specific error messages
 
 **Missing functions error**:
-- Ensure `scripts/Functions.R` contains all helper functions
-- Source Functions.R before running analysis
+- Ensure `scripts/functions.R` contains all helper functions
+- Source functions.R before running analysis
 
 **Date format errors**:
 - Verify date columns are properly formatted in clean_data.R
-- Check that date parameters in config/parameters.R are valid
+- Check that date parameters in scripts/clean_data.R are valid
 
 ### Performance Tips
 
@@ -264,8 +249,8 @@ For large datasets (>100K rows):
 ### Getting Help
 
 Check these files for detailed implementations:
-- `scripts/Functions.R` - All helper functions with examples
-- `config/parameters.R` - All configurable parameters
+- `scripts/functions.R` - All helper functions with examples
+- `scripts/clean_data.R` - All configurable parameters
 - `scripts/metrics_spec.csv` - Metric definitions
 
 ## 📝 Notes
@@ -280,7 +265,7 @@ Check these files for detailed implementations:
 
 ```r
 # 1. Configure your case
-# Edit config/parameters.R
+# Edit scripts/clean_data.R (includes all parameters)
 
 # 2. Run the pipeline
 source("run_analysis.R")
@@ -310,5 +295,5 @@ This is a proprietary wage and hour analysis tool. All rights reserved.
 
 For questions or issues:
 1. Check the Troubleshooting section above
-2. Review function documentation in `scripts/Functions.R`
+2. Review function documentation in `scripts/functions.R`
 3. Consult the metrics specification in `scripts/metrics_spec.csv`

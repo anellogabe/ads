@@ -13,7 +13,7 @@ library(tidyr)
 library(dplyr)
 
 # Load functions
-source(here("scripts", "Functions.R"))
+source(here("scripts", "functions.R"))
 
 # Load processed data
 cat("Loading processed data...\n")
@@ -21,17 +21,8 @@ time1 <- readRDS(here("data/processed/time_processed.rds"))
 pay1 <- readRDS(here("data/processed/pay_processed.rds"))
 class1 <- readRDS(here("data/processed/class_processed.rds"))
 
-# Load or set parameters
-if(file.exists(here("config/parameters.R"))) {
-  source(here("config/parameters.R"))
-} else {
-  # Default parameters
-  complaint_date <- as.Date("2025-09-15")
-  mediation_date <- as.Date("2026-09-15")
-  mode_days_btwn_pay_period_ends <- 14
-}
-
-cat("Analysis period:", format(complaint_date), "to", format(mediation_date), "\n")
+# Parameters are set in clean_data.R
+cat("Analysis starting...\n")
 
 # ----- PAY DATA:                CA Min Wage table -------------------------
 
