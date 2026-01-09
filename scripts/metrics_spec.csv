@@ -1,0 +1,61 @@
+metric_group,metric_label,source,expr,denom,digits
+Overview,First Date,shift_data1,min(Date),NA,NA
+Overview,Last Date,shift_data1,max(Date),NA,NA
+Overview,Total Employees,shift_data1,uniqueN(ID),NA,0
+Overview,Total Shifts,shift_data1,.N,NA,0
+Overview,Total Shifts > 3.5 hours,shift_data1,sum(Shifts_gt_3_5),NA,0
+Overview,Total Shifts > 5 hours,shift_data1,sum(Shifts_gt_5),NA,0
+Overview,Total Shifts > 6 hours,shift_data1,sum(Shifts_gt_6),NA,0
+Overview,Total Pay Periods,shift_data1,uniqueN(ID_Period_End),NA,0
+Overview,Total Workweeks,shift_data1,uniqueN(ID_Week_End),NA,0
+Shift Hours,Average Shift Length,shift_data1,mean(shift_hrs),NA,2
+Shift Hours,Median Shift Length,shift_data1,median(shift_hrs),NA,2
+Shift Hours,Shifts 8 hours,shift_data1,sum(Shifts_e_8),shifts_all,0
+Shift Hours,Shifts > 8 hours,shift_data1,sum(Shifts_gt_8),shifts_all,0
+Shift Hours,Shifts > 10 hours,shift_data1,sum(Shifts_gt_10),shifts_all,0
+Shift Hours,Shifts > 12 hours,shift_data1,sum(Shifts_gt_12),shifts_all,0
+Meal Periods,Total Meal Periods Taken,shift_data1,sum(mp),NA,0
+Meal Periods,Meal Period < 30 min,shift_data1,sum(mp_lt_thirty),meal_periods,0
+Meal Periods,Meal Period = 30 min,shift_data1,sum(mp_thirty),meal_periods,0
+Meal Periods,Meal Period > 30 min,shift_data1,sum(mp_gt_thirty),meal_periods,0
+Meal Violations (No Waivers),Missed MP1,shift_data1,sum(MissMP1),shifts_gt_5,0
+Meal Violations (No Waivers),Late MP1,shift_data1,sum(LateMP1),shifts_gt_5_late_meals,0
+Meal Violations (No Waivers),Short MP1,shift_data1,sum(ShortMP1),shifts_gt_5_short_meals,0
+Meal Violations (No Waivers),Missed MP2,shift_data1,sum(MissMP2),shifts_gt_10,0
+Meal Violations (No Waivers),Late MP2,shift_data1,sum(LateMP2),shifts_gt_10,0
+Meal Violations (No Waivers),Short MP2,shift_data1,sum(ShortMP2),shifts_gt_10,0
+Meal Violations (No Waivers),Total MP Violations,shift_data1,sum(mpv_shift),shifts_gt_5,0
+Meal Violations (With Waivers),Missed MP1 (w),shift_data1,sum(MissMP1_w),shifts_gt_6,0
+Meal Violations (With Waivers),Late MP1 (w),shift_data1,sum(LateMP1_w),shifts_gt_6_late_meals,0
+Meal Violations (With Waivers),Short MP1 (w),shift_data1,sum(ShortMP1_w),shifts_gt_6_short_meals,0
+Meal Violations (With Waivers),Missed MP2 (w),shift_data1,sum(MissMP2_w),shifts_gt_12,0
+Meal Violations (With Waivers),Late MP2 (w),shift_data1,sum(LateMP2_w),shifts_gt_12,0
+Meal Violations (With Waivers),Short MP2 (w),shift_data1,sum(ShortMP2_w),shifts_gt_12,0
+Meal Violations (With Waivers),Total MP Violations (w),shift_data1,sum(mpv_shift_w),shifts_gt_6,0
+Rest Periods,Rest Period Violations,shift_data1,sum(rpv_shift),shifts_gt_3_5,0
+Overtime,Daily OT Hours,shift_data1,sum(pp_daily_ot),NA,1
+Overtime,Daily DT Hours,shift_data1,sum(pp_daily_dt),NA,1
+Overtime,FLSA OT Hours,shift_data1,sum(pp_flsa_ot),NA,1
+Overtime,Workweeks with OT,shift_data1,sum(pp_ot_wks),weeks,0
+Pay Data,Total Pay Records,pay1,.N,NA,0
+Pay Data,Employees in Pay Data,pay1,uniqueN(Pay_ID),NA,0
+Pay Data,Pay Periods in Pay Data,pay1,uniqueN(Pay_ID_Period_End),NA,0
+Pay Data,Hours Worked (Pay),pay1,sum(Pay_Hours[Hrs_Wkd_Pay_Code==1]),NA,1
+Pay Data,Regular Hours,pay1,sum(Pay_Hours[Reg_Pay_Code==1]),NA,1
+Pay Data,OT Hours (Pay),pay1,sum(Pay_Hours[OT_Pay_Code==1]),NA,1
+Pay Data,DT Hours (Pay),pay1,sum(Pay_Hours[DT_Pay_Code==1]),NA,1
+Regular Rate,RROP Violations,pay1,sum(rrop_any_underpayment),pay_periods_pay,0
+Regular Rate,Net Underpayment,pay1,sum(Net_Underpayment),NA,2
+Regular Rate,OT Underpayment,pay1,sum(OT_Underpayment),NA,2
+Regular Rate,DT Underpayment,pay1,sum(DT_Underpayment),NA,2
+Regular Rate,Meal Underpayment,pay1,sum(Meal_Underpayment),NA,2
+Regular Rate,Rest Underpayment,pay1,sum(Rest_Underpayment),NA,2
+Regular Rate,Average RROP,pay1,mean(RROP[!is.na(RROP)]),NA,2
+Time Rounding,Shifts Analyzed,shift_data1,sum(shifts_analyzed),NA,0
+Time Rounding,Net Hours Lost/Gained,shift_data1,sum(diff[!is.na(diff)]),NA,2
+Time Rounding,Shifts with Time Lost,shift_data1,sum(pp_lost_time_shifts),analyzed_shifts_round,0
+Time Rounding,Shifts with Time Gained,shift_data1,sum(pp_gain_time_shifts),analyzed_shifts_round,0
+Damages,Meal Period Damages,shift_data1,sum(mp_tot_dmgs),NA,2
+Damages,Rest Period Damages,shift_data1,sum(rp_tot_dmgs),NA,2
+Damages,RROP Damages,pay1,sum(Net_Underpayment),NA,2
+Damages,Total Damages,shift_data1,sum(mp_tot_dmgs+rp_tot_dmgs)+sum(pay1$Net_Underpayment),NA,2
