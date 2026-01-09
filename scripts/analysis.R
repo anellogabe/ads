@@ -1,9 +1,4 @@
-# analysis.R - Main Analysis Script
-# This script runs the comprehensive wage and hour analysis
-
-# NOTE: This should be run AFTER clean_data.R has been executed
-# It expects time_processed.rds and pay_processed.rds to exist
-
+# ----- ALL DATA:                Load Packages & Data --------------------------
 library(data.table)
 library(lubridate)
 library(here)
@@ -12,17 +7,43 @@ library(purrr)
 library(tidyr)
 library(dplyr)
 
-# Load functions
-source(here("scripts", "functions.R"))
+# Run accompanying functions script
+source(here("scripts", "Functions.R"))
+source(here("scripts", "clean_data.R")) # Only run if you need to re-run cleaning script
 
-# Load processed data
-cat("Loading processed data...\n")
-time1 <- readRDS(here("data/processed/time_processed.rds"))
-pay1 <- readRDS(here("data/processed/pay_processed.rds"))
-class1 <- readRDS(here("data/processed/class_processed.rds"))
+# # *************** RUN IF "clean_data.R" is not already in work space *************** 
+# # Frequency table of days between pay period ends, excluding 0 and negative values
+# days_btwn_pay_period_ends_freq <- pay1[days_btwn_pay_period_ends > 0, 
+#                                        .N, by = days_btwn_pay_period_ends][order(-N)]
+# days_btwn_pay_period_ends_freq[, percent_of_total := round((N / sum(N)) * 100, 2)]
+# 
+# mode_days_btwn_pay_period_ends <- days_btwn_pay_period_ends_freq[1, days_btwn_pay_period_ends]
+# # *************** RUN IF "clean_data.R" is not already in work space *************** 
 
-# Parameters are set in clean_data.R
-cat("Analysis starting...\n")
+start.time <- Sys.time()
+
+time1 <- readRDS("data/processed/time_processed.rds")
+pay1 <- readRDS("data/processed/pay_processed.rds")
+class1 <- readRDS("data/processed/class_processed.rds")
+
+# # Merge time1 with class1 (if needed in order to get key information from Class List)
+# time1 <- merge(
+#   time1,
+#   class1[, .(Class_ID, Class_Location = Location, Class_Job = Job)],
+#   by.x = "ID",
+#   by.y = "Class_ID",
+#   all.x = TRUE
+# )
+# 
+# # Merge pay1 with class1 (if needed in order to get key information from Class List) 
+# pay1 <- merge(
+#   pay1,
+#   class1[, .(Class_ID, Class_Location = Pay_Location, Class_Job = Pay_Job)],
+#   by.x = "Pay_ID",
+#   by.y = "Class_ID",
+#   all.x = TRUE
+# )
+
 
 # ----- PAY DATA:                CA Min Wage table -------------------------
 
@@ -2163,10 +2184,8 @@ final_table <- format_metrics_table(raw_results)
 fwrite(final_table, "output/Analysis.csv")
 cat("\n✓ Analysis final table saved\n")
 
-cat("\n✅ Analysis complete! Output files saved to output/\n")
-cat("✅ Ready for dashboard\n")
-
-  # ----- END  -----------------------------------------
+# ----- END  -----------------------------------------
 end.time <- Sys.time()
 end.time - start.time    
+
 

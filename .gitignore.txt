@@ -1,0 +1,39 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.Rhistory
+.RData
+.Rproj.user/
+.Ruserdata
+
+# Secrets
+.env
+*.key
+*.pem
+*.p12
+
+# Big / generated outputs (never commit)
+output/
+outputs/
+out/
+tmp/
+temp/
+cache/
+renv/library/
+*.log
+
+# Data (never commit client data here)
+data/
+raw/
+orig/
+prod/
+*.csv
+*.xlsx
+*.xls
+*.parquet
+*.feather
+*.fst
+*.sas7bdat
+*.zip
+*.7z
+*.pdf
