@@ -195,113 +195,50 @@ server <- function(input, output, session) {
     df
   })
 
-  # Helper function to display section of analysis table
-  render_section <- function(section_name) {
+  # Helper function to filter by metric_group and render table
+  render_by_group <- function(group_filter) {
     renderDT({
       df <- filtered_data()
       if(is.null(df)) return(datatable(data.frame(Message = "No data available")))
 
-      # Filter to this section's metrics if there's a Section column
-      if("Section" %in% names(df)) {
-        df <- df[Section == section_name]
+      # Filter by metric_group if column exists
+      if("metric_group" %in% names(df) && !is.null(group_filter)) {
+        df <- df[metric_group %in% group_filter]
+      }
+
+      # Hide metric_group column in display (users don't need to see it)
+      if("metric_group" %in% names(df)) {
+        df <- df[, !"metric_group"]
       }
 
       datatable(df,
-                options = list(pageLength = 25, scrollX = TRUE, dom = 't'),
+                options = list(pageLength = 25, scrollX = TRUE),
                 rownames = FALSE)
     })
   }
 
-  # Render each page - just show the full Analysis table or filtered version
-  output$time_summary_table <- renderDT({
-    df <- filtered_data()
-    if(is.null(df)) return(datatable(data.frame(Message = "No data available")))
+  # Map each page to its metric_group value(s)
+  # Adjust these values to match your actual metric_group names in final_table
 
-    datatable(df,
-              options = list(pageLength = 25, scrollX = TRUE),
-              rownames = FALSE)
-  })
+  output$time_summary_table <- render_by_group(c("Time Summary", "Overview", "Time"))
 
-  output$meal_analysis_table <- renderDT({
-    df <- filtered_data()
-    if(is.null(df)) return(datatable(data.frame(Message = "No data available")))
+  output$meal_analysis_table <- render_by_group(c("Meal Period Analysis", "Meal Periods"))
 
-    datatable(df,
-              options = list(pageLength = 25, scrollX = TRUE),
-              rownames = FALSE)
-  })
+  output$meal_5hr_table <- render_by_group(c("Meal Violations >5hrs", "MP >5hrs"))
 
-  output$meal_5hr_table <- renderDT({
-    df <- filtered_data()
-    if(is.null(df)) return(datatable(data.frame(Message = "No data available")))
+  output$meal_6hr_table <- render_by_group(c("Meal Violations >6hrs", "MP >6hrs"))
 
-    datatable(df,
-              options = list(pageLength = 25, scrollX = TRUE),
-              rownames = FALSE)
-  })
+  output$rest_table <- render_by_group(c("Rest Periods", "Rest Period Violations"))
 
-  output$meal_6hr_table <- renderDT({
-    df <- filtered_data()
-    if(is.null(df)) return(datatable(data.frame(Message = "No data available")))
+  output$shift_hours_table <- render_by_group(c("Shift Hours", "Shift Analysis"))
 
-    datatable(df,
-              options = list(pageLength = 25, scrollX = TRUE),
-              rownames = FALSE)
-  })
+  output$rounding_table <- render_by_group(c("Rounding", "Time Rounding"))
 
-  output$rest_table <- renderDT({
-    df <- filtered_data()
-    if(is.null(df)) return(datatable(data.frame(Message = "No data available")))
+  output$pay_summary_table <- render_by_group(c("Pay Summary", "Pay"))
 
-    datatable(df,
-              options = list(pageLength = 25, scrollX = TRUE),
-              rownames = FALSE)
-  })
+  output$bonuses_table <- render_by_group(c("Bonuses", "Pay Differences", "Bonuses & Diffs"))
 
-  output$shift_hours_table <- renderDT({
-    df <- filtered_data()
-    if(is.null(df)) return(datatable(data.frame(Message = "No data available")))
-
-    datatable(df,
-              options = list(pageLength = 25, scrollX = TRUE),
-              rownames = FALSE)
-  })
-
-  output$rounding_table <- renderDT({
-    df <- filtered_data()
-    if(is.null(df)) return(datatable(data.frame(Message = "No data available")))
-
-    datatable(df,
-              options = list(pageLength = 25, scrollX = TRUE),
-              rownames = FALSE)
-  })
-
-  output$pay_summary_table <- renderDT({
-    df <- filtered_data()
-    if(is.null(df)) return(datatable(data.frame(Message = "No data available")))
-
-    datatable(df,
-              options = list(pageLength = 25, scrollX = TRUE),
-              rownames = FALSE)
-  })
-
-  output$bonuses_table <- renderDT({
-    df <- filtered_data()
-    if(is.null(df)) return(datatable(data.frame(Message = "No data available")))
-
-    datatable(df,
-              options = list(pageLength = 25, scrollX = TRUE),
-              rownames = FALSE)
-  })
-
-  output$rrop_table <- renderDT({
-    df <- filtered_data()
-    if(is.null(df)) return(datatable(data.frame(Message = "No data available")))
-
-    datatable(df,
-              options = list(pageLength = 25, scrollX = TRUE),
-              rownames = FALSE)
-  })
+  output$rrop_table <- render_by_group(c("Regular Rate", "RROP", "Regular Rate Groups"))
 
   # Refresh button
   observeEvent(input$refresh, {
