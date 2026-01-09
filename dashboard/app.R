@@ -1,4 +1,4 @@
-# Wage & Hour Dashboard
+# Wage & Hour Dashboard - Cardona Case
 # ==================================================
 
 library(shiny)
@@ -14,8 +14,9 @@ library(here)
 load_data <- function() {
   tryCatch({
     list(
-      time = readRDS(here("data/processed/time_processed.rds")),
-      pay = readRDS(here("data/processed/pay_processed.rds")),
+      time = if(file.exists(here("data/processed/time_processed.rds"))) readRDS(here("data/processed/time_processed.rds")) else NULL,
+      pay = if(file.exists(here("data/processed/pay_processed.rds"))) readRDS(here("data/processed/pay_processed.rds")) else NULL,
+      class = if(file.exists(here("data/processed/class_processed.rds"))) readRDS(here("data/processed/class_processed.rds")) else NULL,
       shift = if(file.exists(here("output/Time Shift Data.csv"))) fread(here("output/Time Shift Data.csv")) else NULL,
       ee = if(file.exists(here("output/Time Employee Data.csv"))) fread(here("output/Time Employee Data.csv")) else NULL,
       analysis = if(file.exists(here("output/Analysis.csv"))) fread(here("output/Analysis.csv")) else NULL
@@ -33,19 +34,22 @@ ui <- dashboardPage(
   skin = "blue",
 
   # Header
-  dashboardHeader(title = "Wage & Hour Dashboard"),
+  dashboardHeader(title = "Wage & Hour Dashboard - Cardona"),
 
   # Sidebar
   dashboardSidebar(
-    sidebarMenu(
-      menuItem("Overview", tabName = "overview", icon = icon("dashboard")),
-      menuItem("Meal & Rest Periods", tabName = "meal_rest", icon = icon("utensils")),
-      menuItem("Overtime Analysis", tabName = "overtime", icon = icon("clock")),
-      menuItem("Regular Rate", tabName = "regular_rate", icon = icon("calculator")),
-      menuItem("Time Rounding", tabName = "rounding", icon = icon("stopwatch")),
-      menuItem("Damages Summary", tabName = "damages", icon = icon("dollar-sign")),
-      menuItem("Employee Detail", tabName = "employee", icon = icon("user")),
-      menuItem("Data Tables", tabName = "tables", icon = icon("table"))
+    sidebarMenu(id = "sidebar",
+      menuItem("1. Key Metrics Summary", tabName = "metrics", icon = icon("tachometer-alt")),
+      menuItem("2. Time Summary", tabName = "time_summary", icon = icon("clock")),
+      menuItem("3. Meal Period Analysis", tabName = "meal_analysis", icon = icon("utensils")),
+      menuItem("4. Meal Violations >5 hrs", tabName = "meal_5hr", icon = icon("exclamation-triangle")),
+      menuItem("5. Meal Violations >6 hrs", tabName = "meal_6hr", icon = icon("exclamation-circle")),
+      menuItem("6. Rest Periods", tabName = "rest", icon = icon("pause")),
+      menuItem("7. Shift Hours Analysis", tabName = "shift_hours", icon = icon("calendar-day")),
+      menuItem("8. Rounding Analysis", tabName = "rounding", icon = icon("stopwatch")),
+      menuItem("9. Pay Summary", tabName = "pay_summary", icon = icon("money-bill-wave")),
+      menuItem("10. Bonuses & Diffs", tabName = "bonuses", icon = icon("gift")),
+      menuItem("11. Regular Rate Groups", tabName = "rrop", icon = icon("calculator"))
     ),
 
     # Filters
@@ -56,11 +60,6 @@ ui <- dashboardPage(
                    start = if(!is.null(data$shift)) min(data$shift$Date, na.rm = TRUE) else Sys.Date() - 365,
                    end = if(!is.null(data$shift)) max(data$shift$Date, na.rm = TRUE) else Sys.Date()),
 
-    selectInput("key_group", "Key Group:",
-                choices = c("All" = "all",
-                           if(!is.null(data$shift)) unique(data$shift$Key_Gps) else "All"),
-                selected = "all"),
-
     actionButton("refresh", "Refresh Data", icon = icon("sync"),
                  style = "margin: 15px;")
   ),
@@ -68,848 +67,770 @@ ui <- dashboardPage(
   # Body
   dashboardBody(
     tabItems(
-      # Overview Tab
-      tabItem(tabName = "overview",
+      # 1. Key Metrics Summary =====================================
+      tabItem(tabName = "metrics",
+              h2("Key Metrics Summary"),
               fluidRow(
                 valueBoxOutput("total_employees", width = 3),
                 valueBoxOutput("total_shifts", width = 3),
-                valueBoxOutput("total_violations", width = 3),
-                valueBoxOutput("total_damages", width = 3)
+                valueBoxOutput("total_hours", width = 3),
+                valueBoxOutput("total_violations", width = 3)
+              ),
+              fluidRow(
+                valueBoxOutput("meal_violations", width = 3),
+                valueBoxOutput("rest_violations", width = 3),
+                valueBoxOutput("total_damages", width = 3),
+                valueBoxOutput("avg_damages_per_ee", width = 3)
               ),
               fluidRow(
                 box(
-                  title = "Violations by Type", status = "primary", solidHeader = TRUE,
-                  plotlyOutput("violations_chart", height = 300)
-                ),
-                box(
-                  title = "Violations Over Time", status = "primary", solidHeader = TRUE,
-                  plotlyOutput("violations_trend", height = 300)
-                )
-              ),
-              fluidRow(
-                box(
-                  title = "Key Metrics Summary", status = "info", solidHeader = TRUE, width = 12,
-                  DTOutput("metrics_summary")
+                  title = "Summary Statistics", status = "primary", solidHeader = TRUE, width = 12,
+                  DTOutput("metrics_table")
                 )
               )
       ),
 
-      # Meal & Rest Periods Tab
-      tabItem(tabName = "meal_rest",
-              h2("Meal & Rest Period Analysis"),
-              fluidRow(
-                valueBoxOutput("mp_violations", width = 4),
-                valueBoxOutput("rp_violations", width = 4),
-                valueBoxOutput("mp_rate", width = 4)
-              ),
+      # 2. Time Summary ============================================
+      tabItem(tabName = "time_summary",
+              h2("Time Summary"),
               fluidRow(
                 box(
-                  title = "Meal Period Violations by Type", status = "warning", solidHeader = TRUE,
-                  plotlyOutput("mp_violations_chart")
+                  title = "Hours Worked by Category", status = "primary", solidHeader = TRUE, width = 6,
+                  plotlyOutput("hours_by_category")
                 ),
                 box(
-                  title = "Meal Period Duration Distribution", status = "info", solidHeader = TRUE,
-                  plotlyOutput("mp_duration_chart")
+                  title = "Hours Worked Over Time", status = "primary", solidHeader = TRUE, width = 6,
+                  plotlyOutput("hours_trend")
                 )
               ),
               fluidRow(
                 box(
-                  title = "Shift Hours vs Meal Periods", status = "primary", solidHeader = TRUE,
-                  plotlyOutput("shift_mp_scatter")
-                ),
-                box(
-                  title = "Meal Period Start Times", status = "success", solidHeader = TRUE,
-                  plotlyOutput("mp_start_times")
+                  title = "Time Data Summary", status = "info", solidHeader = TRUE, width = 12,
+                  DTOutput("time_summary_table")
                 )
               )
       ),
 
-      # Overtime Tab
-      tabItem(tabName = "overtime",
-              h2("Overtime & Double Time Analysis"),
+      # 3. Meal Period Analysis =====================================
+      tabItem(tabName = "meal_analysis",
+              h2("Meal Period Analysis"),
               fluidRow(
-                valueBoxOutput("ot_hours", width = 4),
-                valueBoxOutput("dt_hours", width = 4),
-                valueBoxOutput("ot_employees", width = 4)
+                infoBoxOutput("total_meal_periods", width = 4),
+                infoBoxOutput("auto_deduct_meals", width = 4),
+                infoBoxOutput("rounded_meals", width = 4)
               ),
               fluidRow(
                 box(
-                  title = "OT/DT Hours by Month", status = "primary", solidHeader = TRUE,
-                  plotlyOutput("ot_trend")
+                  title = "Meal Period Duration Distribution", status = "primary", solidHeader = TRUE, width = 6,
+                  plotlyOutput("meal_duration_dist")
                 ),
                 box(
-                  title = "Shift Length Distribution", status = "info", solidHeader = TRUE,
+                  title = "Meal Start Time Distribution", status = "primary", solidHeader = TRUE, width = 6,
+                  plotlyOutput("meal_start_time_dist")
+                )
+              ),
+              fluidRow(
+                box(
+                  title = "Auto-Deduct & Rounded Meal Analysis", status = "warning", solidHeader = TRUE, width = 12,
+                  DTOutput("meal_deduct_table")
+                )
+              )
+      ),
+
+      # 4. Meal Violations >5 hrs (no waivers) ======================
+      tabItem(tabName = "meal_5hr",
+              h2("Meal Period Violations - Shifts >5 Hours (No Waivers)"),
+              fluidRow(
+                valueBoxOutput("mpv_5hr_total", width = 3),
+                valueBoxOutput("mpv_5hr_late", width = 3),
+                valueBoxOutput("mpv_5hr_short", width = 3),
+                valueBoxOutput("mpv_5hr_damages", width = 3)
+              ),
+              fluidRow(
+                box(
+                  title = "Violations Over Time", status = "danger", solidHeader = TRUE, width = 12,
+                  plotlyOutput("mpv_5hr_trend")
+                )
+              ),
+              fluidRow(
+                box(
+                  title = "Late Meal Period Detail", status = "warning", solidHeader = TRUE,
+                  width = 12, collapsible = TRUE, collapsed = TRUE,
+                  DTOutput("mpv_5hr_late_table")
+                )
+              ),
+              fluidRow(
+                box(
+                  title = "Short Meal Period Detail", status = "warning", solidHeader = TRUE,
+                  width = 12, collapsible = TRUE, collapsed = TRUE,
+                  DTOutput("mpv_5hr_short_table")
+                )
+              )
+      ),
+
+      # 5. Meal Violations >6 hrs (waivers) =========================
+      tabItem(tabName = "meal_6hr",
+              h2("Meal Period Violations - Shifts >6 Hours (With Waivers)"),
+              fluidRow(
+                valueBoxOutput("mpv_6hr_total", width = 3),
+                valueBoxOutput("mpv_6hr_late", width = 3),
+                valueBoxOutput("mpv_6hr_short", width = 3),
+                valueBoxOutput("mpv_6hr_damages", width = 3)
+              ),
+              fluidRow(
+                box(
+                  title = "Violations Over Time", status = "danger", solidHeader = TRUE, width = 12,
+                  plotlyOutput("mpv_6hr_trend")
+                )
+              ),
+              fluidRow(
+                box(
+                  title = "Late Meal Period Detail", status = "warning", solidHeader = TRUE,
+                  width = 12, collapsible = TRUE, collapsed = TRUE,
+                  DTOutput("mpv_6hr_late_table")
+                )
+              ),
+              fluidRow(
+                box(
+                  title = "Short Meal Period Detail", status = "warning", solidHeader = TRUE,
+                  width = 12, collapsible = TRUE, collapsed = TRUE,
+                  DTOutput("mpv_6hr_short_table")
+                )
+              )
+      ),
+
+      # 6. Rest Periods & Violations ================================
+      tabItem(tabName = "rest",
+              h2("Rest Period Analysis & Violations"),
+              fluidRow(
+                valueBoxOutput("total_rest_periods", width = 3),
+                valueBoxOutput("rest_violations_total", width = 3),
+                valueBoxOutput("rest_violation_rate", width = 3),
+                valueBoxOutput("rest_damages", width = 3)
+              ),
+              fluidRow(
+                box(
+                  title = "Rest Period Violations Over Time", status = "danger", solidHeader = TRUE, width = 12,
+                  plotlyOutput("rest_violations_trend")
+                )
+              ),
+              fluidRow(
+                box(
+                  title = "Rest Period Violations by Employee", status = "warning", solidHeader = TRUE, width = 12,
+                  DTOutput("rest_violations_table")
+                )
+              )
+      ),
+
+      # 7. Shift Hours Analysis =====================================
+      tabItem(tabName = "shift_hours",
+              h2("Shift Hours Analysis"),
+              fluidRow(
+                infoBoxOutput("avg_shift_length", width = 4),
+                infoBoxOutput("total_shifts_analyzed", width = 4),
+                infoBoxOutput("shifts_over_8hrs", width = 4)
+              ),
+              fluidRow(
+                box(
+                  title = "Shift Length Distribution", status = "primary", solidHeader = TRUE, width = 6,
                   plotlyOutput("shift_length_dist")
-                )
-              ),
-              fluidRow(
-                box(
-                  title = "Top OT Employees", status = "warning", solidHeader = TRUE,
-                  DTOutput("top_ot_employees")
-                )
-              )
-      ),
-
-      # Regular Rate Tab
-      tabItem(tabName = "regular_rate",
-              h2("Regular Rate of Pay Analysis"),
-              fluidRow(
-                valueBoxOutput("rrop_violations", width = 4),
-                valueBoxOutput("rrop_underpayment", width = 4),
-                valueBoxOutput("rrop_avg", width = 4)
-              ),
-              fluidRow(
-                box(
-                  title = "RROP Underpayments Over Time", status = "danger", solidHeader = TRUE,
-                  plotlyOutput("rrop_trend")
                 ),
                 box(
-                  title = "RROP Violation Types", status = "warning", solidHeader = TRUE,
-                  plotlyOutput("rrop_types")
+                  title = "Shifts by Day of Week", status = "primary", solidHeader = TRUE, width = 6,
+                  plotlyOutput("shift_dow_chart")
+                )
+              ),
+              fluidRow(
+                box(
+                  title = "Shift Hours Detail", status = "info", solidHeader = TRUE, width = 12,
+                  DTOutput("shift_hours_table")
                 )
               )
       ),
 
-      # Time Rounding Tab
+      # 8. Rounding Analysis ========================================
       tabItem(tabName = "rounding",
               h2("Time Rounding Analysis"),
               fluidRow(
-                valueBoxOutput("shifts_analyzed", width = 4),
-                valueBoxOutput("net_time_diff", width = 4),
-                valueBoxOutput("rounding_pattern", width = 4)
+                valueBoxOutput("total_rounding_impact", width = 4),
+                valueBoxOutput("shifts_rounded_up", width = 4),
+                valueBoxOutput("shifts_rounded_down", width = 4)
               ),
               fluidRow(
                 box(
-                  title = "Time Difference Distribution", status = "primary", solidHeader = TRUE,
+                  title = "Rounding Impact Distribution", status = "primary", solidHeader = TRUE, width = 6,
                   plotlyOutput("rounding_dist")
                 ),
                 box(
-                  title = "Rounding Impact by Employee", status = "info", solidHeader = TRUE,
-                  plotlyOutput("rounding_employee")
+                  title = "Rounding Impact Over Time", status = "primary", solidHeader = TRUE, width = 6,
+                  plotlyOutput("rounding_trend")
+                )
+              ),
+              fluidRow(
+                box(
+                  title = "Rounding Detail by Employee", status = "warning", solidHeader = TRUE, width = 12,
+                  DTOutput("rounding_table")
                 )
               )
       ),
 
-      # Damages Tab
-      tabItem(tabName = "damages",
-              h2("Damages Summary"),
+      # 9. Pay Summary ==============================================
+      tabItem(tabName = "pay_summary",
+              h2("Pay Summary"),
               fluidRow(
-                valueBoxOutput("total_mp_damages", width = 3),
-                valueBoxOutput("total_rp_damages", width = 3),
-                valueBoxOutput("total_ot_damages", width = 3),
-                valueBoxOutput("total_all_damages", width = 3)
+                valueBoxOutput("total_pay_amount", width = 3),
+                valueBoxOutput("total_pay_hours", width = 3),
+                valueBoxOutput("avg_hourly_rate", width = 3),
+                valueBoxOutput("total_pay_periods", width = 3)
               ),
               fluidRow(
                 box(
-                  title = "Damages by Category", status = "danger", solidHeader = TRUE,
-                  plotlyOutput("damages_breakdown")
+                  title = "Pay by Category", status = "success", solidHeader = TRUE, width = 6,
+                  plotlyOutput("pay_by_category")
                 ),
                 box(
-                  title = "Damages by Employee (Top 20)", status = "warning", solidHeader = TRUE,
-                  plotlyOutput("damages_employee")
+                  title = "Pay Over Time", status = "success", solidHeader = TRUE, width = 6,
+                  plotlyOutput("pay_trend")
                 )
               ),
               fluidRow(
                 box(
-                  title = "Cumulative Damages Over Time", status = "info", solidHeader = TRUE, width = 12,
-                  plotlyOutput("damages_cumulative")
+                  title = "Pay Summary by Code", status = "info", solidHeader = TRUE, width = 12,
+                  DTOutput("pay_summary_table")
                 )
               )
       ),
 
-      # Employee Detail Tab
-      tabItem(tabName = "employee",
-              h2("Employee Detail View"),
+      # 10. Bonuses & Diffs =========================================
+      tabItem(tabName = "bonuses",
+              h2("Bonuses & Pay Differences"),
               fluidRow(
-                box(
-                  title = "Select Employee", status = "primary", solidHeader = TRUE, width = 12,
-                  selectInput("employee_id", "Employee ID:",
-                             choices = if(!is.null(data$shift)) sort(unique(data$shift$ID)) else "None")
-                )
-              ),
-              fluidRow(
-                valueBoxOutput("emp_shifts", width = 3),
-                valueBoxOutput("emp_violations", width = 3),
-                valueBoxOutput("emp_ot_hours", width = 3),
-                valueBoxOutput("emp_damages", width = 3)
+                valueBoxOutput("total_bonuses", width = 4),
+                valueBoxOutput("total_diffs", width = 4),
+                valueBoxOutput("employees_with_bonuses", width = 4)
               ),
               fluidRow(
                 box(
-                  title = "Employee Shift History", status = "primary", solidHeader = TRUE,
-                  plotlyOutput("emp_shift_history")
+                  title = "Bonus Payments Over Time", status = "success", solidHeader = TRUE, width = 6,
+                  plotlyOutput("bonus_trend")
                 ),
                 box(
-                  title = "Employee Violations Timeline", status = "warning", solidHeader = TRUE,
-                  plotlyOutput("emp_violations_timeline")
+                  title = "Bonus Distribution by Type", status = "success", solidHeader = TRUE, width = 6,
+                  plotlyOutput("bonus_type_dist")
                 )
               ),
               fluidRow(
                 box(
-                  title = "Employee Detail Table", status = "info", solidHeader = TRUE, width = 12,
-                  DTOutput("emp_detail_table")
+                  title = "Pay Differences Analysis", status = "warning", solidHeader = TRUE, width = 12,
+                  DTOutput("diffs_table")
                 )
               )
       ),
 
-      # Data Tables Tab
-      tabItem(tabName = "tables",
-              h2("Data Tables"),
-              tabsetPanel(
-                tabPanel("Analysis Table",
-                        DTOutput("analysis_table")),
-                tabPanel("Shift Data",
-                        DTOutput("shift_table")),
-                tabPanel("Pay Data",
-                        DTOutput("pay_table")),
-                tabPanel("Employee Summary",
-                        DTOutput("employee_table"))
+      # 11. Regular Rate Groups =====================================
+      tabItem(tabName = "rrop",
+              h2("Regular Rate of Pay (RROP) Analysis"),
+              fluidRow(
+                infoBoxOutput("rrop_categories", width = 4),
+                infoBoxOutput("rrop_includable", width = 4),
+                infoBoxOutput("rrop_excludable", width = 4)
+              ),
+              fluidRow(
+                box(
+                  title = "RROP Components by Category", status = "primary", solidHeader = TRUE, width = 12,
+                  plotlyOutput("rrop_category_chart")
+                )
+              ),
+              fluidRow(
+                box(
+                  title = "Regular Rate Groups Detail", status = "info", solidHeader = TRUE, width = 12,
+                  DTOutput("rrop_table")
+                )
               )
       )
     )
   )
 )
 
-# Server ==========================================
+# SERVER ===============================================
 server <- function(input, output, session) {
 
   # Reactive filtered data
   filtered_data <- reactive({
     req(data$shift)
+    df <- data$shift
 
-    dt <- data$shift[Date >= input$date_range[1] & Date <= input$date_range[2]]
-
-    if(input$key_group != "all") {
-      dt <- dt[Key_Gps == input$key_group]
+    # Date filter
+    if(!is.null(input$date_range)) {
+      df <- df[Date >= input$date_range[1] & Date <= input$date_range[2]]
     }
 
-    dt
+    df
   })
 
-  # Overview Value Boxes
+  # === 1. KEY METRICS SUMMARY ===
   output$total_employees <- renderValueBox({
-    dt <- filtered_data()
-    valueBox(
-      uniqueN(dt$ID),
-      "Total Employees",
-      icon = icon("users"),
-      color = "aqua"
-    )
+    df <- filtered_data()
+    count <- if(!is.null(df) && "ID" %in% names(df)) uniqueN(df$ID) else 0
+    valueBox(format(count, big.mark = ","), "Total Employees", icon = icon("users"), color = "blue")
   })
 
   output$total_shifts <- renderValueBox({
-    dt <- filtered_data()
-    valueBox(
-      format(nrow(dt), big.mark = ","),
-      "Total Shifts",
-      icon = icon("calendar"),
-      color = "green"
-    )
+    df <- filtered_data()
+    count <- if(!is.null(df)) nrow(df) else 0
+    valueBox(format(count, big.mark = ","), "Total Shifts", icon = icon("calendar"), color = "light-blue")
+  })
+
+  output$total_hours <- renderValueBox({
+    df <- filtered_data()
+    hours <- if(!is.null(df) && "shift_hrs" %in% names(df)) sum(df$shift_hrs, na.rm = TRUE) else 0
+    valueBox(format(round(hours, 0), big.mark = ","), "Total Hours", icon = icon("clock"), color = "aqua")
   })
 
   output$total_violations <- renderValueBox({
-    dt <- filtered_data()
-    total_v <- sum(dt$mpv_shift, na.rm = TRUE) + sum(dt$rpv_shift, na.rm = TRUE)
-    valueBox(
-      format(total_v, big.mark = ","),
-      "Total Violations",
-      icon = icon("exclamation-triangle"),
-      color = "red"
-    )
+    df <- filtered_data()
+    mpv <- if(!is.null(df) && "mpv_shift" %in% names(df)) sum(df$mpv_shift, na.rm = TRUE) else 0
+    rpv <- if(!is.null(df) && "rpv_shift" %in% names(df)) sum(df$rpv_shift, na.rm = TRUE) else 0
+    total <- mpv + rpv
+    valueBox(format(round(total, 0), big.mark = ","), "Total Violations", icon = icon("exclamation-triangle"), color = "red")
+  })
+
+  output$meal_violations <- renderValueBox({
+    df <- filtered_data()
+    mpv <- if(!is.null(df) && "mpv_shift" %in% names(df)) sum(df$mpv_shift, na.rm = TRUE) else 0
+    valueBox(format(round(mpv, 0), big.mark = ","), "Meal Violations", icon = icon("utensils"), color = "orange")
+  })
+
+  output$rest_violations <- renderValueBox({
+    df <- filtered_data()
+    rpv <- if(!is.null(df) && "rpv_shift" %in% names(df)) sum(df$rpv_shift, na.rm = TRUE) else 0
+    valueBox(format(round(rpv, 0), big.mark = ","), "Rest Violations", icon = icon("pause"), color = "yellow")
   })
 
   output$total_damages <- renderValueBox({
-    dt <- filtered_data()
-    damages <- sum(dt$mp_tot_dmgs, na.rm = TRUE) + sum(dt$rp_tot_dmgs, na.rm = TRUE)
-    valueBox(
-      paste0("$", format(round(damages, 0), big.mark = ",")),
-      "Total Damages",
-      icon = icon("dollar-sign"),
-      color = "red"
-    )
+    df <- filtered_data()
+    mp_dmg <- if(!is.null(df) && "mp_tot_dmgs" %in% names(df)) sum(df$mp_tot_dmgs, na.rm = TRUE) else 0
+    rp_dmg <- if(!is.null(df) && "rp_tot_dmgs" %in% names(df)) sum(df$rp_tot_dmgs, na.rm = TRUE) else 0
+    total <- mp_dmg + rp_dmg
+    valueBox(paste0("$", format(round(total, 0), big.mark = ",")), "Total Damages", icon = icon("dollar-sign"), color = "green")
   })
 
-  # Violations Chart
-  output$violations_chart <- renderPlotly({
-    dt <- filtered_data()
+  output$avg_damages_per_ee <- renderValueBox({
+    df <- filtered_data()
+    mp_dmg <- if(!is.null(df) && "mp_tot_dmgs" %in% names(df)) sum(df$mp_tot_dmgs, na.rm = TRUE) else 0
+    rp_dmg <- if(!is.null(df) && "rp_tot_dmgs" %in% names(df)) sum(df$rp_tot_dmgs, na.rm = TRUE) else 0
+    total <- mp_dmg + rp_dmg
+    n_ee <- if(!is.null(df) && "ID" %in% names(df)) uniqueN(df$ID) else 1
+    avg <- total / n_ee
+    valueBox(paste0("$", format(round(avg, 0), big.mark = ",")), "Avg Damages/EE", icon = icon("user-check"), color = "teal")
+  })
 
-    violations <- data.table(
-      Type = c("Missed MP1", "Late MP1", "Short MP1", "Missed MP2", "Late MP2", "Short MP2", "Rest Period"),
-      Count = c(
-        sum(dt$MissMP1, na.rm = TRUE),
-        sum(dt$LateMP1, na.rm = TRUE),
-        sum(dt$ShortMP1, na.rm = TRUE),
-        sum(dt$MissMP2, na.rm = TRUE),
-        sum(dt$LateMP2, na.rm = TRUE),
-        sum(dt$ShortMP2, na.rm = TRUE),
-        sum(dt$rpv_shift, na.rm = TRUE)
+  output$metrics_table <- renderDT({
+    df <- filtered_data()
+    if(is.null(df)) return(datatable(data.frame(Message = "No data available")))
+
+    summary_df <- data.frame(
+      Metric = c("Total Employees", "Total Shifts", "Total Hours Worked",
+                 "Meal Period Violations", "Rest Period Violations",
+                 "Total Violations", "Total Damages", "Avg Damages per Employee"),
+      Value = c(
+        format(uniqueN(df$ID), big.mark = ","),
+        format(nrow(df), big.mark = ","),
+        format(round(sum(df$shift_hrs, na.rm = TRUE), 0), big.mark = ","),
+        format(round(sum(df$mpv_shift, na.rm = TRUE), 0), big.mark = ","),
+        format(round(sum(df$rpv_shift, na.rm = TRUE), 0), big.mark = ","),
+        format(round(sum(df$mpv_shift, na.rm = TRUE) + sum(df$rpv_shift, na.rm = TRUE), 0), big.mark = ","),
+        paste0("$", format(round(sum(df$mp_tot_dmgs, na.rm = TRUE) + sum(df$rp_tot_dmgs, na.rm = TRUE), 0), big.mark = ",")),
+        paste0("$", format(round((sum(df$mp_tot_dmgs, na.rm = TRUE) + sum(df$rp_tot_dmgs, na.rm = TRUE)) / uniqueN(df$ID), 0), big.mark = ","))
       )
     )
 
-    plot_ly(violations, x = ~Type, y = ~Count, type = "bar",
-            marker = list(color = "steelblue")) %>%
-      layout(xaxis = list(title = ""), yaxis = list(title = "Count"))
+    datatable(summary_df, options = list(pageLength = 20, dom = 't'), rownames = FALSE)
   })
 
-  # Violations Trend
-  output$violations_trend <- renderPlotly({
-    dt <- filtered_data()
+  # === 2. TIME SUMMARY ===
+  output$hours_by_category <- renderPlotly({
+    df <- filtered_data()
+    if(is.null(df)) return(plotly_empty())
 
-    trend <- dt[, .(Violations = sum(mpv_shift + rpv_shift, na.rm = TRUE)),
-                by = .(Date = as.Date(Date))]
-    setorder(trend, Date)
-
-    plot_ly(trend, x = ~Date, y = ~Violations, type = "scatter", mode = "lines+markers",
-            line = list(color = "red")) %>%
-      layout(xaxis = list(title = "Date"), yaxis = list(title = "Violations"))
-  })
-
-  # Metrics Summary Table
-  output$metrics_summary <- renderDT({
-    req(data$analysis)
-
-    datatable(data$analysis,
-              options = list(pageLength = 15, scrollX = TRUE),
-              class = "display nowrap")
-  })
-
-  # Meal & Rest Period Tab
-  output$mp_violations <- renderValueBox({
-    dt <- filtered_data()
-    valueBox(
-      format(sum(dt$mpv_shift, na.rm = TRUE), big.mark = ","),
-      "Meal Period Violations",
-      icon = icon("utensils"),
-      color = "orange"
-    )
-  })
-
-  output$rp_violations <- renderValueBox({
-    dt <- filtered_data()
-    valueBox(
-      format(sum(dt$rpv_shift, na.rm = TRUE), big.mark = ","),
-      "Rest Period Violations",
-      icon = icon("coffee"),
-      color = "orange"
-    )
-  })
-
-  output$mp_rate <- renderValueBox({
-    dt <- filtered_data()
-    rate <- sum(dt$mpv_shift, na.rm = TRUE) / sum(dt$Shifts_gt_5, na.rm = TRUE) * 100
-    valueBox(
-      paste0(round(rate, 1), "%"),
-      "MP Violation Rate",
-      icon = icon("percent"),
-      color = "red"
-    )
-  })
-
-  output$mp_violations_chart <- renderPlotly({
-    dt <- filtered_data()
-
-    mp_types <- data.table(
-      Type = c("Missed MP1", "Late MP1", "Short MP1", "Missed MP2", "Late MP2", "Short MP2"),
-      Count = c(
-        sum(dt$MissMP1, na.rm = TRUE),
-        sum(dt$LateMP1, na.rm = TRUE),
-        sum(dt$ShortMP1, na.rm = TRUE),
-        sum(dt$MissMP2, na.rm = TRUE),
-        sum(dt$LateMP2, na.rm = TRUE),
-        sum(dt$ShortMP2, na.rm = TRUE)
-      )
-    )
-
-    plot_ly(mp_types, labels = ~Type, values = ~Count, type = "pie") %>%
-      layout(title = "")
-  })
-
-  output$mp_duration_chart <- renderPlotly({
-    dt <- filtered_data()
-
-    plot_ly(dt[mp1_hrs > 0], x = ~mp1_hrs, type = "histogram",
-            marker = list(color = "steelblue")) %>%
-      layout(xaxis = list(title = "Meal Period Duration (hours)"),
-             yaxis = list(title = "Count"))
-  })
-
-  output$shift_mp_scatter <- renderPlotly({
-    dt <- filtered_data()
-
-    plot_ly(dt, x = ~shift_hrs, y = ~shift_mps, type = "scatter", mode = "markers",
-            marker = list(size = 5, color = "steelblue")) %>%
-      layout(xaxis = list(title = "Shift Hours"),
-             yaxis = list(title = "Number of Meal Periods"))
-  })
-
-  output$mp_start_times <- renderPlotly({
-    dt <- filtered_data()
-
-    # Create hour bins for meal start times based on hrs_to_mp1
-    dt_mp <- dt[hrs_to_mp1 > 0]
-
-    if(nrow(dt_mp) > 0) {
-      dt_mp[, mp_start_hour := floor(hrs_to_mp1)]
-
-      mp_times <- dt_mp[, .N, by = mp_start_hour]
-      setorder(mp_times, mp_start_hour)
-
-      plot_ly(mp_times, x = ~mp_start_hour, y = ~N, type = "bar",
-              marker = list(color = "green")) %>%
-        layout(xaxis = list(title = "Hours into Shift"),
-               yaxis = list(title = "Count"))
-    } else {
-      plotly_empty()
-    }
-  })
-
-  # Overtime Tab
-  output$ot_hours <- renderValueBox({
-    dt <- filtered_data()
-    valueBox(
-      format(round(sum(dt$pp_daily_ot, na.rm = TRUE), 0), big.mark = ","),
-      "Total OT Hours",
-      icon = icon("clock"),
-      color = "yellow"
-    )
-  })
-
-  output$dt_hours <- renderValueBox({
-    dt <- filtered_data()
-    valueBox(
-      format(round(sum(dt$pp_daily_dt, na.rm = TRUE), 0), big.mark = ","),
-      "Total DT Hours",
-      icon = icon("clock"),
-      color = "red"
-    )
-  })
-
-  output$ot_employees <- renderValueBox({
-    dt <- filtered_data()
-    valueBox(
-      uniqueN(dt[pp_daily_ot > 0 | pp_daily_dt > 0]$ID),
-      "Employees with OT/DT",
-      icon = icon("users"),
-      color = "orange"
-    )
-  })
-
-  output$ot_trend <- renderPlotly({
-    dt <- filtered_data()
-
-    dt[, month := floor_date(Date, "month")]
-    ot_monthly <- dt[, .(
-      OT_Hours = sum(pp_daily_ot, na.rm = TRUE),
-      DT_Hours = sum(pp_daily_dt, na.rm = TRUE)
-    ), by = month]
-    setorder(ot_monthly, month)
-
-    plot_ly(ot_monthly) %>%
-      add_trace(x = ~month, y = ~OT_Hours, type = "scatter", mode = "lines+markers",
-                name = "OT Hours", line = list(color = "orange")) %>%
-      add_trace(x = ~month, y = ~DT_Hours, type = "scatter", mode = "lines+markers",
-                name = "DT Hours", line = list(color = "red")) %>%
-      layout(xaxis = list(title = "Month"),
+    plot_ly(type = "bar") %>%
+      layout(title = "Coming Soon: Hours by Category",
+             xaxis = list(title = ""),
              yaxis = list(title = "Hours"))
   })
 
-  output$shift_length_dist <- renderPlotly({
-    dt <- filtered_data()
+  output$hours_trend <- renderPlotly({
+    df <- filtered_data()
+    if(is.null(df) || !"Date" %in% names(df)) return(plotly_empty())
 
-    plot_ly(dt, x = ~shift_hrs, type = "histogram",
-            marker = list(color = "steelblue")) %>%
-      layout(xaxis = list(title = "Shift Hours"),
+    trend <- df[, .(Hours = sum(shift_hrs, na.rm = TRUE)), by = Date]
+
+    plot_ly(trend, x = ~Date, y = ~Hours, type = "scatter", mode = "lines") %>%
+      layout(title = "Hours Worked Over Time",
+             xaxis = list(title = "Date"),
+             yaxis = list(title = "Total Hours"))
+  })
+
+  output$time_summary_table <- renderDT({
+    df <- filtered_data()
+    if(is.null(df)) return(datatable(data.frame(Message = "No data available")))
+
+    datatable(head(df, 1000), options = list(pageLength = 25, scrollX = TRUE), rownames = FALSE)
+  })
+
+  # === 3. MEAL PERIOD ANALYSIS ===
+  output$total_meal_periods <- renderInfoBox({
+    df <- filtered_data()
+    count <- if(!is.null(df) && "mp1_hrs" %in% names(df)) sum(!is.na(df$mp1_hrs)) else 0
+    infoBox("Total Meal Periods", format(count, big.mark = ","), icon = icon("utensils"), color = "blue")
+  })
+
+  output$auto_deduct_meals <- renderInfoBox({
+    infoBox("Auto-Deduct Meals", "Coming Soon", icon = icon("robot"), color = "yellow")
+  })
+
+  output$rounded_meals <- renderInfoBox({
+    infoBox("Rounded Meals", "Coming Soon", icon = icon("stopwatch"), color = "orange")
+  })
+
+  output$meal_duration_dist <- renderPlotly({
+    df <- filtered_data()
+    if(is.null(df) || !"mp1_hrs" %in% names(df)) return(plotly_empty())
+
+    meal_hrs <- df$mp1_hrs[!is.na(df$mp1_hrs)] * 60  # Convert to minutes
+
+    plot_ly(x = meal_hrs, type = "histogram", nbinsx = 30) %>%
+      layout(title = "Meal Period Duration (Minutes)",
+             xaxis = list(title = "Duration (Minutes)"),
              yaxis = list(title = "Count"))
   })
 
-  output$top_ot_employees <- renderDT({
-    dt <- filtered_data()
-
-    top_ot <- dt[, .(
-      Total_OT_Hours = sum(pp_daily_ot, na.rm = TRUE),
-      Total_DT_Hours = sum(pp_daily_dt, na.rm = TRUE),
-      Shifts = .N
-    ), by = ID]
-    setorder(top_ot, -Total_OT_Hours)
-
-    datatable(head(top_ot, 20),
-              options = list(pageLength = 20),
-              class = "display nowrap")
+  output$meal_start_time_dist <- renderPlotly({
+    plot_ly(type = "bar") %>%
+      layout(title = "Coming Soon: Meal Start Time Distribution")
   })
 
-  # Regular Rate Tab
-  output$rrop_violations <- renderValueBox({
-    req(data$pay)
-    dt <- data$pay[Pay_Period_End >= input$date_range[1] & Pay_Period_End <= input$date_range[2]]
-
-    valueBox(
-      format(sum(dt$rrop_any_underpayment, na.rm = TRUE), big.mark = ","),
-      "RROP Violations",
-      icon = icon("calculator"),
-      color = "red"
-    )
+  output$meal_deduct_table <- renderDT({
+    datatable(data.frame(Message = "Coming Soon: Auto-deduct & rounded meal analysis"),
+              options = list(dom = 't'), rownames = FALSE)
   })
 
-  output$rrop_underpayment <- renderValueBox({
-    req(data$pay)
-    dt <- data$pay[Pay_Period_End >= input$date_range[1] & Pay_Period_End <= input$date_range[2]]
-
-    valueBox(
-      paste0("$", format(round(sum(dt$Net_Underpayment, na.rm = TRUE), 0), big.mark = ",")),
-      "Total Underpayment",
-      icon = icon("dollar-sign"),
-      color = "red"
-    )
+  # === 4 & 5. MEAL VIOLATIONS ===
+  output$mpv_5hr_total <- renderValueBox({
+    df <- filtered_data()
+    count <- if(!is.null(df) && "mpv_shift" %in% names(df) && "shift_hrs" %in% names(df)) {
+      sum(df$mpv_shift[df$shift_hrs > 5 & df$shift_hrs <= 6], na.rm = TRUE)
+    } else 0
+    valueBox(format(round(count, 0), big.mark = ","), "Total Violations", icon = icon("exclamation-triangle"), color = "red")
   })
 
-  output$rrop_avg <- renderValueBox({
-    req(data$pay)
-    dt <- data$pay[Pay_Period_End >= input$date_range[1] & Pay_Period_End <= input$date_range[2]]
-
-    valueBox(
-      paste0("$", round(mean(dt$RROP, na.rm = TRUE), 2)),
-      "Average RROP",
-      icon = icon("calculator"),
-      color = "blue"
-    )
+  output$mpv_5hr_late <- renderValueBox({
+    valueBox("Coming Soon", "Late Meals", icon = icon("clock"), color = "orange")
   })
 
-  output$rrop_trend <- renderPlotly({
-    req(data$pay)
-    dt <- data$pay[Pay_Period_End >= input$date_range[1] & Pay_Period_End <= input$date_range[2]]
-
-    rrop_trend <- dt[, .(Underpayment = sum(Net_Underpayment, na.rm = TRUE)),
-                     by = .(Pay_Date = as.Date(Pay_Date))]
-    setorder(rrop_trend, Pay_Date)
-
-    plot_ly(rrop_trend, x = ~Pay_Date, y = ~Underpayment, type = "scatter",
-            mode = "lines+markers", line = list(color = "red")) %>%
-      layout(xaxis = list(title = "Date"),
-             yaxis = list(title = "Underpayment ($)"))
+  output$mpv_5hr_short <- renderValueBox({
+    valueBox("Coming Soon", "Short Meals", icon = icon("hourglass-half"), color = "yellow")
   })
 
-  output$rrop_types <- renderPlotly({
-    req(data$pay)
-    dt <- data$pay[Pay_Period_End >= input$date_range[1] & Pay_Period_End <= input$date_range[2]]
-
-    rrop_types <- data.table(
-      Type = c("OT Underpayment", "DT Underpayment", "Meal Underpayment",
-               "Rest Underpayment", "Sick Underpayment"),
-      Amount = c(
-        sum(dt$OT_Underpayment, na.rm = TRUE),
-        sum(dt$DT_Underpayment, na.rm = TRUE),
-        sum(dt$Meal_Underpayment, na.rm = TRUE),
-        sum(dt$Rest_Underpayment, na.rm = TRUE),
-        sum(dt$Sick_Underpayment, na.rm = TRUE)
-      )
-    )
-
-    plot_ly(rrop_types, x = ~Type, y = ~Amount, type = "bar",
-            marker = list(color = "red")) %>%
-      layout(xaxis = list(title = ""),
-             yaxis = list(title = "Underpayment ($)"))
+  output$mpv_5hr_damages <- renderValueBox({
+    df <- filtered_data()
+    damages <- if(!is.null(df) && "mp_tot_dmgs" %in% names(df) && "shift_hrs" %in% names(df)) {
+      sum(df$mp_tot_dmgs[df$shift_hrs > 5 & df$shift_hrs <= 6], na.rm = TRUE)
+    } else 0
+    valueBox(paste0("$", format(round(damages, 0), big.mark = ",")), "Total Damages", icon = icon("dollar-sign"), color = "green")
   })
 
-  # Time Rounding Tab
-  output$shifts_analyzed <- renderValueBox({
-    dt <- filtered_data()
-    valueBox(
-      format(sum(dt$shifts_analyzed, na.rm = TRUE), big.mark = ","),
-      "Shifts Analyzed",
-      icon = icon("stopwatch"),
-      color = "blue"
-    )
-  })
+  output$mpv_5hr_trend <- renderPlotly({
+    df <- filtered_data()
+    if(is.null(df) || !"Date" %in% names(df)) return(plotly_empty())
 
-  output$net_time_diff <- renderValueBox({
-    dt <- filtered_data()
-    diff_hours <- sum(dt$diff, na.rm = TRUE)
-    valueBox(
-      paste0(round(diff_hours, 1), " hrs"),
-      "Net Time Difference",
-      icon = icon("clock"),
-      color = if(diff_hours < 0) "red" else "green"
-    )
-  })
+    trend <- df[shift_hrs > 5 & shift_hrs <= 6, .(Violations = sum(mpv_shift, na.rm = TRUE)), by = Date]
 
-  output$rounding_pattern <- renderValueBox({
-    dt <- filtered_data()
-    lost <- sum(dt$pp_lost_time_shifts, na.rm = TRUE)
-    gained <- sum(dt$pp_gain_time_shifts, na.rm = TRUE)
-    pattern <- if(lost > gained) "Loss" else "Gain"
-
-    valueBox(
-      pattern,
-      "Dominant Pattern",
-      icon = icon("chart-line"),
-      color = if(pattern == "Loss") "red" else "green"
-    )
-  })
-
-  output$rounding_dist <- renderPlotly({
-    dt <- filtered_data()
-
-    plot_ly(dt[!is.na(diff)], x = ~diff, type = "histogram",
-            marker = list(color = "steelblue")) %>%
-      layout(xaxis = list(title = "Time Difference (hours)"),
-             yaxis = list(title = "Count"))
-  })
-
-  output$rounding_employee <- renderPlotly({
-    dt <- filtered_data()
-
-    emp_round <- dt[, .(Net_Diff = sum(diff, na.rm = TRUE)), by = ID]
-    setorder(emp_round, -abs(Net_Diff))
-
-    plot_ly(head(emp_round, 20), x = ~ID, y = ~Net_Diff, type = "bar",
-            marker = list(color = ~ifelse(Net_Diff < 0, "red", "green"))) %>%
-      layout(xaxis = list(title = "Employee ID"),
-             yaxis = list(title = "Net Time Difference (hours)"))
-  })
-
-  # Damages Tab
-  output$total_mp_damages <- renderValueBox({
-    dt <- filtered_data()
-    valueBox(
-      paste0("$", format(round(sum(dt$mp_tot_dmgs, na.rm = TRUE), 0), big.mark = ",")),
-      "Meal Period Damages",
-      icon = icon("dollar-sign"),
-      color = "red"
-    )
-  })
-
-  output$total_rp_damages <- renderValueBox({
-    dt <- filtered_data()
-    valueBox(
-      paste0("$", format(round(sum(dt$rp_tot_dmgs, na.rm = TRUE), 0), big.mark = ",")),
-      "Rest Period Damages",
-      icon = icon("dollar-sign"),
-      color = "orange"
-    )
-  })
-
-  output$total_ot_damages <- renderValueBox({
-    req(data$pay)
-    dt <- data$pay[Pay_Period_End >= input$date_range[1] & Pay_Period_End <= input$date_range[2]]
-
-    valueBox(
-      paste0("$", format(round(sum(dt$Net_Underpayment, na.rm = TRUE), 0), big.mark = ",")),
-      "RROP Damages",
-      icon = icon("dollar-sign"),
-      color = "yellow"
-    )
-  })
-
-  output$total_all_damages <- renderValueBox({
-    dt_shift <- filtered_data()
-    dt_pay <- if(!is.null(data$pay)) {
-      data$pay[Pay_Period_End >= input$date_range[1] & Pay_Period_End <= input$date_range[2]]
-    } else {
-      data.table()
-    }
-
-    total <- sum(dt_shift$mp_tot_dmgs, na.rm = TRUE) +
-             sum(dt_shift$rp_tot_dmgs, na.rm = TRUE) +
-             sum(dt_pay$Net_Underpayment, na.rm = TRUE)
-
-    valueBox(
-      paste0("$", format(round(total, 0), big.mark = ",")),
-      "Total Damages",
-      icon = icon("dollar-sign"),
-      color = "red"
-    )
-  })
-
-  output$damages_breakdown <- renderPlotly({
-    dt_shift <- filtered_data()
-    dt_pay <- if(!is.null(data$pay)) {
-      data$pay[Pay_Period_End >= input$date_range[1] & Pay_Period_End <= input$date_range[2]]
-    } else {
-      data.table()
-    }
-
-    damages <- data.table(
-      Category = c("Meal Period", "Rest Period", "RROP"),
-      Amount = c(
-        sum(dt_shift$mp_tot_dmgs, na.rm = TRUE),
-        sum(dt_shift$rp_tot_dmgs, na.rm = TRUE),
-        sum(dt_pay$Net_Underpayment, na.rm = TRUE)
-      )
-    )
-
-    plot_ly(damages, labels = ~Category, values = ~Amount, type = "pie") %>%
-      layout(title = "")
-  })
-
-  output$damages_employee <- renderPlotly({
-    dt <- filtered_data()
-
-    emp_dmgs <- dt[, .(
-      MP_Damages = sum(mp_tot_dmgs, na.rm = TRUE),
-      RP_Damages = sum(rp_tot_dmgs, na.rm = TRUE)
-    ), by = ID]
-    emp_dmgs[, Total := MP_Damages + RP_Damages]
-    setorder(emp_dmgs, -Total)
-
-    plot_ly(head(emp_dmgs, 20)) %>%
-      add_trace(x = ~ID, y = ~MP_Damages, type = "bar", name = "Meal Period",
-                marker = list(color = "red")) %>%
-      add_trace(x = ~ID, y = ~RP_Damages, type = "bar", name = "Rest Period",
-                marker = list(color = "orange")) %>%
-      layout(xaxis = list(title = "Employee ID"),
-             yaxis = list(title = "Damages ($)"),
-             barmode = "stack")
-  })
-
-  output$damages_cumulative <- renderPlotly({
-    dt <- filtered_data()
-
-    daily_dmgs <- dt[, .(Damages = sum(mp_tot_dmgs + rp_tot_dmgs, na.rm = TRUE)),
-                     by = Date]
-    setorder(daily_dmgs, Date)
-    daily_dmgs[, Cumulative := cumsum(Damages)]
-
-    plot_ly(daily_dmgs, x = ~Date, y = ~Cumulative, type = "scatter",
-            mode = "lines", fill = "tozeroy",
-            line = list(color = "red")) %>%
-      layout(xaxis = list(title = "Date"),
-             yaxis = list(title = "Cumulative Damages ($)"))
-  })
-
-  # Employee Detail Tab
-  output$emp_shifts <- renderValueBox({
-    req(input$employee_id)
-    dt <- filtered_data()
-    emp_dt <- dt[ID == input$employee_id]
-
-    valueBox(
-      nrow(emp_dt),
-      "Total Shifts",
-      icon = icon("calendar"),
-      color = "blue"
-    )
-  })
-
-  output$emp_violations <- renderValueBox({
-    req(input$employee_id)
-    dt <- filtered_data()
-    emp_dt <- dt[ID == input$employee_id]
-
-    valueBox(
-      sum(emp_dt$mpv_shift, na.rm = TRUE) + sum(emp_dt$rpv_shift, na.rm = TRUE),
-      "Violations",
-      icon = icon("exclamation-triangle"),
-      color = "red"
-    )
-  })
-
-  output$emp_ot_hours <- renderValueBox({
-    req(input$employee_id)
-    dt <- filtered_data()
-    emp_dt <- dt[ID == input$employee_id]
-
-    valueBox(
-      round(sum(emp_dt$pp_daily_ot, na.rm = TRUE) + sum(emp_dt$pp_daily_dt, na.rm = TRUE), 1),
-      "OT/DT Hours",
-      icon = icon("clock"),
-      color = "yellow"
-    )
-  })
-
-  output$emp_damages <- renderValueBox({
-    req(input$employee_id)
-    dt <- filtered_data()
-    emp_dt <- dt[ID == input$employee_id]
-
-    valueBox(
-      paste0("$", format(round(sum(emp_dt$mp_tot_dmgs + emp_dt$rp_tot_dmgs, na.rm = TRUE), 0),
-                        big.mark = ",")),
-      "Total Damages",
-      icon = icon("dollar-sign"),
-      color = "red"
-    )
-  })
-
-  output$emp_shift_history <- renderPlotly({
-    req(input$employee_id)
-    dt <- filtered_data()
-    emp_dt <- dt[ID == input$employee_id]
-
-    plot_ly(emp_dt, x = ~Date, y = ~shift_hrs, type = "scatter",
-            mode = "lines+markers",
-            line = list(color = "steelblue")) %>%
-      layout(xaxis = list(title = "Date"),
-             yaxis = list(title = "Shift Hours"))
-  })
-
-  output$emp_violations_timeline <- renderPlotly({
-    req(input$employee_id)
-    dt <- filtered_data()
-    emp_dt <- dt[ID == input$employee_id]
-
-    plot_ly(emp_dt, x = ~Date, y = ~(mpv_shift + rpv_shift), type = "scatter",
-            mode = "markers",
-            marker = list(color = "red", size = 10)) %>%
-      layout(xaxis = list(title = "Date"),
+    plot_ly(trend, x = ~Date, y = ~Violations, type = "scatter", mode = "lines") %>%
+      layout(title = "Meal Violations >5hrs Over Time",
+             xaxis = list(title = "Date"),
              yaxis = list(title = "Violations"))
   })
 
-  output$emp_detail_table <- renderDT({
-    req(input$employee_id)
-    dt <- filtered_data()
-    emp_dt <- dt[ID == input$employee_id]
-
-    emp_display <- emp_dt[, .(
-      Date, shift_hrs, shift_mps, mp1_hrs, hrs_to_mp1,
-      MissMP1, LateMP1, ShortMP1, rpv_shift,
-      pp_daily_ot, pp_daily_dt,
-      mp_tot_dmgs, rp_tot_dmgs
-    )]
-
-    datatable(emp_display,
-              options = list(pageLength = 25, scrollX = TRUE),
-              class = "display nowrap") %>%
-      formatRound(c("shift_hrs", "mp1_hrs", "hrs_to_mp1", "pp_daily_ot", "pp_daily_dt"), 2) %>%
-      formatCurrency(c("mp_tot_dmgs", "rp_tot_dmgs"), "$")
+  output$mpv_5hr_late_table <- renderDT({
+    datatable(data.frame(Message = "Coming Soon: Late meal detail"),
+              options = list(pageLength = 25), rownames = FALSE)
   })
 
-  # Data Tables
-  output$analysis_table <- renderDT({
-    req(data$analysis)
-    datatable(data$analysis,
-              options = list(pageLength = 25, scrollX = TRUE),
-              class = "display nowrap")
+  output$mpv_5hr_short_table <- renderDT({
+    datatable(data.frame(Message = "Coming Soon: Short meal detail"),
+              options = list(pageLength = 25), rownames = FALSE)
   })
 
-  output$shift_table <- renderDT({
-    dt <- filtered_data()
-    datatable(dt,
-              options = list(pageLength = 25, scrollX = TRUE),
-              class = "display nowrap")
+  # Similar for 6hr violations
+  output$mpv_6hr_total <- renderValueBox({
+    df <- filtered_data()
+    count <- if(!is.null(df) && "mpv_shift" %in% names(df) && "shift_hrs" %in% names(df)) {
+      sum(df$mpv_shift[df$shift_hrs > 6], na.rm = TRUE)
+    } else 0
+    valueBox(format(round(count, 0), big.mark = ","), "Total Violations", icon = icon("exclamation-triangle"), color = "red")
   })
 
-  output$pay_table <- renderDT({
-    req(data$pay)
-    dt <- data$pay[Pay_Period_End >= input$date_range[1] & Pay_Period_End <= input$date_range[2]]
-
-    datatable(dt,
-              options = list(pageLength = 25, scrollX = TRUE),
-              class = "display nowrap")
+  output$mpv_6hr_late <- renderValueBox({
+    valueBox("Coming Soon", "Late Meals", icon = icon("clock"), color = "orange")
   })
 
-  output$employee_table <- renderDT({
-    req(data$ee)
-    datatable(data$ee,
-              options = list(pageLength = 25, scrollX = TRUE),
-              class = "display nowrap")
+  output$mpv_6hr_short <- renderValueBox({
+    valueBox("Coming Soon", "Short Meals", icon = icon("hourglass-half"), color = "yellow")
   })
 
-  # Refresh button
-  observeEvent(input$refresh, {
-    showNotification("Refreshing data...", type = "message")
-    data <<- load_data()
-    showNotification("Data refreshed successfully!", type = "message", duration = 3)
+  output$mpv_6hr_damages <- renderValueBox({
+    df <- filtered_data()
+    damages <- if(!is.null(df) && "mp_tot_dmgs" %in% names(df) && "shift_hrs" %in% names(df)) {
+      sum(df$mp_tot_dmgs[df$shift_hrs > 6], na.rm = TRUE)
+    } else 0
+    valueBox(paste0("$", format(round(damages, 0), big.mark = ",")), "Total Damages", icon = icon("dollar-sign"), color = "green")
   })
+
+  output$mpv_6hr_trend <- renderPlotly({
+    df <- filtered_data()
+    if(is.null(df) || !"Date" %in% names(df)) return(plotly_empty())
+
+    trend <- df[shift_hrs > 6, .(Violations = sum(mpv_shift, na.rm = TRUE)), by = Date]
+
+    plot_ly(trend, x = ~Date, y = ~Violations, type = "scatter", mode = "lines") %>%
+      layout(title = "Meal Violations >6hrs Over Time",
+             xaxis = list(title = "Date"),
+             yaxis = list(title = "Violations"))
+  })
+
+  output$mpv_6hr_late_table <- renderDT({
+    datatable(data.frame(Message = "Coming Soon: Late meal detail"),
+              options = list(pageLength = 25), rownames = FALSE)
+  })
+
+  output$mpv_6hr_short_table <- renderDT({
+    datatable(data.frame(Message = "Coming Soon: Short meal detail"),
+              options = list(pageLength = 25), rownames = FALSE)
+  })
+
+  # === 6. REST PERIODS ===
+  output$total_rest_periods <- renderValueBox({
+    valueBox("Coming Soon", "Total Rest Periods", icon = icon("pause"), color = "blue")
+  })
+
+  output$rest_violations_total <- renderValueBox({
+    df <- filtered_data()
+    count <- if(!is.null(df) && "rpv_shift" %in% names(df)) sum(df$rpv_shift, na.rm = TRUE) else 0
+    valueBox(format(round(count, 0), big.mark = ","), "Rest Violations", icon = icon("exclamation-triangle"), color = "red")
+  })
+
+  output$rest_violation_rate <- renderValueBox({
+    valueBox("Coming Soon", "Violation Rate", icon = icon("percent"), color = "orange")
+  })
+
+  output$rest_damages <- renderValueBox({
+    df <- filtered_data()
+    damages <- if(!is.null(df) && "rp_tot_dmgs" %in% names(df)) sum(df$rp_tot_dmgs, na.rm = TRUE) else 0
+    valueBox(paste0("$", format(round(damages, 0), big.mark = ",")), "Rest Damages", icon = icon("dollar-sign"), color = "green")
+  })
+
+  output$rest_violations_trend <- renderPlotly({
+    df <- filtered_data()
+    if(is.null(df) || !"Date" %in% names(df)) return(plotly_empty())
+
+    trend <- df[, .(Violations = sum(rpv_shift, na.rm = TRUE)), by = Date]
+
+    plot_ly(trend, x = ~Date, y = ~Violations, type = "scatter", mode = "lines") %>%
+      layout(title = "Rest Violations Over Time",
+             xaxis = list(title = "Date"),
+             yaxis = list(title = "Violations"))
+  })
+
+  output$rest_violations_table <- renderDT({
+    df <- filtered_data()
+    if(is.null(df)) return(datatable(data.frame(Message = "No data available")))
+
+    datatable(head(df[rpv_shift > 0], 1000), options = list(pageLength = 25, scrollX = TRUE), rownames = FALSE)
+  })
+
+  # === 7. SHIFT HOURS ANALYSIS ===
+  output$avg_shift_length <- renderInfoBox({
+    df <- filtered_data()
+    avg <- if(!is.null(df) && "shift_hrs" %in% names(df)) mean(df$shift_hrs, na.rm = TRUE) else 0
+    infoBox("Avg Shift Length", paste0(round(avg, 2), " hrs"), icon = icon("clock"), color = "blue")
+  })
+
+  output$total_shifts_analyzed <- renderInfoBox({
+    df <- filtered_data()
+    count <- if(!is.null(df)) nrow(df) else 0
+    infoBox("Shifts Analyzed", format(count, big.mark = ","), icon = icon("calendar-check"), color = "green")
+  })
+
+  output$shifts_over_8hrs <- renderInfoBox({
+    df <- filtered_data()
+    count <- if(!is.null(df) && "shift_hrs" %in% names(df)) sum(df$shift_hrs > 8, na.rm = TRUE) else 0
+    infoBox("Shifts >8 Hours", format(count, big.mark = ","), icon = icon("hourglass-end"), color = "orange")
+  })
+
+  output$shift_length_dist <- renderPlotly({
+    df <- filtered_data()
+    if(is.null(df) || !"shift_hrs" %in% names(df)) return(plotly_empty())
+
+    plot_ly(x = df$shift_hrs, type = "histogram", nbinsx = 30) %>%
+      layout(title = "Shift Length Distribution",
+             xaxis = list(title = "Shift Hours"),
+             yaxis = list(title = "Count"))
+  })
+
+  output$shift_dow_chart <- renderPlotly({
+    df <- filtered_data()
+    if(is.null(df) || !"Date" %in% names(df)) return(plotly_empty())
+
+    df$dow <- weekdays(as.Date(df$Date))
+    dow_counts <- table(df$dow)
+
+    plot_ly(x = names(dow_counts), y = as.numeric(dow_counts), type = "bar") %>%
+      layout(title = "Shifts by Day of Week",
+             xaxis = list(title = "Day"),
+             yaxis = list(title = "Count"))
+  })
+
+  output$shift_hours_table <- renderDT({
+    df <- filtered_data()
+    if(is.null(df)) return(datatable(data.frame(Message = "No data available")))
+
+    datatable(head(df, 1000), options = list(pageLength = 25, scrollX = TRUE), rownames = FALSE)
+  })
+
+  # === 8. ROUNDING ANALYSIS ===
+  output$total_rounding_impact <- renderValueBox({
+    valueBox("Coming Soon", "Rounding Impact", icon = icon("balance-scale"), color = "blue")
+  })
+
+  output$shifts_rounded_up <- renderValueBox({
+    valueBox("Coming Soon", "Rounded Up", icon = icon("arrow-up"), color = "green")
+  })
+
+  output$shifts_rounded_down <- renderValueBox({
+    valueBox("Coming Soon", "Rounded Down", icon = icon("arrow-down"), color = "red")
+  })
+
+  output$rounding_dist <- renderPlotly({
+    plot_ly(type = "histogram") %>%
+      layout(title = "Coming Soon: Rounding Distribution")
+  })
+
+  output$rounding_trend <- renderPlotly({
+    plot_ly(type = "scatter", mode = "lines") %>%
+      layout(title = "Coming Soon: Rounding Trend")
+  })
+
+  output$rounding_table <- renderDT({
+    datatable(data.frame(Message = "Coming Soon: Rounding detail by employee"),
+              options = list(pageLength = 25), rownames = FALSE)
+  })
+
+  # === 9. PAY SUMMARY ===
+  output$total_pay_amount <- renderValueBox({
+    df <- data$pay
+    amount <- if(!is.null(df) && "Pay_Amount" %in% names(df)) sum(df$Pay_Amount, na.rm = TRUE) else 0
+    valueBox(paste0("$", format(round(amount, 0), big.mark = ",")), "Total Pay", icon = icon("money-bill"), color = "green")
+  })
+
+  output$total_pay_hours <- renderValueBox({
+    df <- data$pay
+    hours <- if(!is.null(df) && "Pay_Hours" %in% names(df)) sum(df$Pay_Hours, na.rm = TRUE) else 0
+    valueBox(format(round(hours, 0), big.mark = ","), "Total Pay Hours", icon = icon("clock"), color = "blue")
+  })
+
+  output$avg_hourly_rate <- renderValueBox({
+    df <- data$pay
+    if(!is.null(df) && "Pay_Amount" %in% names(df) && "Pay_Hours" %in% names(df)) {
+      avg <- sum(df$Pay_Amount, na.rm = TRUE) / sum(df$Pay_Hours, na.rm = TRUE)
+    } else {
+      avg <- 0
+    }
+    valueBox(paste0("$", round(avg, 2)), "Avg Rate", icon = icon("calculator"), color = "aqua")
+  })
+
+  output$total_pay_periods <- renderValueBox({
+    df <- data$pay
+    count <- if(!is.null(df) && "Pay_Period_End" %in% names(df)) uniqueN(df$Pay_Period_End) else 0
+    valueBox(format(count, big.mark = ","), "Pay Periods", icon = icon("calendar-alt"), color = "purple")
+  })
+
+  output$pay_by_category <- renderPlotly({
+    plot_ly(type = "bar") %>%
+      layout(title = "Coming Soon: Pay by Category")
+  })
+
+  output$pay_trend <- renderPlotly({
+    df <- data$pay
+    if(is.null(df) || !"Pay_Period_End" %in% names(df)) return(plotly_empty())
+
+    trend <- df[, .(Pay = sum(Pay_Amount, na.rm = TRUE)), by = Pay_Period_End]
+
+    plot_ly(trend, x = ~Pay_Period_End, y = ~Pay, type = "scatter", mode = "lines") %>%
+      layout(title = "Pay Over Time",
+             xaxis = list(title = "Pay Period"),
+             yaxis = list(title = "Total Pay ($)"))
+  })
+
+  output$pay_summary_table <- renderDT({
+    df <- data$pay
+    if(is.null(df)) return(datatable(data.frame(Message = "No data available")))
+
+    datatable(head(df, 1000), options = list(pageLength = 25, scrollX = TRUE), rownames = FALSE)
+  })
+
+  # === 10. BONUSES & DIFFS ===
+  output$total_bonuses <- renderValueBox({
+    valueBox("Coming Soon", "Total Bonuses", icon = icon("gift"), color = "yellow")
+  })
+
+  output$total_diffs <- renderValueBox({
+    valueBox("Coming Soon", "Total Diffs", icon = icon("not-equal"), color = "orange")
+  })
+
+  output$employees_with_bonuses <- renderValueBox({
+    valueBox("Coming Soon", "EEs with Bonuses", icon = icon("users"), color = "blue")
+  })
+
+  output$bonus_trend <- renderPlotly({
+    plot_ly(type = "scatter", mode = "lines") %>%
+      layout(title = "Coming Soon: Bonus Trend")
+  })
+
+  output$bonus_type_dist <- renderPlotly({
+    plot_ly(type = "bar") %>%
+      layout(title = "Coming Soon: Bonus Type Distribution")
+  })
+
+  output$diffs_table <- renderDT({
+    datatable(data.frame(Message = "Coming Soon: Pay differences analysis"),
+              options = list(pageLength = 25), rownames = FALSE)
+  })
+
+  # === 11. REGULAR RATE GROUPS ===
+  output$rrop_categories <- renderInfoBox({
+    infoBox("RROP Categories", "Coming Soon", icon = icon("list"), color = "blue")
+  })
+
+  output$rrop_includable <- renderInfoBox({
+    infoBox("Includable Pay", "Coming Soon", icon = icon("check-circle"), color = "green")
+  })
+
+  output$rrop_excludable <- renderInfoBox({
+    infoBox("Excludable Pay", "Coming Soon", icon = icon("times-circle"), color = "red")
+  })
+
+  output$rrop_category_chart <- renderPlotly({
+    plot_ly(type = "bar") %>%
+      layout(title = "Coming Soon: RROP Components")
+  })
+
+  output$rrop_table <- renderDT({
+    datatable(data.frame(Message = "Coming Soon: Regular rate groups detail"),
+              options = list(pageLength = 25), rownames = FALSE)
+  })
+
 }
 
 # Run the app
-shinyApp(ui, server)
+shinyApp(ui = ui, server = server)
