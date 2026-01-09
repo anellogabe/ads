@@ -2154,7 +2154,8 @@ write.csv(pay1, here("output", "Pay Data.csv"), row.names = FALSE)
 # write.csv(pay1_P, here("output", "Pay Data.csv"), row.names = FALSE)
 
 # Convert your time data to RDS
-# saveRDS(time1, "output/time_data.rds")
+saveRDS(shift_data1, here("output", "shift_data1.rds"))
+saveRDS(pay1, here("output", "pay1.rds"))
 
 
 # ----- ALL DATA:                Final Analysis Table-------------------------------------------------------------
