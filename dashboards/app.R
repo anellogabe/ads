@@ -1,6 +1,5 @@
 # =============================================================================
-# Wage & Hour Compliance Dashboard
-# Comprehensive case analysis with flexible metric-driven reporting
+# Wage & Hour Compliance Dashboard - COMPREHENSIVE VERSION
 # =============================================================================
 
 library(shiny)
@@ -10,15 +9,8 @@ library(lubridate)
 library(DT)
 library(plotly)
 library(here)
-
-# For loading spinners
-if (requireNamespace("shinycssloaders", quietly = TRUE)) {
-  library(shinycssloaders)
-  use_spinner <- TRUE
-} else {
-  use_spinner <- FALSE
-  withSpinner <- function(x, ...) x
-}
+library(shinycssloaders)
+library(shinyjs)
 
 # =============================================================================
 # CONFIGURATION
@@ -33,9 +25,34 @@ PAY_DATA_FILE <- "pay1.rds"
 TIME_DATA_FILE <- "time1.rds"
 CLASS_DATA_FILE <- "class1.rds"
 METRIC_SPEC_FILE <- "metrics_spec.csv"
-
-# Case configuration file (will be created if doesn't exist)
 CASE_CONFIG_FILE <- "case_config.rds"
+
+# Analysis table files
+SHIFT_HRS_FILE <- "Shift_Hrs_Table.csv"
+NON_WRK_HRS_FILE <- "Non_Work_Hrs_Table.csv"
+MEAL_PERIOD_FILE <- "Meal_Period_Table.csv"
+MEAL_START_TIME_FILE <- "Meal_Start_Time_Table.csv"
+MEAL_QUARTER_HR_FILE <- "Meal_Quarter_Hour_Table.csv"
+PAY_CODE_SUMMARY_FILE <- "Pay_Code_Summary.csv"
+DATA_COMPARISON_FILE <- "Data Comparison.csv"
+EMPLOYEE_COMPARISON_FILE <- "Employee Pay Period Comparison.csv"
+
+# =============================================================================
+# UTILITY FUNCTIONS
+# =============================================================================
+
+# Format column names: underscore to space, proper case
+format_col_name <- function(name) {
+  name %>%
+    gsub("_", " ", .) %>%
+    tools::toTitleCase()
+}
+
+# Format all column names in a data.table
+format_all_cols <- function(dt) {
+  setnames(dt, names(dt), sapply(names(dt), format_col_name))
+  dt
+}
 
 # =============================================================================
 # DATA LOADING
@@ -51,66 +68,54 @@ load_data <- function() {
 
   # Load shift data (required)
   if (file.exists(shift_path)) {
-    message("Loading shift data from: ", normalizePath(shift_path))
+    message("Loading shift data...")
     result$shift_data1 <- readRDS(shift_path)
   } else {
-    stop(paste0(
-      "\n\nCannot find shift data file:\n  ", normalizePath(shift_path, mustWork = FALSE),
-      "\n\nMake sure you've run analysis.R and saved shift_data1.rds to output/"
-    ))
+    stop("Cannot find shift data file: ", shift_path)
   }
 
   # Load pay data (required)
   if (file.exists(pay_path)) {
-    message("Loading pay data from: ", normalizePath(pay_path))
+    message("Loading pay data...")
     result$pay1 <- readRDS(pay_path)
   } else {
-    stop(paste0(
-      "\n\nCannot find pay data file:\n  ", normalizePath(pay_path, mustWork = FALSE),
-      "\n\nMake sure you've run analysis.R and saved pay1.rds to output/"
-    ))
+    stop("Cannot find pay data file: ", pay_path)
   }
 
   # Load time data (optional)
   if (file.exists(time_path)) {
-    message("Loading time data from: ", normalizePath(time_path))
+    message("Loading time data...")
     result$time1 <- readRDS(time_path)
   } else {
-    message("Time data not found (optional): ", normalizePath(time_path, mustWork = FALSE))
     result$time1 <- NULL
   }
 
   # Load class data (optional)
   if (file.exists(class_path)) {
-    message("Loading class data from: ", normalizePath(class_path))
+    message("Loading class data...")
     result$class1 <- readRDS(class_path)
   } else {
-    message("Class data not found (optional): ", normalizePath(class_path, mustWork = FALSE))
     result$class1 <- NULL
   }
 
   result
 }
 
-# Load metric specification
 load_metric_spec <- function(path = NULL) {
   if (is.null(path)) {
     path <- file.path(SCRIPTS_DIR, METRIC_SPEC_FILE)
   }
 
   if (!file.exists(path)) {
-    stop(paste0(
-      "\n\nCannot find metrics spec file:\n  ", normalizePath(path, mustWork = FALSE)
-    ))
+    stop("Cannot find metrics spec file: ", path)
   }
 
-  message("Loading metric spec from: ", normalizePath(path))
+  message("Loading metric spec...")
   spec <- fread(path)
   spec[, metric_order := .I]
   spec
 }
 
-# Load or create case configuration
 load_case_config <- function() {
   config_path <- file.path(DATA_DIR, CASE_CONFIG_FILE)
 
@@ -138,13 +143,18 @@ load_case_config <- function() {
   )
 }
 
-save_case_config <- function(config) {
-  config_path <- file.path(DATA_DIR, CASE_CONFIG_FILE)
-  saveRDS(config, config_path)
+# Load analysis tables
+load_analysis_table <- function(filename) {
+  filepath <- file.path(DATA_DIR, filename)
+  if (file.exists(filepath)) {
+    dt <- fread(filepath)
+    return(format_all_cols(dt))
+  }
+  NULL
 }
 
 # =============================================================================
-# METRIC CALCULATION HELPERS
+# METRIC CALCULATION (OPTIMIZED)
 # =============================================================================
 
 get_denominator_value <- function(data, denom_name, source_type) {
@@ -219,83 +229,91 @@ calculate_single_metric <- function(data, expr_str, digits, denom_name) {
   list(value = value, pct = pct)
 }
 
-calculate_group_metrics <- function(data_list, spec, group_name, filters = list(), extrapolation_factor = 1.0) {
-  group_spec <- spec[metric_group == group_name]
-  if (nrow(group_spec) == 0) return(data.table())
+calculate_group_metrics <- function(data_list, spec, group_names, filters = list(), extrapolation_factor = 1.0) {
+  # Allow multiple groups to be calculated at once
+  if (length(group_names) == 0) return(data.table())
 
-  first_source <- group_spec$source[1]
-  is_pay_group <- grepl("pay", first_source, ignore.case = TRUE)
+  all_results <- lapply(group_names, function(group_name) {
+    group_spec <- spec[metric_group == group_name]
+    if (nrow(group_spec) == 0) return(NULL)
 
-  if (is_pay_group) {
-    years <- data_list$pay_years
-    key_groups <- data_list$pay_key_groups
-  } else {
-    years <- data_list$shift_years
-    key_groups <- data_list$shift_key_groups
-  }
+    first_source <- group_spec$source[1]
+    is_pay_group <- grepl("pay", first_source, ignore.case = TRUE)
 
-  results <- lapply(seq_len(nrow(group_spec)), function(i) {
-    row <- group_spec[i]
-    source <- row$source
-
-    if (grepl("pay", source, ignore.case = TRUE)) {
-      src_data <- data_list$pay1
-      src_key_col <- "Pay_Key_Gps"
-      src_date_col <- "Pay_Period_End"
-      src_years <- data_list$pay_years
-      src_key_groups <- data_list$pay_key_groups
+    if (is_pay_group) {
+      years <- data_list$pay_years
+      key_groups <- data_list$pay_key_groups
     } else {
-      src_data <- data_list$shift_data1
-      src_key_col <- "Key_Gps"
-      src_date_col <- "Date"
-      src_years <- data_list$shift_years
-      src_key_groups <- data_list$shift_key_groups
+      years <- data_list$shift_years
+      key_groups <- data_list$shift_key_groups
     }
 
-    if (nrow(src_data) == 0) {
-      result_row <- data.table(metric_label = row$metric_label, All_Data = "-")
-      return(result_row)
-    }
+    results <- lapply(seq_len(nrow(group_spec)), function(i) {
+      row <- group_spec[i]
+      source <- row$source
 
-    all_data_result <- calculate_single_metric(src_data, row$expr, row$digits, row$denom)
-
-    result_row <- data.table(
-      metric_label = row$metric_label,
-      All_Data = format_metric_value(all_data_result$value, all_data_result$pct)
-    )
-
-    # Add year columns
-    if (!is.null(src_years) && length(src_years) > 0 && src_date_col %in% names(src_data)) {
-      for (yr in src_years) {
-        yr_data <- src_data[year(get(src_date_col)) == yr]
-        yr_result <- calculate_single_metric(yr_data, row$expr, row$digits, row$denom)
-        result_row[, (as.character(yr)) := format_metric_value(yr_result$value, yr_result$pct)]
-      }
-    }
-
-    # Add key group columns
-    if (!is.null(src_key_groups) && length(src_key_groups) > 0 && src_key_col %in% names(src_data)) {
-      for (gp in src_key_groups) {
-        gp_data <- src_data[get(src_key_col) == gp]
-        gp_result <- calculate_single_metric(gp_data, row$expr, row$digits, row$denom)
-        result_row[, (gp) := format_metric_value(gp_result$value, gp_result$pct)]
-      }
-    }
-
-    # Add extrapolated column if factor > 1
-    if (extrapolation_factor > 1.0) {
-      extrap_value <- if (is.numeric(all_data_result$value) && !is.na(all_data_result$value)) {
-        all_data_result$value * extrapolation_factor
+      if (grepl("pay", source, ignore.case = TRUE)) {
+        src_data <- data_list$pay1
+        src_key_col <- "Pay_Key_Gps"
+        src_date_col <- "Pay_Period_End"
+        src_years <- data_list$pay_years
+        src_key_groups <- data_list$pay_key_groups
       } else {
-        NA
+        src_data <- data_list$shift_data1
+        src_key_col <- "Key_Gps"
+        src_date_col <- "Date"
+        src_years <- data_list$shift_years
+        src_key_groups <- data_list$shift_key_groups
       }
-      result_row[, Extrapolated := format_metric_value(extrap_value, NA)]
-    }
 
-    result_row
+      if (nrow(src_data) == 0) {
+        result_row <- data.table(Metric = row$metric_label, All_Data = "-")
+        return(result_row)
+      }
+
+      all_data_result <- calculate_single_metric(src_data, row$expr, row$digits, row$denom)
+
+      result_row <- data.table(
+        Metric = row$metric_label,
+        All_Data = format_metric_value(all_data_result$value, all_data_result$pct)
+      )
+
+      # Add year columns
+      if (!is.null(src_years) && length(src_years) > 0 && src_date_col %in% names(src_data)) {
+        for (yr in src_years) {
+          yr_data <- src_data[year(get(src_date_col)) == yr]
+          yr_result <- calculate_single_metric(yr_data, row$expr, row$digits, row$denom)
+          result_row[, (as.character(yr)) := format_metric_value(yr_result$value, yr_result$pct)]
+        }
+      }
+
+      # Add key group columns
+      if (!is.null(src_key_groups) && length(src_key_groups) > 0 && src_key_col %in% names(src_data)) {
+        for (gp in src_key_groups) {
+          gp_data <- src_data[get(src_key_col) == gp]
+          gp_result <- calculate_single_metric(gp_data, row$expr, row$digits, row$denom)
+          result_row[, (gp) := format_metric_value(gp_result$value, gp_result$pct)]
+        }
+      }
+
+      # Add extrapolated column if factor > 1
+      if (extrapolation_factor > 1.0) {
+        extrap_value <- if (is.numeric(all_data_result$value) && !is.na(all_data_result$value)) {
+          all_data_result$value * extrapolation_factor
+        } else {
+          NA
+        }
+        result_row[, Extrapolated := format_metric_value(extrap_value, NA)]
+      }
+
+      result_row
+    })
+
+    rbindlist(results, fill = TRUE)
   })
 
-  rbindlist(results, fill = TRUE)
+  # Combine all groups
+  rbindlist(Filter(Negate(is.null), all_results), fill = TRUE)
 }
 
 format_metric_value <- function(val, pct = NA) {
@@ -341,8 +359,37 @@ under_construction_card <- function(title, description = NULL) {
   )
 }
 
-create_metric_table_output <- function(output_id, show_extrapolation = TRUE) {
-  DTOutput(output_id)
+# Create DT output with proper formatting
+create_dt_table <- function(dt, metric_col = "Metric", page_length = 50) {
+  if (is.null(dt) || nrow(dt) == 0) {
+    return(datatable(data.table(Message = "No data available"), rownames = FALSE, options = list(dom = 't')))
+  }
+
+  # Determine which columns are metrics vs values
+  metric_cols_idx <- which(names(dt) == metric_col) - 1  # 0-indexed for JS
+  value_cols_idx <- setdiff(seq_along(names(dt)) - 1, metric_cols_idx)
+
+  datatable(
+    dt,
+    options = list(
+      pageLength = page_length,
+      scrollX = TRUE,
+      scrollY = "600px",
+      dom = 'frtip',
+      columnDefs = list(
+        list(className = 'dt-left', targets = metric_cols_idx),
+        list(className = 'dt-center', targets = value_cols_idx)
+      ),
+      initComplete = JS(
+        "function(settings, json) {",
+        "$(this.api().table().header()).css({'background-color': '#2c3e50', 'color': '#fff'});",
+        "}"
+      )
+    ),
+    rownames = FALSE,
+    class = 'cell-border stripe hover compact',
+    style = 'bootstrap4'
+  )
 }
 
 # =============================================================================
@@ -364,42 +411,45 @@ filter_sidebar <- function(data_list) {
     na.rm = TRUE
   )
 
-  locations <- unique(c(
-    if ("Location" %in% names(shift_data)) shift_data$Location else NULL,
-    if ("Pay_Location" %in% names(pay_data)) pay_data$Pay_Location else NULL
-  ))
-  locations <- sort(unique(na.omit(locations)))
-
   sidebar(
-    title = "Filters",
+    title = "Filters & Settings",
     width = 300,
 
+    # Font controls
+    h5("Display Settings"),
+    layout_columns(
+      col_widths = c(6, 6),
+      selectInput("font_family", "Font",
+                  choices = c("Default" = "inherit", "Times New Roman" = "Times New Roman"),
+                  selected = "inherit"),
+      selectInput("font_size", "Font Size",
+                  choices = c("Small" = "12px", "Medium" = "14px", "Large" = "16px", "X-Large" = "18px"),
+                  selected = "14px")
+    ),
+
+    hr(),
+
+    h5("Date Range"),
     dateRangeInput(
       "date_range",
-      "Date Range",
+      NULL,
       start = date_min,
       end = date_max,
       min = date_min,
       max = date_max
     ),
+    actionButton("reset_dates", "Reset to Original Dates", class = "btn-sm btn-outline-secondary w-100"),
 
+    hr(),
+
+    h5("Filters"),
     selectizeInput(
       "employee_filter",
       "Employee ID(s)",
       choices = NULL,
       multiple = TRUE,
-      options = list(placeholder = "Type to search employees...")
+      options = list(placeholder = "All employees...")
     ),
-
-    if (length(locations) > 0) {
-      selectizeInput(
-        "location_filter",
-        "Location(s)",
-        choices = c("All" = "", locations),
-        multiple = TRUE,
-        options = list(placeholder = "All Locations")
-      )
-    },
 
     hr(),
 
@@ -408,11 +458,12 @@ filter_sidebar <- function(data_list) {
     hr(),
 
     actionButton("apply_filters", "Apply Filters", class = "btn-primary w-100"),
-    actionButton("reset_filters", "Reset Filters", class = "btn-outline-secondary w-100 mt-2"),
+    actionButton("reset_filters", "Reset All Filters", class = "btn-outline-secondary w-100 mt-2"),
 
     hr(),
 
-    downloadButton("download_report", "Download Report", class = "w-100")
+    downloadButton("download_report", "Download CSV Report", class = "w-100 mt-2"),
+    actionButton("print_report", "Print Report (PDF)", icon = icon("print"), class = "btn-info w-100 mt-2")
   )
 }
 
@@ -424,13 +475,15 @@ ui <- function(data_list, metric_spec, case_config) {
 
   metric_groups <- unique(metric_spec$metric_group)
 
-  # Categorize metric groups
+  # Categorize metric groups for consolidation
+  time_summary_groups <- metric_groups[grepl("^Time Summary$", metric_groups)]
+  time_shift_groups <- metric_groups[grepl("^Time Shift Hours Analysis", metric_groups)]
+  time_rounding_groups <- metric_groups[grepl("^Time Punch Rounding", metric_groups)]
   time_meal_analysis <- metric_groups[grepl("^Time Meal Period Analysis", metric_groups)]
   time_meal_violations_5 <- metric_groups[grepl("^Time Meal Violations \\(>5", metric_groups)]
   time_meal_violations_6 <- metric_groups[grepl("^Time Meal Violations \\(>6", metric_groups)]
   time_rest <- metric_groups[grepl("^Time Rest", metric_groups)]
-  time_shift_hours <- metric_groups[grepl("^Time Shift Hours", metric_groups)]
-  time_rounding <- metric_groups[grepl("^Time Punch Rounding", metric_groups)]
+  pay_summary_groups <- metric_groups[grepl("^Pay Summary$|^Pay Overtime$|^Pay Double Time$|^Pay Meal Premiums$|^Pay Rest Premiums$|^Pay Bonuses$|^Pay Shift Differentials$|^Pay Sick Pay$", metric_groups)]
   pay_regular_rate <- metric_groups[grepl("^Pay Regular Rate", metric_groups)]
 
   page_navbar(
@@ -443,65 +496,56 @@ ui <- function(data_list, metric_spec, case_config) {
     ),
     sidebar = filter_sidebar(data_list),
 
+    # Initialize shinyjs
+    useShinyjs(),
+
+    # Filter status banner
+    tags$head(
+      tags$style(HTML("
+        #filter_banner {
+          display: none;
+          background-color: #e74c3c;
+          color: white;
+          padding: 10px;
+          text-align: center;
+          font-weight: bold;
+          position: sticky;
+          top: 0;
+          z-index: 1000;
+        }
+        .dt-center { text-align: center !important; }
+        .dt-left { text-align: left !important; }
+      "))
+    ),
+
+    div(id = "filter_banner", "⚠ FILTERS ACTIVE - Click 'Reset All Filters' to clear"),
+
     # =======================================================================
     # CASE ANALYSIS DETAIL TAB
     # =======================================================================
     nav_panel(
-      title = "Case Analysis Detail",
+      title = "Case Detail",
       icon = icon("file-contract"),
 
-      layout_columns(
-        col_widths = c(12),
+      card(
+        card_header("Case Configuration"),
+        card_body(
+          layout_columns(
+            col_widths = c(6, 6),
 
-        card(
-          card_header(
-            class = "d-flex justify-content-between align-items-center",
-            "Case Configuration",
-            actionButton("edit_case_config", "Edit", class = "btn-sm btn-outline-primary")
-          ),
-          card_body(
-            layout_columns(
-              col_widths = c(6, 6),
-
-              div(
-                h5("Case Information"),
-                p(strong("Case Name: "), textOutput("case_name", inline = TRUE)),
-                p(strong("Case Number: "), textOutput("case_number", inline = TRUE)),
-                p(strong("Date Filed: "), textOutput("date_filed", inline = TRUE)),
-                p(strong("Mediation Date: "), textOutput("mediation_date", inline = TRUE)),
-                p(strong("Class Cert Deadline: "), textOutput("class_cert_deadline", inline = TRUE))
-              ),
-
-              div(
-                h5("Analysis Parameters"),
-                p(strong("Relevant Period: "), textOutput("relevant_period", inline = TRUE)),
-                p(strong("PAGA Period: "), textOutput("paga_period", inline = TRUE)),
-                p(strong("Sample Size: "), textOutput("sample_size", inline = TRUE)),
-                p(strong("Sample Type: "), textOutput("sample_type", inline = TRUE))
-              )
+            div(
+              h5("Case Information"),
+              p(strong("Case Name: "), textOutput("case_name", inline = TRUE)),
+              p(strong("Case Number: "), textOutput("case_number", inline = TRUE)),
+              p(strong("Date Filed: "), textOutput("date_filed", inline = TRUE))
             ),
 
-            hr(),
-
-            h5("Extrapolation Settings"),
-            layout_columns(
-              col_widths = c(4, 4, 4),
-
-              div(
-                p(strong("Enabled: "), textOutput("extrap_enabled", inline = TRUE))
-              ),
-              div(
-                p(strong("Method: "), textOutput("extrap_method", inline = TRUE))
-              ),
-              div(
-                p(strong("Factor: "), textOutput("extrap_factor", inline = TRUE))
-              )
-            ),
-
-            hr(),
-
-            h5("Notes"),
-            verbatimTextOutput("case_notes")
+            div(
+              h5("Analysis Parameters"),
+              p(strong("Relevant Period: "), textOutput("relevant_period", inline = TRUE)),
+              p(strong("Sample Size: "), textOutput("sample_size", inline = TRUE)),
+              p(strong("Sample Type: "), textOutput("sample_type", inline = TRUE))
+            )
           )
         )
       )
@@ -518,19 +562,19 @@ ui <- function(data_list, metric_spec, case_config) {
         col_widths = c(4, 4, 4),
 
         value_box(
-          title = "Employees (Time Data)",
+          title = "Employees (Time)",
           value = textOutput("total_employees_time"),
           showcase = icon("users"),
           theme = "primary"
         ),
         value_box(
-          title = "Employees (Pay Data)",
+          title = "Employees (Pay)",
           value = textOutput("total_employees_pay"),
           showcase = icon("users"),
           theme = "info"
         ),
         value_box(
-          title = "Employees (Class List)",
+          title = "Employees (Class)",
           value = textOutput("total_employees_class"),
           showcase = icon("users"),
           theme = "success"
@@ -538,22 +582,19 @@ ui <- function(data_list, metric_spec, case_config) {
       ),
 
       layout_columns(
-        col_widths = c(4, 4, 4),
+        col_widths = c(6, 6),
 
         value_box(
-          title = "Total Shifts",
-          value = textOutput("total_shifts"),
-          showcase = icon("clock"),
-          theme = "secondary"
-        ),
-        value_box(
           title = "Pay Periods",
-          value = textOutput("total_pay_periods"),
+          value = textOutput("total_pay_periods_combined"),
           showcase = icon("calendar"),
-          theme = "secondary"
+          theme = "secondary",
+          p(class = "small text-muted",
+            "Time: ", textOutput("time_pay_periods", inline = TRUE), " | ",
+            "Pay: ", textOutput("pay_pay_periods", inline = TRUE))
         ),
         value_box(
-          title = "Weeks Analyzed",
+          title = "Weeks",
           value = textOutput("total_weeks"),
           showcase = icon("calendar-week"),
           theme = "secondary"
@@ -564,41 +605,55 @@ ui <- function(data_list, metric_spec, case_config) {
         col_widths = c(12),
 
         card(
-          card_header(
-            class = "d-flex justify-content-between align-items-center",
-            "Data Coverage Comparison",
-            actionLink("view_comparison_detail", "View Detailed Table", icon = icon("table"))
-          ),
+          card_header("Employee Coverage Over Time"),
           card_body(
-            under_construction_card(
-              "Data Comparison Chart",
-              "Interactive comparison chart showing employee coverage across time data, pay data, and class list will appear here."
-            )
-          )
-        )
-      ),
-
-      layout_columns(
-        col_widths = c(6, 6),
-
-        card(
-          card_header("Shift Distribution"),
-          card_body(
-            plotlyOutput("shift_dist_plot", height = "300px")
-          )
-        ),
-
-        card(
-          card_header("Monthly Activity"),
-          card_body(
-            plotlyOutput("date_coverage_plot", height = "300px")
+            withSpinner(plotlyOutput("employee_coverage_plot", height = "400px"), type = 6, color = "#2c3e50")
           )
         )
       )
     ),
 
     # =======================================================================
-    # TIME ANALYSIS TAB (Consolidated)
+    # DATA COMPARISON TAB
+    # =======================================================================
+    nav_panel(
+      title = "Data Comparison",
+      icon = icon("venn-diagram"),
+
+      layout_columns(
+        col_widths = c(6, 6),
+
+        card(
+          card_header("Employee Overlap Summary"),
+          card_body(
+            under_construction_card("Interactive Venn Diagram",
+                                   "Click to toggle data sources and see overlaps")
+          )
+        ),
+
+        card(
+          card_header("Coverage Statistics"),
+          card_body(
+            under_construction_card("Coverage Metrics",
+                                   "Detailed breakdown of employee coverage across data sources")
+          )
+        )
+      ),
+
+      layout_columns(
+        col_widths = c(12),
+
+        card(
+          card_header("Employee-Period Comparison Detail"),
+          card_body(
+            withSpinner(DTOutput("employee_period_table"), type = 6, color = "#2c3e50")
+          )
+        )
+      )
+    ),
+
+    # =======================================================================
+    # TIME ANALYSIS TAB (CONSOLIDATED)
     # =======================================================================
     nav_panel(
       title = "Time Analysis",
@@ -606,236 +661,76 @@ ui <- function(data_list, metric_spec, case_config) {
 
       navset_card_underline(
         nav_panel(
-          "Summary",
-          DTOutput("table_time_summary")
+          "Summary & Levels (All-in-One)",
+          withSpinner(DTOutput("table_time_consolidated"), type = 6, color = "#2c3e50")
         ),
         nav_panel(
-          "Shift/Week/Pay Period Levels",
-
-          h5(class = "mt-3", icon("building"), " Shift Level Analysis"),
-          DTOutput("table_shift_level"),
-
-          hr(),
-
-          h5(class = "mt-3", icon("calendar-week"), " Week Level Analysis"),
-          DTOutput("table_week_level"),
-
-          hr(),
-
-          h5(class = "mt-3", icon("calendar-alt"), " Pay Period Level Analysis"),
-          DTOutput("table_pay_period_level"),
-
-          hr(),
-
-          h5(class = "mt-3", icon("calculator"), " Time Totals"),
-          DTOutput("table_time_totals")
-        ),
-        nav_panel(
-          "Punch Rounding Analysis",
-
-          h5(class = "mt-3", "Rounding by Punch Type"),
-          DTOutput("table_rounding_by_type"),
-
-          hr(),
-
-          h5(class = "mt-3", "Rounding Levels Summary"),
-          layout_columns(
-            col_widths = c(6, 6),
-
-            div(
-              h6("Shift & Employee Level"),
-              DTOutput("table_rounding_shift_emp")
-            ),
-            div(
-              h6("Week & Pay Period Level"),
-              DTOutput("table_rounding_week_pp")
-            )
-          ),
-
-          hr(),
-
-          h5(class = "mt-3", "Rounding Time Totals"),
-          DTOutput("table_rounding_totals")
+          "Punch Rounding (All-in-One)",
+          withSpinner(DTOutput("table_rounding_consolidated"), type = 6, color = "#2c3e50")
         )
       )
     ),
 
     # =======================================================================
-    # MEAL PERIOD TABS
+    # MEAL & REST PERIODS
     # =======================================================================
     nav_menu(
-      title = "Meal Periods",
+      title = "Meal & Rest",
       icon = icon("utensils"),
 
       nav_panel(
         "Meal Analysis",
-        if (length(time_meal_analysis) > 0) {
-          navset_card_underline(
-            !!!lapply(time_meal_analysis, function(grp) {
-              nav_panel(
-                gsub("^Time Meal Period Analysis\\s*\\(?(.*)\\)?$", "\\1", grp),
-                DTOutput(paste0("table_", make.names(grp)))
-              )
-            })
-          )
-        } else {
-          under_construction_card("Meal Analysis", "Meal period analysis data will appear here.")
-        }
+        withSpinner(DTOutput("table_meal_consolidated"), type = 6, color = "#2c3e50")
       ),
 
       nav_panel(
-        "Violations (>5 hrs)",
-        if (length(time_meal_violations_5) > 0) {
-          navset_card_underline(
-            !!!lapply(time_meal_violations_5, function(grp) {
-              nav_panel(
-                gsub("^Time Meal Violations \\(>5 hrs\\)\\s*-?\\s*(.*)$", "\\1", grp),
-                DTOutput(paste0("table_", make.names(grp)))
-              )
-            })
-          )
-        } else {
-          under_construction_card("Meal Violations >5hrs", "Meal violation data will appear here.")
-        }
+        "Meal Violations >5hrs",
+        withSpinner(DTOutput("table_meal_5hr_consolidated"), type = 6, color = "#2c3e50")
       ),
 
       nav_panel(
-        "Violations (>6 hrs)",
-        if (length(time_meal_violations_6) > 0) {
-          navset_card_underline(
-            !!!lapply(time_meal_violations_6, function(grp) {
-              nav_panel(
-                gsub("^Time Meal Violations \\(>6 hrs\\)\\s*-?\\s*(.*)$", "\\1", grp),
-                DTOutput(paste0("table_", make.names(grp)))
-              )
-            })
-          )
-        } else {
-          under_construction_card("Meal Violations >6hrs", "Meal violation data will appear here.")
-        }
+        "Meal Violations >6hrs",
+        withSpinner(DTOutput("table_meal_6hr_consolidated"), type = 6, color = "#2c3e50")
+      ),
+
+      nav_panel(
+        "Rest Periods",
+        withSpinner(DTOutput("table_rest_consolidated"), type = 6, color = "#2c3e50")
       )
     ),
 
     # =======================================================================
-    # REST PERIODS TAB
-    # =======================================================================
-    nav_panel(
-      title = "Rest Periods",
-      icon = icon("pause-circle"),
-
-      if (length(time_rest) > 0) {
-        navset_card_underline(
-          !!!lapply(time_rest, function(grp) {
-            nav_panel(
-              gsub("^Time Rest\\s*(.*)$", "\\1", grp),
-              DTOutput(paste0("table_", make.names(grp)))
-            )
-          })
-        )
-      } else {
-        under_construction_card("Rest Periods", "Rest period analysis data will appear here.")
-      }
-    ),
-
-    # =======================================================================
-    # PAY SUMMARY TAB (Consolidated)
+    # PAY SUMMARY TAB (CONSOLIDATED)
     # =======================================================================
     nav_panel(
       title = "Pay Summary",
       icon = icon("dollar-sign"),
 
-      navset_card_underline(
-        nav_panel(
-          "Overview",
-          DTOutput("table_pay_summary")
-        ),
-        nav_panel(
-          "Overtime",
-          DTOutput("table_pay_overtime")
-        ),
-        nav_panel(
-          "Double Time",
-          DTOutput("table_pay_doubletime")
-        ),
-        nav_panel(
-          "Premiums",
-
-          h5(class = "mt-3", "Meal Premiums"),
-          DTOutput("table_pay_meal_premiums"),
-
-          hr(),
-
-          h5(class = "mt-3", "Rest Premiums"),
-          DTOutput("table_pay_rest_premiums")
-        ),
-        nav_panel(
-          "Bonuses & Differentials",
-
-          h5(class = "mt-3", "Bonuses"),
-          DTOutput("table_pay_bonuses"),
-
-          hr(),
-
-          h5(class = "mt-3", "Shift Differentials"),
-          DTOutput("table_pay_shift_diff")
-        ),
-        nav_panel(
-          "Other",
-
-          h5(class = "mt-3", "Sick Pay"),
-          DTOutput("table_pay_sick")
-        )
-      )
+      withSpinner(DTOutput("table_pay_consolidated"), type = 6, color = "#2c3e50")
     ),
 
     # =======================================================================
-    # PAY CODES TAB (New)
+    # PAY CODES TAB
     # =======================================================================
     nav_panel(
       title = "Pay Codes",
       icon = icon("tags"),
 
-      navset_card_underline(
-        nav_panel(
-          "Pay Code Summary",
-          under_construction_card(
-            "Pay Code Summary Table",
-            "Summary table from pay_code_summary_tbl will appear here."
-          )
-        ),
-        nav_panel(
-          "Rate Type Summary",
-          under_construction_card(
-            "Rate Type Summary Table",
-            "Detailed rate type analysis from rate_type_summary will appear here."
-          )
-        )
-      )
+      withSpinner(DTOutput("table_pay_codes"), type = 6, color = "#2c3e50")
     ),
 
     # =======================================================================
-    # REGULAR RATE TAB
+    # REGULAR RATE TAB (CONSOLIDATED)
     # =======================================================================
     nav_panel(
       title = "Regular Rate (RROP)",
       icon = icon("calculator"),
 
-      if (length(pay_regular_rate) > 0) {
-        navset_card_underline(
-          !!!lapply(pay_regular_rate, function(grp) {
-            nav_panel(
-              gsub("^Pay Regular Rate\\s*-?\\s*(.*)$", "\\1", grp),
-              DTOutput(paste0("table_", make.names(grp)))
-            )
-          })
-        )
-      } else {
-        under_construction_card("Regular Rate Analysis", "RROP analysis data will appear here.")
-      }
+      withSpinner(DTOutput("table_rrop_consolidated"), type = 6, color = "#2c3e50")
     ),
 
     # =======================================================================
-    # DAMAGES TAB (New Consolidated)
+    # DAMAGES TAB
     # =======================================================================
     nav_panel(
       title = "Damages",
@@ -843,86 +738,26 @@ ui <- function(data_list, metric_spec, case_config) {
 
       navset_card_underline(
         nav_panel(
-          "All Damages Summary",
-          under_construction_card(
-            "Total Damages Summary",
-            "Comprehensive damages summary across all categories will appear here."
-          )
+          "All Damages",
+          under_construction_card("Total Damages Summary")
         ),
         nav_panel(
-          "Meal Violations",
-
-          h5(class = "mt-3", "Meal Damages (No Waivers)"),
-          under_construction_card("Meal damages calculation without waivers"),
-
-          hr(),
-
-          h5(class = "mt-3", "Meal Damages (With Waivers)"),
-          under_construction_card("Meal damages calculation with waivers applied")
+          "Meal",
+          under_construction_card("Meal Violation Damages")
         ),
         nav_panel(
-          "Rest Violations",
-          under_construction_card("Rest period violation damages")
-        ),
-        nav_panel(
-          "Time & Rounding",
-
-          h5(class = "mt-3", "Clock Rounding Damages"),
-          under_construction_card("Time rounding damages"),
-
-          hr(),
-
-          h5(class = "mt-3", "Off-the-Clock Damages"),
-          under_construction_card("Off-the-clock work damages")
-        ),
-        nav_panel(
-          "Pay Issues",
-
-          h5(class = "mt-3", "Regular Rate (RROP) Damages"),
-          under_construction_card("Regular rate of pay underpayments"),
-
-          hr(),
-
-          h5(class = "mt-3", "Unreimbursed Expenses"),
-          under_construction_card("Unreimbursed business expenses"),
-
-          hr(),
-
-          h5(class = "mt-3", "Waiting Time Penalties"),
-          under_construction_card("Waiting time penalties for final pay")
-        ),
-        nav_panel(
-          "Wage Statements",
-          under_construction_card("Wage statement violation damages")
+          "Rest",
+          under_construction_card("Rest Violation Damages")
         ),
         nav_panel(
           "PAGA",
-
-          card(
-            card_header(
-              class = "d-flex justify-content-between align-items-center",
-              "PAGA Penalties",
-              actionButton("toggle_paga_detail", "Expand Details", class = "btn-sm btn-outline-secondary")
-            ),
-            card_body(
-              under_construction_card("PAGA penalties summary"),
-
-              hr(),
-
-              conditionalPanel(
-                condition = "input.toggle_paga_detail % 2 == 1",
-
-                h6("PAGA Breakdown by Violation Type"),
-                under_construction_card("Detailed PAGA breakdown")
-              )
-            )
-          )
+          under_construction_card("PAGA Penalties")
         )
       )
     ),
 
     # =======================================================================
-    # APPENDIX TAB (New)
+    # APPENDIX TAB
     # =======================================================================
     nav_panel(
       title = "Appendix",
@@ -930,58 +765,24 @@ ui <- function(data_list, metric_spec, case_config) {
 
       navset_card_underline(
         nav_panel(
-          "Shift Hours Distribution",
-          under_construction_card(
-            "Shift Hours Table",
-            "Distribution of shift hours from shift_hrs_tbl will appear here."
-          )
+          "Shift Hours",
+          withSpinner(DTOutput("table_shift_hrs"), type = 6, color = "#2c3e50")
         ),
         nav_panel(
           "Non-Work Hours",
-          under_construction_card(
-            "Non-Work Hours Table",
-            "Analysis of non-work hours from non_wrk_hrs_tbl will appear here."
-          )
+          withSpinner(DTOutput("table_non_wrk_hrs"), type = 6, color = "#2c3e50")
         ),
         nav_panel(
           "Meal Period Distribution",
-          under_construction_card(
-            "Meal Period Table",
-            "Meal period distribution from meal_period_tbl will appear here."
-          )
+          withSpinner(DTOutput("table_meal_period"), type = 6, color = "#2c3e50")
         ),
         nav_panel(
           "Meal Start Times",
-          under_construction_card(
-            "Meal Start Time Analysis",
-            "Top meal start times from meal_start_time_tbl will appear here."
-          )
+          withSpinner(DTOutput("table_meal_start_time"), type = 6, color = "#2c3e50")
         ),
         nav_panel(
           "Meal Quarter Hour",
-          under_construction_card(
-            "Meal Quarter Hour Analysis",
-            "Meal period timing by quarter hour from meal_quarter_hour_tbl will appear here."
-          )
-        )
-      )
-    ),
-
-    # =======================================================================
-    # FULL REPORT TAB
-    # =======================================================================
-    nav_panel(
-      title = "Full Report",
-      icon = icon("file-alt"),
-
-      card(
-        card_header(
-          class = "d-flex justify-content-between align-items-center",
-          "Complete Metrics Report",
-          actionButton("load_full_report", "Load Full Report", class = "btn-primary btn-sm")
-        ),
-        card_body(
-          DTOutput("full_report_table")
+          withSpinner(DTOutput("table_meal_quarter_hr"), type = 6, color = "#2c3e50")
         )
       )
     ),
@@ -992,21 +793,33 @@ ui <- function(data_list, metric_spec, case_config) {
       tags$span(
         style = "color: white; padding: 8px;",
         icon("info-circle"),
-        " Analysis Date: ", Sys.Date()
+        " ", Sys.Date()
       )
     )
   )
 }
 
 # =============================================================================
-# SERVER
+# SERVER (Part 1 - will continue in next message due to length)
 # =============================================================================
 
-server <- function(data_list, metric_spec, case_config_init) {
+server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
   function(input, output, session) {
 
     # Case configuration
     case_config <- reactiveVal(case_config_init)
+
+    # Original date range
+    original_date_min <- min(
+      min(data_list$shift_data1$Date, na.rm = TRUE),
+      min(data_list$pay1$Pay_Date, na.rm = TRUE),
+      na.rm = TRUE
+    )
+    original_date_max <- max(
+      max(data_list$shift_data1$Date, na.rm = TRUE),
+      max(data_list$pay1$Pay_Date, na.rm = TRUE),
+      na.rm = TRUE
+    )
 
     # Server-side selectize for employee filter
     all_employee_ids <- sort(unique(c(data_list$shift_data1$ID, data_list$pay1$Pay_ID)))
@@ -1017,8 +830,36 @@ server <- function(data_list, metric_spec, case_config_init) {
       server = TRUE
     )
 
+    # Apply dynamic font styling
+    observe({
+      insertUI(
+        selector = "head",
+        where = "beforeEnd",
+        ui = tags$style(HTML(paste0(
+          "body, .dataTables_wrapper { font-family: ", input$font_family, "; font-size: ", input$font_size, "; }"
+        )))
+      )
+    })
+
     # Current filters
     current_filters <- reactiveVal(list())
+
+    # Show/hide filter banner
+    observe({
+      filters <- current_filters()
+      if (length(filters) > 0) {
+        shinyjs::show("filter_banner")
+      } else {
+        shinyjs::hide("filter_banner")
+      }
+    })
+
+    # Reset dates
+    observeEvent(input$reset_dates, {
+      updateDateRangeInput(session, "date_range",
+                           start = original_date_min,
+                           end = original_date_max)
+    })
 
     # Apply filters
     observeEvent(input$apply_filters, {
@@ -1027,14 +868,9 @@ server <- function(data_list, metric_spec, case_config_init) {
         date_max = input$date_range[2]
       )
 
-      if (length(input$employee_filter) > 0 && !("" %in% input$employee_filter)) {
+      if (length(input$employee_filter) > 0) {
         filters$ID <- input$employee_filter
         filters$Pay_ID <- input$employee_filter
-      }
-
-      if (!is.null(input$location_filter) && length(input$location_filter) > 0 && !("" %in% input$location_filter)) {
-        filters$Location <- input$location_filter
-        filters$Pay_Location <- input$location_filter
       }
 
       current_filters(filters)
@@ -1043,13 +879,9 @@ server <- function(data_list, metric_spec, case_config_init) {
     # Reset filters
     observeEvent(input$reset_filters, {
       updateDateRangeInput(session, "date_range",
-                           start = min(data_list$shift_data1$Date, na.rm = TRUE),
-                           end = max(data_list$shift_data1$Date, na.rm = TRUE)
-      )
+                           start = original_date_min,
+                           end = original_date_max)
       updateSelectizeInput(session, "employee_filter", selected = character(0))
-      if (!is.null(input$location_filter)) {
-        updateSelectizeInput(session, "location_filter", selected = character(0))
-      }
       current_filters(list())
     })
 
@@ -1060,7 +892,7 @@ server <- function(data_list, metric_spec, case_config_init) {
       shift_filtered <- copy(data_list$shift_data1)
       pay_filtered <- copy(data_list$pay1)
 
-      # Apply filters to shift data
+      # Apply filters
       if (!is.null(filters$date_min)) {
         shift_filtered <- shift_filtered[Date >= filters$date_min]
       }
@@ -1070,11 +902,7 @@ server <- function(data_list, metric_spec, case_config_init) {
       if (!is.null(filters$ID)) {
         shift_filtered <- shift_filtered[ID %in% filters$ID]
       }
-      if (!is.null(filters$Location) && "Location" %in% names(shift_filtered)) {
-        shift_filtered <- shift_filtered[Location %in% filters$Location]
-      }
 
-      # Apply filters to pay data
       if (!is.null(filters$date_min)) {
         pay_filtered <- pay_filtered[Pay_Period_End >= filters$date_min]
       }
@@ -1083,9 +911,6 @@ server <- function(data_list, metric_spec, case_config_init) {
       }
       if (!is.null(filters$Pay_ID)) {
         pay_filtered <- pay_filtered[Pay_ID %in% filters$Pay_ID]
-      }
-      if (!is.null(filters$Pay_Location) && "Pay_Location" %in% names(pay_filtered)) {
-        pay_filtered <- pay_filtered[Pay_Location %in% filters$Pay_Location]
       }
 
       # Precompute years and key groups
@@ -1142,40 +967,10 @@ server <- function(data_list, metric_spec, case_config_init) {
       }
     })
 
-    output$mediation_date <- renderText({
-      config <- case_config()
-      if (!is.null(config$mediation_date) && !is.na(config$mediation_date)) {
-        as.character(config$mediation_date)
-      } else {
-        "-"
-      }
-    })
-
-    output$class_cert_deadline <- renderText({
-      config <- case_config()
-      if (!is.null(config$class_cert_deadline) && !is.na(config$class_cert_deadline)) {
-        as.character(config$class_cert_deadline)
-      } else {
-        "-"
-      }
-    })
-
     output$relevant_period <- renderText({
       config <- case_config()
       start <- config$relevant_period_start
       end <- config$relevant_period_end
-
-      if (!is.null(start) && !is.na(start) && !is.null(end) && !is.na(end)) {
-        paste(start, "to", end)
-      } else {
-        "Unknown"
-      }
-    })
-
-    output$paga_period <- renderText({
-      config <- case_config()
-      start <- config$paga_period_start
-      end <- config$paga_period_end
 
       if (!is.null(start) && !is.na(start) && !is.null(end) && !is.na(end)) {
         paste(start, "to", end)
@@ -1192,32 +987,6 @@ server <- function(data_list, metric_spec, case_config_init) {
     output$sample_type <- renderText({
       config <- case_config()
       config$sample_type %||% "Unknown"
-    })
-
-    output$extrap_enabled <- renderText({
-      config <- case_config()
-      if (!is.null(config$extrapolation_enabled) && config$extrapolation_enabled) {
-        "Yes"
-      } else {
-        "No"
-      }
-    })
-
-    output$extrap_method <- renderText({
-      config <- case_config()
-      config$extrapolation_method %||% "None"
-    })
-
-    output$extrap_factor <- renderText({
-      config <- case_config()
-      factor <- config$extrapolation_factor %||% 1.0
-      as.character(round(factor, 2))
-    })
-
-    output$case_notes <- renderText({
-      config <- case_config()
-      notes <- config$notes %||% ""
-      if (notes == "") "(No notes)" else notes
     })
 
     # ===========================================================================
@@ -1242,14 +1011,22 @@ server <- function(data_list, metric_spec, case_config_init) {
       }
     })
 
-    output$total_shifts <- renderText({
+    output$total_pay_periods_combined <- renderText({
       data <- filtered_data()
-      format(nrow(data$shift_data1), big.mark = ",")
+      time_pp <- uniqueN(data$shift_data1$Period_End)
+      pay_pp <- uniqueN(data$pay1$Pay_Period_End)
+      total <- uniqueN(c(data$shift_data1$Period_End, data$pay1$Pay_Period_End))
+      format(total, big.mark = ",")
     })
 
-    output$total_pay_periods <- renderText({
+    output$time_pay_periods <- renderText({
       data <- filtered_data()
-      format(uniqueN(data$pay1$Pay_ID_Period_End), big.mark = ",")
+      format(uniqueN(data$shift_data1$Period_End), big.mark = ",")
+    })
+
+    output$pay_pay_periods <- renderText({
+      data <- filtered_data()
+      format(uniqueN(data$pay1$Pay_Period_End), big.mark = ",")
     })
 
     output$total_weeks <- renderText({
@@ -1257,42 +1034,34 @@ server <- function(data_list, metric_spec, case_config_init) {
       format(uniqueN(data$shift_data1$ID_Week_End), big.mark = ",")
     })
 
-    output$date_coverage_plot <- renderPlotly({
+    output$employee_coverage_plot <- renderPlotly({
       data <- filtered_data()
 
-      shift_monthly <- data$shift_data1[, .(
-        Shifts = .N,
-        Employees = uniqueN(ID)
-      ), by = .(Month = floor_date(Date, "month"))]
+      # Aggregate by period
+      time_emp <- data$shift_data1[, .(
+        Employees = uniqueN(ID),
+        Type = "Time Data"
+      ), by = .(Period = Date)]
 
-      plot_ly(shift_monthly, x = ~Month) %>%
-        add_bars(y = ~Shifts, name = "Shifts", marker = list(color = "#3498db")) %>%
+      pay_emp <- data$pay1[, .(
+        Employees = uniqueN(Pay_ID),
+        Type = "Pay Data"
+      ), by = .(Period = Pay_Period_End)]
+
+      combined <- rbindlist(list(time_emp, pay_emp))
+
+      plot_ly(combined, x = ~Period, y = ~Employees, color = ~Type,
+              type = 'scatter', mode = 'lines+markers') %>%
         layout(
-          xaxis = list(title = ""),
-          yaxis = list(title = "Shift Count"),
-          showlegend = FALSE
-        )
-    })
-
-    output$shift_dist_plot <- renderPlotly({
-      data <- filtered_data()
-
-      shift_hours <- data$shift_data1[!is.na(shift_hrs) & shift_hrs > 0, shift_hrs]
-
-      plot_ly(x = shift_hours, type = "histogram",
-              marker = list(color = "#2ecc71"),
-              nbinsx = 30) %>%
-        layout(
-          xaxis = list(title = "Shift Hours"),
-          yaxis = list(title = "Count")
+          xaxis = list(title = "Period"),
+          yaxis = list(title = "Unique Employees"),
+          hovermode = 'x unified'
         )
     })
 
     # ===========================================================================
-    # METRIC TABLE GENERATION
+    # CONSOLIDATED TABLES
     # ===========================================================================
-
-    metric_groups <- unique(metric_spec$metric_group)
 
     # Get extrapolation factor
     extrap_factor <- reactive({
@@ -1305,356 +1074,118 @@ server <- function(data_list, metric_spec, case_config_init) {
       }
     })
 
-    # Generate tables for each metric group
-    lapply(metric_groups, function(grp) {
-      output_id <- paste0("table_", make.names(grp))
-
-      output[[output_id]] <- renderDT({
-        data <- filtered_data()
-        factor <- extrap_factor()
-
-        results <- calculate_group_metrics(data, metric_spec, grp, current_filters(), factor)
-
-        if (nrow(results) == 0) {
-          return(datatable(data.table(Metric = "No data available"), rownames = FALSE))
-        }
-
-        setnames(results, "metric_label", "Metric", skip_absent = TRUE)
-
-        # Hide Extrapolated column if not enabled
-        if ("Extrapolated" %in% names(results) && factor <= 1.0) {
-          results[, Extrapolated := NULL]
-        }
-
-        datatable(
-          results,
-          options = list(
-            pageLength = 25,
-            dom = 'frtip',
-            scrollX = TRUE,
-            columnDefs = list(
-              list(className = 'dt-left', targets = 0),
-              list(className = 'dt-center', targets = "_all")
-            )
-          ),
-          rownames = FALSE,
-          class = 'cell-border stripe hover'
-        )
-      })
-    })
-
-    # Placeholder tables for consolidated sections
-    output$table_time_summary <- renderDT({
+    # Time Analysis Consolidated
+    output$table_time_consolidated <- renderDT({
       data <- filtered_data()
       factor <- extrap_factor()
-      time_summary_groups <- metric_groups[grepl("^Time Summary$", metric_groups)]
-      if (length(time_summary_groups) > 0) {
-        results <- calculate_group_metrics(data, metric_spec, time_summary_groups[1], current_filters(), factor)
-        if (nrow(results) > 0) {
-          setnames(results, "metric_label", "Metric", skip_absent = TRUE)
-          return(datatable(results, options = list(pageLength = 25, scrollX = TRUE), rownames = FALSE))
-        }
-      }
-      datatable(data.table(Metric = "No data available"), rownames = FALSE)
+
+      # Combine all time analysis groups
+      all_groups <- c(time_summary_groups, time_shift_groups)
+      results <- calculate_group_metrics(data, metric_spec, all_groups, current_filters(), factor)
+
+      create_dt_table(results)
     })
 
-    # Shift/Week/Pay Period Level tables
-    output$table_shift_level <- renderDT({
+    # Rounding Consolidated
+    output$table_rounding_consolidated <- renderDT({
       data <- filtered_data()
       factor <- extrap_factor()
-      grp <- metric_groups[grepl("Shift Level$", metric_groups)]
-      if (length(grp) > 0) {
-        results <- calculate_group_metrics(data, metric_spec, grp[1], current_filters(), factor)
-        if (nrow(results) > 0) {
-          setnames(results, "metric_label", "Metric", skip_absent = TRUE)
-          return(datatable(results, options = list(pageLength = 25, scrollX = TRUE), rownames = FALSE))
-        }
-      }
-      datatable(data.table(Metric = "No data available"), rownames = FALSE)
+
+      results <- calculate_group_metrics(data, metric_spec, time_rounding_groups, current_filters(), factor)
+
+      create_dt_table(results)
     })
 
-    output$table_week_level <- renderDT({
+    # Meal Analysis Consolidated
+    output$table_meal_consolidated <- renderDT({
       data <- filtered_data()
       factor <- extrap_factor()
-      grp <- metric_groups[grepl("Week Level$", metric_groups)]
-      if (length(grp) > 0) {
-        results <- calculate_group_metrics(data, metric_spec, grp[1], current_filters(), factor)
-        if (nrow(results) > 0) {
-          setnames(results, "metric_label", "Metric", skip_absent = TRUE)
-          return(datatable(results, options = list(pageLength = 25, scrollX = TRUE), rownames = FALSE))
-        }
-      }
-      datatable(data.table(Metric = "No data available"), rownames = FALSE)
+
+      results <- calculate_group_metrics(data, metric_spec, time_meal_analysis, current_filters(), factor)
+
+      create_dt_table(results)
     })
 
-    output$table_pay_period_level <- renderDT({
+    # Meal 5hr Consolidated
+    output$table_meal_5hr_consolidated <- renderDT({
       data <- filtered_data()
       factor <- extrap_factor()
-      grp <- metric_groups[grepl("Pay Period Level$", metric_groups)]
-      if (length(grp) > 0) {
-        results <- calculate_group_metrics(data, metric_spec, grp[1], current_filters(), factor)
-        if (nrow(results) > 0) {
-          setnames(results, "metric_label", "Metric", skip_absent = TRUE)
-          return(datatable(results, options = list(pageLength = 25, scrollX = TRUE), rownames = FALSE))
-        }
-      }
-      datatable(data.table(Metric = "No data available"), rownames = FALSE)
+
+      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_5, current_filters(), factor)
+
+      create_dt_table(results)
     })
 
-    output$table_time_totals <- renderDT({
+    # Meal 6hr Consolidated
+    output$table_meal_6hr_consolidated <- renderDT({
       data <- filtered_data()
       factor <- extrap_factor()
-      grp <- metric_groups[grepl("Time Totals$", metric_groups)]
-      if (length(grp) > 0) {
-        results <- calculate_group_metrics(data, metric_spec, grp[1], current_filters(), factor)
-        if (nrow(results) > 0) {
-          setnames(results, "metric_label", "Metric", skip_absent = TRUE)
-          return(datatable(results, options = list(pageLength = 25, scrollX = TRUE), rownames = FALSE))
-        }
-      }
-      datatable(data.table(Metric = "No data available"), rownames = FALSE)
+
+      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6, current_filters(), factor)
+
+      create_dt_table(results)
     })
 
-    # Punch Rounding tables
-    output$table_rounding_by_type <- renderDT({
+    # Rest Consolidated
+    output$table_rest_consolidated <- renderDT({
       data <- filtered_data()
       factor <- extrap_factor()
-      grp <- metric_groups[grepl("Punch Rounding.*Pre_Shift|Mid_Shift|Post", metric_groups)]
-      if (length(grp) > 0) {
-        all_results <- lapply(grp, function(g) {
-          results <- calculate_group_metrics(data, metric_spec, g, current_filters(), factor)
-          if (nrow(results) > 0) {
-            results[, Section := gsub(".*Analysis - ", "", g)]
-            results
-          } else {
-            NULL
-          }
-        })
-        combined <- rbindlist(Filter(Negate(is.null), all_results), fill = TRUE)
-        if (nrow(combined) > 0) {
-          setnames(combined, "metric_label", "Metric", skip_absent = TRUE)
-          setcolorder(combined, c("Section", names(combined)[names(combined) != "Section"]))
-          return(datatable(combined, options = list(pageLength = 25, scrollX = TRUE), rownames = FALSE))
-        }
-      }
-      datatable(data.table(Metric = "No data available"), rownames = FALSE)
+
+      results <- calculate_group_metrics(data, metric_spec, time_rest, current_filters(), factor)
+
+      create_dt_table(results)
     })
 
-    output$table_rounding_shift_emp <- renderDT({
+    # Pay Summary Consolidated
+    output$table_pay_consolidated <- renderDT({
       data <- filtered_data()
       factor <- extrap_factor()
-      grp <- metric_groups[grepl("Rounding.*Employee Level|Shift Level", metric_groups)]
-      if (length(grp) > 0) {
-        all_results <- lapply(grp, function(g) calculate_group_metrics(data, metric_spec, g, current_filters(), factor))
-        combined <- rbindlist(all_results, fill = TRUE)
-        if (nrow(combined) > 0) {
-          setnames(combined, "metric_label", "Metric", skip_absent = TRUE)
-          return(datatable(combined, options = list(pageLength = 15, scrollX = TRUE, dom = 't'), rownames = FALSE))
-        }
-      }
-      datatable(data.table(Metric = "No data available"), rownames = FALSE)
+
+      results <- calculate_group_metrics(data, metric_spec, pay_summary_groups, current_filters(), factor)
+
+      create_dt_table(results)
     })
 
-    output$table_rounding_week_pp <- renderDT({
+    # RROP Consolidated
+    output$table_rrop_consolidated <- renderDT({
       data <- filtered_data()
       factor <- extrap_factor()
-      grp <- metric_groups[grepl("Rounding.*Week Level|Pay Period Level", metric_groups)]
-      if (length(grp) > 0) {
-        all_results <- lapply(grp, function(g) calculate_group_metrics(data, metric_spec, g, current_filters(), factor))
-        combined <- rbindlist(all_results, fill = TRUE)
-        if (nrow(combined) > 0) {
-          setnames(combined, "metric_label", "Metric", skip_absent = TRUE)
-          return(datatable(combined, options = list(pageLength = 15, scrollX = TRUE, dom = 't'), rownames = FALSE))
-        }
-      }
-      datatable(data.table(Metric = "No data available"), rownames = FALSE)
-    })
 
-    output$table_rounding_totals <- renderDT({
-      data <- filtered_data()
-      factor <- extrap_factor()
-      grp <- metric_groups[grepl("Rounding.*Time Totals", metric_groups)]
-      if (length(grp) > 0) {
-        results <- calculate_group_metrics(data, metric_spec, grp[1], current_filters(), factor)
-        if (nrow(results) > 0) {
-          setnames(results, "metric_label", "Metric", skip_absent = TRUE)
-          return(datatable(results, options = list(pageLength = 25, scrollX = TRUE), rownames = FALSE))
-        }
-      }
-      datatable(data.table(Metric = "No data available"), rownames = FALSE)
-    })
+      results <- calculate_group_metrics(data, metric_spec, pay_regular_rate, current_filters(), factor)
 
-    # Pay Summary consolidated tables
-    output$table_pay_summary <- renderDT({
-      data <- filtered_data()
-      factor <- extrap_factor()
-      grp <- metric_groups[grepl("^Pay Summary$", metric_groups)]
-      if (length(grp) > 0) {
-        results <- calculate_group_metrics(data, metric_spec, grp[1], current_filters(), factor)
-        if (nrow(results) > 0) {
-          setnames(results, "metric_label", "Metric", skip_absent = TRUE)
-          return(datatable(results, options = list(pageLength = 25, scrollX = TRUE), rownames = FALSE))
-        }
-      }
-      datatable(data.table(Metric = "No data available"), rownames = FALSE)
-    })
-
-    output$table_pay_overtime <- renderDT({
-      data <- filtered_data()
-      factor <- extrap_factor()
-      grp <- metric_groups[grepl("^Pay Overtime$", metric_groups)]
-      if (length(grp) > 0) {
-        results <- calculate_group_metrics(data, metric_spec, grp[1], current_filters(), factor)
-        if (nrow(results) > 0) {
-          setnames(results, "metric_label", "Metric", skip_absent = TRUE)
-          return(datatable(results, options = list(pageLength = 25, scrollX = TRUE), rownames = FALSE))
-        }
-      }
-      datatable(data.table(Metric = "No data available"), rownames = FALSE)
-    })
-
-    output$table_pay_doubletime <- renderDT({
-      data <- filtered_data()
-      factor <- extrap_factor()
-      grp <- metric_groups[grepl("^Pay Double Time$", metric_groups)]
-      if (length(grp) > 0) {
-        results <- calculate_group_metrics(data, metric_spec, grp[1], current_filters(), factor)
-        if (nrow(results) > 0) {
-          setnames(results, "metric_label", "Metric", skip_absent = TRUE)
-          return(datatable(results, options = list(pageLength = 25, scrollX = TRUE), rownames = FALSE))
-        }
-      }
-      datatable(data.table(Metric = "No data available"), rownames = FALSE)
-    })
-
-    output$table_pay_meal_premiums <- renderDT({
-      data <- filtered_data()
-      factor <- extrap_factor()
-      grp <- metric_groups[grepl("^Pay Meal Premiums$", metric_groups)]
-      if (length(grp) > 0) {
-        results <- calculate_group_metrics(data, metric_spec, grp[1], current_filters(), factor)
-        if (nrow(results) > 0) {
-          setnames(results, "metric_label", "Metric", skip_absent = TRUE)
-          return(datatable(results, options = list(pageLength = 25, scrollX = TRUE), rownames = FALSE))
-        }
-      }
-      datatable(data.table(Metric = "No data available"), rownames = FALSE)
-    })
-
-    output$table_pay_rest_premiums <- renderDT({
-      data <- filtered_data()
-      factor <- extrap_factor()
-      grp <- metric_groups[grepl("^Pay Rest Premiums$", metric_groups)]
-      if (length(grp) > 0) {
-        results <- calculate_group_metrics(data, metric_spec, grp[1], current_filters(), factor)
-        if (nrow(results) > 0) {
-          setnames(results, "metric_label", "Metric", skip_absent = TRUE)
-          return(datatable(results, options = list(pageLength = 25, scrollX = TRUE), rownames = FALSE))
-        }
-      }
-      datatable(data.table(Metric = "No data available"), rownames = FALSE)
-    })
-
-    output$table_pay_bonuses <- renderDT({
-      data <- filtered_data()
-      factor <- extrap_factor()
-      grp <- metric_groups[grepl("^Pay Bonuses$", metric_groups)]
-      if (length(grp) > 0) {
-        results <- calculate_group_metrics(data, metric_spec, grp[1], current_filters(), factor)
-        if (nrow(results) > 0) {
-          setnames(results, "metric_label", "Metric", skip_absent = TRUE)
-          return(datatable(results, options = list(pageLength = 25, scrollX = TRUE), rownames = FALSE))
-        }
-      }
-      datatable(data.table(Metric = "No data available"), rownames = FALSE)
-    })
-
-    output$table_pay_shift_diff <- renderDT({
-      data <- filtered_data()
-      factor <- extrap_factor()
-      grp <- metric_groups[grepl("^Pay Shift Differentials$", metric_groups)]
-      if (length(grp) > 0) {
-        results <- calculate_group_metrics(data, metric_spec, grp[1], current_filters(), factor)
-        if (nrow(results) > 0) {
-          setnames(results, "metric_label", "Metric", skip_absent = TRUE)
-          return(datatable(results, options = list(pageLength = 25, scrollX = TRUE), rownames = FALSE))
-        }
-      }
-      datatable(data.table(Metric = "No data available"), rownames = FALSE)
-    })
-
-    output$table_pay_sick <- renderDT({
-      data <- filtered_data()
-      factor <- extrap_factor()
-      grp <- metric_groups[grepl("^Pay Sick Pay$", metric_groups)]
-      if (length(grp) > 0) {
-        results <- calculate_group_metrics(data, metric_spec, grp[1], current_filters(), factor)
-        if (nrow(results) > 0) {
-          setnames(results, "metric_label", "Metric", skip_absent = TRUE)
-          return(datatable(results, options = list(pageLength = 25, scrollX = TRUE), rownames = FALSE))
-        }
-      }
-      datatable(data.table(Metric = "No data available"), rownames = FALSE)
+      create_dt_table(results)
     })
 
     # ===========================================================================
-    # FULL REPORT
+    # ANALYSIS TABLES (FROM FILES)
     # ===========================================================================
 
-    full_report_data <- reactiveVal(NULL)
-
-    observeEvent(input$load_full_report, {
-      showNotification("Loading full report...", type = "message", duration = NULL, id = "loading_report")
-
-      data <- filtered_data()
-      factor <- extrap_factor()
-
-      all_results <- lapply(metric_groups, function(grp) {
-        results <- calculate_group_metrics(data, metric_spec, grp, current_filters(), factor)
-        if (nrow(results) > 0) {
-          results[, Group := grp]
-          setcolorder(results, c("Group", names(results)[names(results) != "Group"]))
-        }
-        results
-      })
-
-      combined <- rbindlist(all_results, fill = TRUE)
-      full_report_data(combined)
-
-      removeNotification("loading_report")
-      showNotification("Full report loaded!", type = "message", duration = 3)
+    output$table_pay_codes <- renderDT({
+      create_dt_table(analysis_tables$pay_code_summary, metric_col = "Pay Code")
     })
 
-    output$full_report_table <- renderDT({
-      data <- full_report_data()
+    output$table_shift_hrs <- renderDT({
+      create_dt_table(analysis_tables$shift_hrs, metric_col = "Shift Hrs")
+    })
 
-      if (is.null(data)) {
-        return(NULL)
-      }
+    output$table_non_wrk_hrs <- renderDT({
+      create_dt_table(analysis_tables$non_wrk_hrs, metric_col = "Non Work Hrs")
+    })
 
-      if (nrow(data) == 0) {
-        return(datatable(data.table(Metric = "No data available"), rownames = FALSE))
-      }
+    output$table_meal_period <- renderDT({
+      create_dt_table(analysis_tables$meal_period, metric_col = "Meal Period Hrs")
+    })
 
-      setnames(data, "metric_label", "Metric", skip_absent = TRUE)
+    output$table_meal_start_time <- renderDT({
+      create_dt_table(analysis_tables$meal_start_time, metric_col = "Meal Start Time")
+    })
 
-      datatable(
-        data,
-        options = list(
-          pageLength = 50,
-          dom = 'Bfrtip',
-          scrollX = TRUE,
-          buttons = c('csv', 'excel'),
-          columnDefs = list(
-            list(className = 'dt-left', targets = c(0, 1)),
-            list(className = 'dt-center', targets = "_all")
-          )
-        ),
-        rownames = FALSE,
-        filter = 'top',
-        class = 'cell-border stripe hover',
-        extensions = 'Buttons'
-      )
+    output$table_meal_quarter_hr <- renderDT({
+      create_dt_table(analysis_tables$meal_quarter_hr, metric_col = "Quarter Hour Type")
+    })
+
+    output$employee_period_table <- renderDT({
+      create_dt_table(analysis_tables$employee_comparison, metric_col = "ID")
     })
 
     # ===========================================================================
@@ -1666,27 +1197,21 @@ server <- function(data_list, metric_spec, case_config_init) {
         paste0("wage_hour_report_", Sys.Date(), ".csv")
       },
       content = function(file) {
-        showNotification("Generating report...", type = "message", duration = NULL, id = "dl_report")
-
+        # Generate full report CSV
         data <- filtered_data()
         factor <- extrap_factor()
 
-        all_results <- lapply(metric_groups, function(grp) {
-          results <- calculate_group_metrics(data, metric_spec, grp, current_filters(), factor)
-          if (nrow(results) > 0) {
-            results[, metric_group := grp]
-            setcolorder(results, c("metric_group", names(results)[names(results) != "metric_group"]))
-          }
-          results
-        })
+        all_groups <- unique(metric_spec$metric_group)
+        results <- calculate_group_metrics(data, metric_spec, all_groups, current_filters(), factor)
 
-        combined <- rbindlist(all_results, fill = TRUE)
-
-        fwrite(combined, file)
-
-        removeNotification("dl_report")
+        fwrite(results, file)
       }
     )
+
+    # Print report placeholder
+    observeEvent(input$print_report, {
+      showNotification("PDF printing feature under development", type = "message")
+    })
   }
 }
 
@@ -1699,8 +1224,19 @@ data_list <- load_data()
 metric_spec <- load_metric_spec()
 case_config <- load_case_config()
 
+message("Loading analysis tables...")
+analysis_tables <- list(
+  pay_code_summary = load_analysis_table(PAY_CODE_SUMMARY_FILE),
+  shift_hrs = load_analysis_table(SHIFT_HRS_FILE),
+  non_wrk_hrs = load_analysis_table(NON_WRK_HRS_FILE),
+  meal_period = load_analysis_table(MEAL_PERIOD_FILE),
+  meal_start_time = load_analysis_table(MEAL_START_TIME_FILE),
+  meal_quarter_hr = load_analysis_table(MEAL_QUARTER_HR_FILE),
+  employee_comparison = load_analysis_table(EMPLOYEE_COMPARISON_FILE)
+)
+
 message("Starting dashboard...")
 shinyApp(
   ui = ui(data_list, metric_spec, case_config),
-  server = server(data_list, metric_spec, case_config)
+  server = server(data_list, metric_spec, case_config, analysis_tables)
 )
