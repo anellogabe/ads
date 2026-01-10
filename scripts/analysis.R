@@ -367,6 +367,8 @@ pay1[, Rate_Gp := fcase(
 )]
 
 
+# ----- PAY DATA:                Pay code rate type analysis -------------------
+
 setDT(pay1)
 
 # Below min wage check
