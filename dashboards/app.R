@@ -1941,59 +1941,63 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
 
         # Time Analysis - Summary
         if ("time_summary" %in% sections && length(time_summary_groups) > 0) {
-          results <- calculate_group_metrics(data, metric_spec, time_summary_groups, current_filters(), extrap_factor())
           html_content <- paste0(html_content, '<div class="page-break"></div>')
+          results <- calculate_group_metrics(data, metric_spec, time_summary_groups, current_filters(), extrap_factor())
           html_content <- paste0(html_content, add_table(results, "Time Analysis - Summary", "⏰"))
         }
 
         # Time Analysis - Shift Hours Analysis
         if ("time_shift_hours" %in% sections && length(time_shift_groups) > 0) {
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
           results <- calculate_group_metrics(data, metric_spec, time_shift_groups, current_filters(), extrap_factor())
           html_content <- paste0(html_content, add_table(results, "Time Analysis - Shift Hours Analysis", "📊"))
         }
 
         # Time Analysis - Punch Rounding
         if ("time_rounding" %in% sections && length(time_rounding_groups) > 0) {
-          results <- calculate_group_metrics(data, metric_spec, time_rounding_groups, current_filters(), extrap_factor())
           html_content <- paste0(html_content, '<div class="page-break"></div>')
+          results <- calculate_group_metrics(data, metric_spec, time_rounding_groups, current_filters(), extrap_factor())
           html_content <- paste0(html_content, add_table(results, "Time Analysis - Punch Rounding", "🔄"))
         }
 
         # Meal Analysis
         if ("meal_analysis" %in% sections && length(time_meal_analysis) > 0) {
-          results <- calculate_group_metrics(data, metric_spec, time_meal_analysis, current_filters(), extrap_factor())
           html_content <- paste0(html_content, '<div class="page-break"></div>')
+          results <- calculate_group_metrics(data, metric_spec, time_meal_analysis, current_filters(), extrap_factor())
           html_content <- paste0(html_content, add_table(results, "Meal Period Analysis", "🍽️"))
         }
 
         # Meal Violations >5 hrs
         if ("meal_5hr" %in% sections && length(time_meal_violations_5) > 0) {
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
           results <- calculate_group_metrics(data, metric_spec, time_meal_violations_5, current_filters(), extrap_factor())
           html_content <- paste0(html_content, add_table(results, "Meal Violations (>5 hours)", "⚠️"))
         }
 
         # Meal Violations >6 hrs
         if ("meal_6hr" %in% sections && length(time_meal_violations_6) > 0) {
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
           results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6, current_filters(), extrap_factor())
           html_content <- paste0(html_content, add_table(results, "Meal Violations (>6 hours)", "⚠️"))
         }
 
         # Rest Periods
         if ("rest_periods" %in% sections && length(time_rest) > 0) {
-          results <- calculate_group_metrics(data, metric_spec, time_rest, current_filters(), extrap_factor())
           html_content <- paste0(html_content, '<div class="page-break"></div>')
+          results <- calculate_group_metrics(data, metric_spec, time_rest, current_filters(), extrap_factor())
           html_content <- paste0(html_content, add_table(results, "Rest Periods", "☕"))
         }
 
         # Pay Analysis - Summary
         if ("pay_summary" %in% sections && length(pay_summary_groups) > 0) {
-          results <- calculate_group_metrics(data, metric_spec, pay_summary_groups, current_filters(), extrap_factor())
           html_content <- paste0(html_content, '<div class="page-break"></div>')
+          results <- calculate_group_metrics(data, metric_spec, pay_summary_groups, current_filters(), extrap_factor())
           html_content <- paste0(html_content, add_table(results, "Pay Analysis - Summary", "💰"))
         }
 
         # Pay Analysis - Regular Rate
         if ("pay_regular_rate" %in% sections && length(pay_regular_rate) > 0) {
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
           results <- calculate_group_metrics(data, metric_spec, pay_regular_rate, current_filters(), extrap_factor())
           html_content <- paste0(html_content, add_table(results, "Pay Analysis - Regular Rate", "💵"))
         }
