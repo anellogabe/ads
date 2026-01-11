@@ -535,6 +535,43 @@ ui <- function(data_list, metric_spec, case_config) {
             )
           )
         )
+      ),
+
+      card(
+        card_header("Export to PDF"),
+        card_body(
+          h5("Select Sections to Include:"),
+          checkboxGroupInput(
+            "pdf_sections",
+            NULL,
+            choices = c(
+              "Case Information" = "case_info",
+              "Overview Statistics" = "overview",
+              "Time Analysis - Summary & Levels" = "time_summary",
+              "Time Analysis - Punch Rounding" = "time_rounding",
+              "Meal & Rest Periods - Meal Analysis" = "meal_analysis",
+              "Meal & Rest Periods - Meal Violations (>5 hrs)" = "meal_5hr",
+              "Meal & Rest Periods - Meal Violations (>6 hrs)" = "meal_6hr",
+              "Meal & Rest Periods - Rest Periods" = "rest_periods",
+              "Pay Analysis - Summary" = "pay_summary",
+              "Pay Analysis - Regular Rate" = "pay_regular_rate",
+              "Appendix - Shift Hours" = "appendix_shift",
+              "Appendix - Non-Work Hours" = "appendix_nonwork",
+              "Appendix - Meal Period Distribution" = "appendix_meal",
+              "Appendix - Meal Start Times" = "appendix_meal_start",
+              "Appendix - Meal Quarter Hour" = "appendix_meal_quarter"
+            ),
+            selected = c("case_info", "overview", "time_summary", "time_rounding",
+                        "meal_analysis", "meal_5hr", "meal_6hr", "rest_periods",
+                        "pay_summary", "pay_regular_rate",
+                        "appendix_shift", "appendix_nonwork", "appendix_meal",
+                        "appendix_meal_start", "appendix_meal_quarter")
+          ),
+          hr(),
+          downloadButton("download_pdf", "Generate PDF Report",
+                        class = "btn-primary btn-lg",
+                        icon = icon("file-pdf"))
+        )
       )
     ),
 
@@ -1365,10 +1402,312 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
       }
     )
 
-    # Print report placeholder
-    observeEvent(input$print_report, {
-      showNotification("PDF printing feature under development", type = "message")
-    })
+    # PDF Download Handler
+    output$download_pdf <- downloadHandler(
+      filename = function() {
+        paste0("Wage_Hour_Report_", format(Sys.Date(), "%Y%m%d"), ".html")
+      },
+      content = function(file) {
+        data <- filtered_data()
+        config <- case_config()
+        sections <- input$pdf_sections
+
+        # Get case name
+        case_name <- if (!is.null(config$case_name) && config$case_name != "") {
+          config$case_name
+        } else {
+          "Unknown Case"
+        }
+
+        # Start building HTML
+        html_content <- paste0('
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Wage & Hour Analysis Report</title>
+  <style>
+    @page {
+      size: legal landscape;
+      margin: 0.25in;
+    }
+
+    @media print {
+      @page {
+        @top-left {
+          content: "', case_name, '";
+          font-size: 10pt;
+        }
+        @top-right {
+          content: "Report Date: ', format(Sys.Date(), "%B %d, %Y"), '";
+          font-size: 10pt;
+        }
+        @bottom-center {
+          content: "Page " counter(page) " of " counter(pages);
+          font-size: 9pt;
+        }
+      }
+
+      thead { display: table-header-group; }
+      tfoot { display: table-footer-group; }
+      .page-break { page-break-before: always; }
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 10pt;
+      margin: 0;
+      padding: 20px;
+    }
+
+    h1 {
+      color: #2c3e50;
+      border-bottom: 3px solid #3498db;
+      padding-bottom: 10px;
+      margin-top: 30px;
+      font-size: 18pt;
+    }
+
+    h2 {
+      color: #34495e;
+      border-bottom: 2px solid #95a5a6;
+      padding-bottom: 5px;
+      margin-top: 20px;
+      font-size: 14pt;
+    }
+
+    h3 {
+      color: #34495e;
+      margin-top: 15px;
+      font-size: 12pt;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 15px 0;
+      font-size: 9pt;
+    }
+
+    th {
+      background-color: #2c3e50;
+      color: white;
+      padding: 8px;
+      text-align: left;
+      font-weight: bold;
+    }
+
+    td {
+      padding: 6px 8px;
+      border-bottom: 1px solid #ddd;
+    }
+
+    tr:nth-child(even) {
+      background-color: #f9f9f9;
+    }
+
+    .metric-col {
+      text-align: left;
+      font-weight: 500;
+    }
+
+    .value-col {
+      text-align: center;
+    }
+
+    .stat-box {
+      display: inline-block;
+      background: #ecf0f1;
+      padding: 10px 20px;
+      margin: 10px 10px 10px 0;
+      border-left: 4px solid #3498db;
+    }
+
+    .stat-label {
+      font-size: 9pt;
+      color: #7f8c8d;
+      margin-bottom: 5px;
+    }
+
+    .stat-value {
+      font-size: 16pt;
+      font-weight: bold;
+      color: #2c3e50;
+    }
+  </style>
+</head>
+<body>
+')
+
+        # Page 1: Case Information
+        if ("case_info" %in% sections) {
+          html_content <- paste0(html_content, '
+  <h1>📋 Case Information</h1>
+  <div style="margin: 20px 0;">
+    <p><strong>Case Name:</strong> ', case_name, '</p>
+    <p><strong>Case Number:</strong> ', ifelse(!is.null(config$case_number), config$case_number, "N/A"), '</p>
+    <p><strong>Date Filed:</strong> ', ifelse(!is.null(config$date_filed), config$date_filed, "N/A"), '</p>
+    <p><strong>Report Generated:</strong> ', format(Sys.Date(), "%B %d, %Y"), '</p>
+  </div>
+')
+        }
+
+        # Overview Statistics
+        if ("overview" %in% sections) {
+          html_content <- paste0(html_content, '
+  <h1>📊 Overview Statistics</h1>
+  <div class="page-break"></div>
+  <div style="margin: 20px 0;">
+    <div class="stat-box">
+      <div class="stat-label">Employees (Time)</div>
+      <div class="stat-value">', format(uniqueN(data$shift_data1$ID), big.mark = ","), '</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Employees (Pay)</div>
+      <div class="stat-value">', format(uniqueN(data$pay1$Pay_ID), big.mark = ","), '</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Total Shifts</div>
+      <div class="stat-value">', format(nrow(data$shift_data1), big.mark = ","), '</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Total Weeks</div>
+      <div class="stat-value">', format(uniqueN(data$shift_data1$ID_Week_End), big.mark = ","), '</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Pay Periods (Combined)</div>
+      <div class="stat-value">', format(uniqueN(c(data$shift_data1$ID_Period_End, data$pay1$Pay_ID_Period_End)), big.mark = ","), '</div>
+    </div>
+  </div>
+')
+        }
+
+        # Helper function to add table HTML
+        add_table <- function(dt_table, title, icon = "📊") {
+          if (nrow(dt_table) == 0) return("")
+
+          # Format column names
+          col_names <- format_col_name(names(dt_table))
+
+          table_html <- paste0('
+  <h2>', icon, ' ', title, '</h2>
+  <table>
+    <thead>
+      <tr>')
+
+          for (col_name in col_names) {
+            table_html <- paste0(table_html, '\n        <th>', col_name, '</th>')
+          }
+
+          table_html <- paste0(table_html, '\n      </tr>\n    </thead>\n    <tbody>')
+
+          for (i in 1:min(nrow(dt_table), 1000)) {  # Limit to 1000 rows for PDF
+            table_html <- paste0(table_html, '\n      <tr>')
+            for (j in 1:ncol(dt_table)) {
+              val <- dt_table[i, j, with = FALSE][[1]]
+              val <- if (is.na(val)) "" else as.character(val)
+              class_attr <- if (j == 1) ' class="metric-col"' else ' class="value-col"'
+              table_html <- paste0(table_html, '\n        <td', class_attr, '>', val, '</td>')
+            }
+            table_html <- paste0(table_html, '\n      </tr>')
+          }
+
+          table_html <- paste0(table_html, '\n    </tbody>\n  </table>\n')
+          return(table_html)
+        }
+
+        # Time Analysis - Summary & Levels
+        if ("time_summary" %in% sections) {
+          all_groups <- c(time_summary_groups, time_shift_groups)
+          if (length(all_groups) > 0) {
+            results <- calculate_group_metrics(data, metric_spec, all_groups, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            html_content <- paste0(html_content, add_table(results, "Time Analysis - Summary & Levels", "⏰"))
+          }
+        }
+
+        # Time Analysis - Punch Rounding
+        if ("time_rounding" %in% sections && length(time_rounding_groups) > 0) {
+          results <- calculate_group_metrics(data, metric_spec, time_rounding_groups, current_filters(), extrap_factor())
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
+          html_content <- paste0(html_content, add_table(results, "Time Analysis - Punch Rounding", "🔄"))
+        }
+
+        # Meal Analysis
+        if ("meal_analysis" %in% sections && length(time_meal_analysis) > 0) {
+          results <- calculate_group_metrics(data, metric_spec, time_meal_analysis, current_filters(), extrap_factor())
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
+          html_content <- paste0(html_content, add_table(results, "Meal Period Analysis", "🍽️"))
+        }
+
+        # Meal Violations >5 hrs
+        if ("meal_5hr" %in% sections && length(time_meal_violations_5) > 0) {
+          results <- calculate_group_metrics(data, metric_spec, time_meal_violations_5, current_filters(), extrap_factor())
+          html_content <- paste0(html_content, add_table(results, "Meal Violations (>5 hours)", "⚠️"))
+        }
+
+        # Meal Violations >6 hrs
+        if ("meal_6hr" %in% sections && length(time_meal_violations_6) > 0) {
+          results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6, current_filters(), extrap_factor())
+          html_content <- paste0(html_content, add_table(results, "Meal Violations (>6 hours)", "⚠️"))
+        }
+
+        # Rest Periods
+        if ("rest_periods" %in% sections && length(time_rest) > 0) {
+          results <- calculate_group_metrics(data, metric_spec, time_rest, current_filters(), extrap_factor())
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
+          html_content <- paste0(html_content, add_table(results, "Rest Periods", "☕"))
+        }
+
+        # Pay Analysis - Summary
+        if ("pay_summary" %in% sections && length(pay_summary_groups) > 0) {
+          results <- calculate_group_metrics(data, metric_spec, pay_summary_groups, current_filters(), extrap_factor())
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
+          html_content <- paste0(html_content, add_table(results, "Pay Analysis - Summary", "💰"))
+        }
+
+        # Pay Analysis - Regular Rate
+        if ("pay_regular_rate" %in% sections && length(pay_regular_rate) > 0) {
+          results <- calculate_group_metrics(data, metric_spec, pay_regular_rate, current_filters(), extrap_factor())
+          html_content <- paste0(html_content, add_table(results, "Pay Analysis - Regular Rate", "💵"))
+        }
+
+        # Appendix Tables
+        if ("appendix_shift" %in% sections && !is.null(analysis_tables$shift_hrs)) {
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
+          html_content <- paste0(html_content, add_table(analysis_tables$shift_hrs, "Appendix - Shift Hours", "📑"))
+        }
+
+        if ("appendix_nonwork" %in% sections && !is.null(analysis_tables$non_wrk_hrs)) {
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
+          html_content <- paste0(html_content, add_table(analysis_tables$non_wrk_hrs, "Appendix - Non-Work Hours", "📑"))
+        }
+
+        if ("appendix_meal" %in% sections && !is.null(analysis_tables$meal_period)) {
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
+          html_content <- paste0(html_content, add_table(analysis_tables$meal_period, "Appendix - Meal Period Distribution", "📑"))
+        }
+
+        if ("appendix_meal_start" %in% sections && !is.null(analysis_tables$meal_start_time)) {
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
+          html_content <- paste0(html_content, add_table(analysis_tables$meal_start_time, "Appendix - Meal Start Times", "📑"))
+        }
+
+        if ("appendix_meal_quarter" %in% sections && !is.null(analysis_tables$meal_quarter_hr)) {
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
+          html_content <- paste0(html_content, add_table(analysis_tables$meal_quarter_hr, "Appendix - Meal Quarter Hour", "📑"))
+        }
+
+        # Close HTML
+        html_content <- paste0(html_content, '\n</body>\n</html>')
+
+        # Write to file
+        writeLines(html_content, file)
+
+        showNotification("PDF report generated! Open the HTML file and use browser Print to PDF (Ctrl+P)",
+                        type = "message", duration = 10)
+      }
+    )
   }
 }
 
