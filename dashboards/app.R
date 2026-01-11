@@ -148,6 +148,11 @@ load_analysis_table <- function(filename) {
   filepath <- file.path(DATA_DIR, filename)
   if (file.exists(filepath)) {
     dt <- fread(filepath)
+    # Remove rows where first column is NA, empty, or "0"
+    if (nrow(dt) > 0 && ncol(dt) > 0) {
+      first_col <- names(dt)[1]
+      dt <- dt[!(is.na(get(first_col)) | get(first_col) == "" | get(first_col) == "0")]
+    }
     return(format_all_cols(dt))
   }
   NULL
@@ -377,8 +382,8 @@ create_dt_table <- function(dt, metric_col = "Metric") {
       scrollY = "600px",
       dom = 'frti',  # Removed 'p' for pagination
       columnDefs = list(
-        list(className = 'dt-left', targets = metric_cols_idx),
-        list(className = 'dt-center', targets = value_cols_idx)
+        list(className = 'dt-left dt-head-left', targets = metric_cols_idx),
+        list(className = 'dt-center dt-head-center', targets = value_cols_idx)
       ),
       initComplete = JS(
         "function(settings, json) {",
@@ -415,20 +420,6 @@ filter_sidebar <- function(data_list) {
     title = "Filters & Settings",
     width = 300,
 
-    # Font controls
-    h5("Display Settings"),
-    layout_columns(
-      col_widths = c(6, 6),
-      selectInput("font_family", "Font",
-                  choices = c("Default" = "inherit", "Times New Roman" = "Times New Roman"),
-                  selected = "inherit"),
-      selectInput("font_size", "Font Size",
-                  choices = c("Small" = "12px", "Medium" = "14px", "Large" = "16px", "X-Large" = "18px"),
-                  selected = "14px")
-    ),
-
-    hr(),
-
     h5("Date Range"),
     dateRangeInput(
       "date_range",
@@ -450,6 +441,20 @@ filter_sidebar <- function(data_list) {
       multiple = TRUE,
       options = list(placeholder = "All employees...")
     ),
+    selectizeInput(
+      "department_filter",
+      "Department",
+      choices = NULL,
+      multiple = TRUE,
+      options = list(placeholder = "All departments... (coming soon)")
+    ),
+    selectizeInput(
+      "location_filter",
+      "Location",
+      choices = NULL,
+      multiple = TRUE,
+      options = list(placeholder = "All locations... (coming soon)")
+    ),
 
     hr(),
 
@@ -462,8 +467,21 @@ filter_sidebar <- function(data_list) {
 
     hr(),
 
-    downloadButton("download_report", "Download CSV Report", class = "w-100 mt-2"),
-    actionButton("print_report", "Print Report (PDF)", icon = icon("print"), class = "btn-info w-100 mt-2")
+    # Display Settings
+    h5("Display Settings"),
+    layout_columns(
+      col_widths = c(6, 6),
+      selectInput("font_family", "Font",
+                  choices = c("Default" = "inherit", "Times New Roman" = "Times New Roman"),
+                  selected = "inherit"),
+      selectInput("font_size", "Font Size",
+                  choices = c("Small" = "12px", "Medium" = "14px", "Large" = "16px", "X-Large" = "18px"),
+                  selected = "14px")
+    ),
+
+    hr(),
+
+    downloadButton("download_report", "Download CSV Report", class = "w-100 mt-2")
   )
 }
 
@@ -486,7 +504,7 @@ ui <- function(data_list, metric_spec, case_config) {
     # Initialize shinyjs
     useShinyjs(),
 
-    # Filter status banner
+    # Filter status banner and custom CSS
     tags$head(
       tags$style(HTML("
         #filter_banner {
@@ -502,7 +520,89 @@ ui <- function(data_list, metric_spec, case_config) {
         }
         .dt-center { text-align: center !important; }
         .dt-left { text-align: left !important; }
+        .dt-head-center { text-align: center !important; }
+        .dt-head-left { text-align: left !important; }
+
+        /* Time Data - Dark Blue */
+        .value-box.time-data {
+          border-left: 4px solid #2c3e50 !important;
+        }
+        .value-box.time-data .value-box-showcase {
+          background-color: #2c3e50 !important;
+        }
+
+        /* Pay Data - Green */
+        .value-box.pay-data {
+          border-left: 4px solid #27ae60 !important;
+        }
+        .value-box.pay-data .value-box-showcase {
+          background-color: #27ae60 !important;
+        }
+
+        /* Loading Overlay */
+        #loading-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background-color: rgba(44, 62, 80, 0.95);
+          z-index: 9999;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: center;
+        }
+
+        #loading-content {
+          text-align: center;
+          color: white;
+        }
+
+        .loader {
+          border: 8px solid #f3f3f3;
+          border-top: 8px solid #27ae60;
+          border-radius: 50%;
+          width: 60px;
+          height: 60px;
+          animation: spin 1s linear infinite;
+          margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+          font-size: 24px;
+          font-weight: bold;
+          margin-bottom: 10px;
+        }
+
+        .loading-subtext {
+          font-size: 14px;
+          color: #ecf0f1;
+        }
+      ")),
+      tags$script(HTML("
+        $(document).on('shiny:sessioninitialized', function() {
+          setTimeout(function() {
+            $('#loading-overlay').fadeOut(500);
+          }, 500);
+        });
       "))
+    ),
+
+    # Loading overlay
+    tags$div(
+      id = "loading-overlay",
+      tags$div(
+        id = "loading-content",
+        tags$div(class = "loader"),
+        tags$div(class = "loading-text", "Loading Dashboard..."),
+        tags$div(class = "loading-subtext", "Initializing data tables and visualizations")
+      )
     ),
 
     div(id = "filter_banner", style = "display: none;", "⚠ FILTERS ACTIVE - Click 'Reset All Filters' to clear"),
@@ -541,13 +641,14 @@ ui <- function(data_list, metric_spec, case_config) {
         card_header("Export to PDF"),
         card_body(
           h5("Select Sections to Include:"),
+          checkboxInput("pdf_select_all_appendix", "Appendix (All)", value = FALSE),
           checkboxGroupInput(
             "pdf_sections",
             NULL,
             choices = c(
-              "Case Information" = "case_info",
               "Overview Statistics" = "overview",
-              "Time Analysis - Summary & Levels" = "time_summary",
+              "Time Analysis - Summary" = "time_summary",
+              "Time Analysis - Shift Hours Analysis" = "time_shift_hours",
               "Time Analysis - Punch Rounding" = "time_rounding",
               "Meal & Rest Periods - Meal Analysis" = "meal_analysis",
               "Meal & Rest Periods - Meal Violations (>5 hrs)" = "meal_5hr",
@@ -561,11 +662,9 @@ ui <- function(data_list, metric_spec, case_config) {
               "Appendix - Meal Start Times" = "appendix_meal_start",
               "Appendix - Meal Quarter Hour" = "appendix_meal_quarter"
             ),
-            selected = c("case_info", "overview", "time_summary", "time_rounding",
+            selected = c("overview", "time_summary", "time_shift_hours", "time_rounding",
                         "meal_analysis", "meal_5hr", "meal_6hr", "rest_periods",
-                        "pay_summary", "pay_regular_rate",
-                        "appendix_shift", "appendix_nonwork", "appendix_meal",
-                        "appendix_meal_start", "appendix_meal_quarter")
+                        "pay_summary", "pay_regular_rate")
           ),
           hr(),
           downloadButton("download_pdf", "Generate PDF Report",
@@ -589,13 +688,15 @@ ui <- function(data_list, metric_spec, case_config) {
           title = "Employees (Time)",
           value = textOutput("total_employees_time"),
           showcase = icon("users"),
-          theme = "primary"
+          theme = "primary",
+          class = "time-data"
         ),
         value_box(
           title = "Employees (Pay)",
           value = textOutput("total_employees_pay"),
           showcase = icon("users"),
-          theme = "info"
+          theme = "success",
+          class = "pay-data"
         ),
         value_box(
           title = "Employees (Class)",
@@ -692,8 +793,12 @@ ui <- function(data_list, metric_spec, case_config) {
 
       navset_card_underline(
         nav_panel(
-          "Summary & Levels",
-          withSpinner(DTOutput("table_time_consolidated"), type = 6, color = "#2c3e50")
+          "Summary",
+          withSpinner(DTOutput("table_time_summary"), type = 6, color = "#2c3e50")
+        ),
+        nav_panel(
+          "Shift Hours Analysis",
+          withSpinner(DTOutput("table_shift_hours"), type = 6, color = "#2c3e50")
         ),
         nav_panel(
           "Punch Rounding",
@@ -716,12 +821,22 @@ ui <- function(data_list, metric_spec, case_config) {
 
       nav_panel(
         "Meal Violations >5hrs",
-        withSpinner(DTOutput("table_meal_5hr_consolidated"), type = 6, color = "#2c3e50")
+        navset_card_underline(
+          nav_panel(
+            "All Violations",
+            withSpinner(DTOutput("table_meal_5hr_consolidated"), type = 6, color = "#2c3e50")
+          )
+        )
       ),
 
       nav_panel(
         "Meal Violations >6hrs",
-        withSpinner(DTOutput("table_meal_6hr_consolidated"), type = 6, color = "#2c3e50")
+        navset_card_underline(
+          nav_panel(
+            "All Violations",
+            withSpinner(DTOutput("table_meal_6hr_consolidated"), type = 6, color = "#2c3e50")
+          )
+        )
       ),
 
       nav_panel(
@@ -928,6 +1043,23 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
       current_filters(list())
     })
 
+    # Appendix checkbox toggle
+    observeEvent(input$pdf_select_all_appendix, {
+      appendix_items <- c("appendix_shift", "appendix_nonwork", "appendix_meal",
+                          "appendix_meal_start", "appendix_meal_quarter")
+      current_selection <- input$pdf_sections
+
+      if (input$pdf_select_all_appendix) {
+        # Add all appendix items
+        new_selection <- unique(c(current_selection, appendix_items))
+      } else {
+        # Remove all appendix items
+        new_selection <- setdiff(current_selection, appendix_items)
+      }
+
+      updateCheckboxGroupInput(session, "pdf_sections", selected = new_selection)
+    })
+
     # Filtered data with precomputed metadata
     filtered_data <- reactive({
       filters <- current_filters()
@@ -1084,18 +1216,19 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
       time_emp <- data$shift_data1[, .(
         Employees = uniqueN(ID),
         Type = "Time Data"
-      ), by = .(Period = ID_Period_End)]
+      ), by = .(Period = Period_End)]
 
       pay_emp <- data$pay1[, .(
         Employees = uniqueN(Pay_ID),
         Type = "Pay Data"
-      ), by = .(Period = Pay_ID_Period_End)]
+      ), by = .(Period = Pay_Period_End)]
 
       combined <- rbindlist(list(time_emp, pay_emp))
       combined <- combined[order(Period)]
 
       plot_ly(combined, x = ~Period, y = ~Employees, color = ~Type,
-              type = 'scatter', mode = 'lines+markers') %>%
+              type = 'scatter', mode = 'lines+markers',
+              colors = c("Time Data" = "#2c3e50", "Pay Data" = "#27ae60")) %>%
         layout(
           title = "Time & Pay Data Comparison During Relevant Period",
           xaxis = list(title = "Pay Period End Date"),
@@ -1146,77 +1279,229 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
       venn <- venn_data()
       sources <- input$venn_sources
 
-      # Create a simple representation using plotly shapes
+      # Create overlapping Venn diagram using plotly
       plot_ly() %>%
         layout(
           title = "Employee Data Overlap",
-          xaxis = list(range = c(-2, 2), showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
-          yaxis = list(range = c(-2, 2), showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+          xaxis = list(range = c(-3, 3), showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE, title = ""),
+          yaxis = list(range = c(-2.5, 2.5), showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE, title = ""),
           shapes = list(),
-          annotations = list()
+          annotations = list(),
+          showlegend = FALSE
         ) -> p
 
-      # Add circles for selected data sources
       shapes_list <- list()
       annot_list <- list()
 
-      if ("time" %in% sources) {
+      # Two-circle Venn diagram (Time and Pay only)
+      if (length(sources) == 2 && "time" %in% sources && "pay" %in% sources) {
+        # Time circle (left, dark blue)
         shapes_list[[length(shapes_list) + 1]] <- list(
           type = "circle",
           xref = "x", yref = "y",
-          x0 = -1.5, y0 = 0, x1 = 0, y1 = 1.5,
-          line = list(color = "#3498db", width = 3),
-          fillcolor = "rgba(52, 152, 219, 0.2)"
+          x0 = -2, y0 = -1, x1 = 0, y1 = 1,
+          line = list(color = "#2c3e50", width = 3),
+          fillcolor = "rgba(44, 62, 80, 0.3)"
         )
-        annot_list[[length(annot_list) + 1]] <- list(
-          x = -1, y = 1.2,
-          text = paste0("Time Data<br>", format(venn$time_total, big.mark = ",")),
-          showarrow = FALSE,
-          font = list(size = 14, color = "#3498db")
-        )
-      }
 
-      if ("pay" %in% sources) {
+        # Pay circle (right, green)
         shapes_list[[length(shapes_list) + 1]] <- list(
           type = "circle",
           xref = "x", yref = "y",
-          x0 = 0, y0 = 0, x1 = 1.5, y1 = 1.5,
-          line = list(color = "#e74c3c", width = 3),
-          fillcolor = "rgba(231, 76, 60, 0.2)"
+          x0 = 0, y0 = -1, x1 = 2, y1 = 1,
+          line = list(color = "#27ae60", width = 3),
+          fillcolor = "rgba(39, 174, 96, 0.3)"
         )
-        annot_list[[length(annot_list) + 1]] <- list(
-          x = 1, y = 1.2,
-          text = paste0("Pay Data<br>", format(venn$pay_total, big.mark = ",")),
-          showarrow = FALSE,
-          font = list(size = 14, color = "#e74c3c")
-        )
-      }
 
-      if ("class" %in% sources && venn$class_total > 0) {
-        shapes_list[[length(shapes_list) + 1]] <- list(
-          type = "circle",
-          xref = "x", yref = "y",
-          x0 = -0.75, y0 = -1.5, x1 = 0.75, y1 = 0,
-          line = list(color = "#2ecc71", width = 3),
-          fillcolor = "rgba(46, 204, 113, 0.2)"
-        )
+        # Labels outside circles
         annot_list[[length(annot_list) + 1]] <- list(
-          x = 0, y = -1.2,
-          text = paste0("Class Data<br>", format(venn$class_total, big.mark = ",")),
+          x = -1.5, y = 1.5,
+          text = paste0("<b>Time Data</b><br>", format(venn$time_total, big.mark = ",")),
           showarrow = FALSE,
-          font = list(size = 14, color = "#2ecc71")
+          font = list(size = 12, color = "#2c3e50")
         )
-      }
 
-      # Add overlap annotations
-      if ("time" %in% sources && "pay" %in% sources) {
-        total_overlap <- venn$time_pay + venn$all_three
-        if (total_overlap > 0) {
+        annot_list[[length(annot_list) + 1]] <- list(
+          x = 1.5, y = 1.5,
+          text = paste0("<b>Pay Data</b><br>", format(venn$pay_total, big.mark = ",")),
+          showarrow = FALSE,
+          font = list(size = 12, color = "#27ae60")
+        )
+
+        # Time only (left region)
+        if (venn$time_only > 0) {
           annot_list[[length(annot_list) + 1]] <- list(
-            x = -0.25, y = 0.75,
-            text = format(total_overlap, big.mark = ","),
+            x = -1.3, y = 0,
+            text = format(venn$time_only, big.mark = ","),
             showarrow = FALSE,
-            font = list(size = 12, color = "#34495e")
+            font = list(size = 14, color = "#2c3e50", weight = "bold")
+          )
+        }
+
+        # Overlap region (center)
+        overlap_count <- venn$time_pay + venn$all_three
+        if (overlap_count > 0) {
+          annot_list[[length(annot_list) + 1]] <- list(
+            x = 0, y = 0,
+            text = format(overlap_count, big.mark = ","),
+            showarrow = FALSE,
+            font = list(size = 16, color = "#34495e", weight = "bold"),
+            bgcolor = "rgba(255,255,255,0.8)",
+            borderpad = 4
+          )
+        }
+
+        # Pay only (right region)
+        if (venn$pay_only > 0) {
+          annot_list[[length(annot_list) + 1]] <- list(
+            x = 1.3, y = 0,
+            text = format(venn$pay_only, big.mark = ","),
+            showarrow = FALSE,
+            font = list(size = 14, color = "#27ae60", weight = "bold")
+          )
+        }
+      }
+
+      # Three-circle Venn diagram
+      else if (length(sources) == 3 && venn$class_total > 0) {
+        # Time circle (top left, dark blue)
+        shapes_list[[length(shapes_list) + 1]] <- list(
+          type = "circle",
+          xref = "x", yref = "y",
+          x0 = -2, y0 = 0.2, x1 = 0, y1 = 2.2,
+          line = list(color = "#2c3e50", width = 3),
+          fillcolor = "rgba(44, 62, 80, 0.25)"
+        )
+
+        # Pay circle (top right, green)
+        shapes_list[[length(shapes_list) + 1]] <- list(
+          type = "circle",
+          xref = "x", yref = "y",
+          x0 = 0, y0 = 0.2, x1 = 2, y1 = 2.2,
+          line = list(color = "#27ae60", width = 3),
+          fillcolor = "rgba(39, 174, 96, 0.25)"
+        )
+
+        # Class circle (bottom, orange)
+        shapes_list[[length(shapes_list) + 1]] <- list(
+          type = "circle",
+          xref = "x", yref = "y",
+          x0 = -1, y0 = -2, x1 = 1, y1 = 0,
+          line = list(color = "#e67e22", width = 3),
+          fillcolor = "rgba(230, 126, 34, 0.25)"
+        )
+
+        # Labels
+        annot_list[[length(annot_list) + 1]] <- list(
+          x = -1.5, y = 2.2,
+          text = paste0("<b>Time</b> (", format(venn$time_total, big.mark = ","), ")"),
+          showarrow = FALSE,
+          font = list(size = 11, color = "#2c3e50")
+        )
+
+        annot_list[[length(annot_list) + 1]] <- list(
+          x = 1.5, y = 2.2,
+          text = paste0("<b>Pay</b> (", format(venn$pay_total, big.mark = ","), ")"),
+          showarrow = FALSE,
+          font = list(size = 11, color = "#27ae60")
+        )
+
+        annot_list[[length(annot_list) + 1]] <- list(
+          x = 0, y = -2.2,
+          text = paste0("<b>Class</b> (", format(venn$class_total, big.mark = ","), ")"),
+          showarrow = FALSE,
+          font = list(size = 11, color = "#e67e22")
+        )
+
+        # Add counts in regions
+        # Time only (top left)
+        if (venn$time_only > 0) {
+          annot_list[[length(annot_list) + 1]] <- list(
+            x = -1.4, y = 1.5,
+            text = format(venn$time_only, big.mark = ","),
+            showarrow = FALSE,
+            font = list(size = 12, color = "#2c3e50", weight = "bold")
+          )
+        }
+
+        # Pay only (top right)
+        if (venn$pay_only > 0) {
+          annot_list[[length(annot_list) + 1]] <- list(
+            x = 1.4, y = 1.5,
+            text = format(venn$pay_only, big.mark = ","),
+            showarrow = FALSE,
+            font = list(size = 12, color = "#27ae60", weight = "bold")
+          )
+        }
+
+        # Class only (bottom)
+        if (venn$class_only > 0) {
+          annot_list[[length(annot_list) + 1]] <- list(
+            x = 0, y = -1.3,
+            text = format(venn$class_only, big.mark = ","),
+            showarrow = FALSE,
+            font = list(size = 12, color = "#e67e22", weight = "bold")
+          )
+        }
+
+        # Time & Pay overlap (top center)
+        if (venn$time_pay > 0) {
+          annot_list[[length(annot_list) + 1]] <- list(
+            x = 0, y = 1.5,
+            text = format(venn$time_pay, big.mark = ","),
+            showarrow = FALSE,
+            font = list(size = 12, color = "#34495e", weight = "bold")
+          )
+        }
+
+        # Time & Class overlap (left)
+        if (venn$time_class > 0) {
+          annot_list[[length(annot_list) + 1]] <- list(
+            x = -0.9, y = 0.3,
+            text = format(venn$time_class, big.mark = ","),
+            showarrow = FALSE,
+            font = list(size = 12, color = "#34495e", weight = "bold")
+          )
+        }
+
+        # Pay & Class overlap (right)
+        if (venn$pay_class > 0) {
+          annot_list[[length(annot_list) + 1]] <- list(
+            x = 0.9, y = 0.3,
+            text = format(venn$pay_class, big.mark = ","),
+            showarrow = FALSE,
+            font = list(size = 12, color = "#34495e", weight = "bold")
+          )
+        }
+
+        # All three overlap (center)
+        if (venn$all_three > 0) {
+          annot_list[[length(annot_list) + 1]] <- list(
+            x = 0, y = 0.7,
+            text = format(venn$all_three, big.mark = ","),
+            showarrow = FALSE,
+            font = list(size = 14, color = "#000000", weight = "bold"),
+            bgcolor = "rgba(255,255,255,0.9)",
+            borderpad = 4
+          )
+        }
+      }
+
+      # Single circle or other combinations - simplified view
+      else {
+        if ("time" %in% sources) {
+          shapes_list[[length(shapes_list) + 1]] <- list(
+            type = "circle",
+            xref = "x", yref = "y",
+            x0 = -1, y0 = -1, x1 = 1, y1 = 1,
+            line = list(color = "#2c3e50", width = 3),
+            fillcolor = "rgba(44, 62, 80, 0.3)"
+          )
+          annot_list[[length(annot_list) + 1]] <- list(
+            x = 0, y = 0,
+            text = paste0("<b>Time Data</b><br>", format(venn$time_total, big.mark = ",")),
+            showarrow = FALSE,
+            font = list(size = 14, color = "#2c3e50")
           )
         }
       }
@@ -1268,14 +1553,22 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
       }
     })
 
-    # Time Analysis Consolidated
-    output$table_time_consolidated <- renderDT({
+    # Time Analysis - Summary
+    output$table_time_summary <- renderDT({
       data <- filtered_data()
       factor <- extrap_factor()
 
-      # Combine all time analysis groups
-      all_groups <- c(time_summary_groups, time_shift_groups)
-      results <- calculate_group_metrics(data, metric_spec, all_groups, current_filters(), factor)
+      results <- calculate_group_metrics(data, metric_spec, time_summary_groups, current_filters(), factor)
+
+      create_dt_table(results)
+    })
+
+    # Time Analysis - Shift Hours
+    output$table_shift_hours <- renderDT({
+      data <- filtered_data()
+      factor <- extrap_factor()
+
+      results <- calculate_group_metrics(data, metric_spec, time_shift_groups, current_filters(), factor)
 
       create_dt_table(results)
     })
@@ -1391,6 +1684,9 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
         paste0("wage_hour_report_", Sys.Date(), ".csv")
       },
       content = function(file) {
+        # Show notification
+        showNotification("Generating CSV report...", type = "message", duration = 2)
+
         # Generate full report CSV
         data <- filtered_data()
         factor <- extrap_factor()
@@ -1399,6 +1695,8 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
         results <- calculate_group_metrics(data, metric_spec, all_groups, current_filters(), factor)
 
         fwrite(results, file)
+
+        showNotification("CSV report ready! Check your downloads.", type = "message", duration = 3)
       }
     )
 
@@ -1408,6 +1706,10 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
         paste0("Wage_Hour_Report_", format(Sys.Date(), "%Y%m%d"), ".html")
       },
       content = function(file) {
+        # Show notification
+        showNotification("Generating PDF report (HTML format)... This may take a moment.",
+                        type = "message", duration = 3)
+
         data <- filtered_data()
         config <- case_config()
         sections <- input$pdf_sections
@@ -1556,7 +1858,6 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
         if ("overview" %in% sections) {
           html_content <- paste0(html_content, '
   <h1>📊 Overview Statistics</h1>
-  <div class="page-break"></div>
   <div style="margin: 20px 0;">
     <div class="stat-box">
       <div class="stat-label">Employees (Time)</div>
@@ -1616,14 +1917,17 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
           return(table_html)
         }
 
-        # Time Analysis - Summary & Levels
-        if ("time_summary" %in% sections) {
-          all_groups <- c(time_summary_groups, time_shift_groups)
-          if (length(all_groups) > 0) {
-            results <- calculate_group_metrics(data, metric_spec, all_groups, current_filters(), extrap_factor())
-            html_content <- paste0(html_content, '<div class="page-break"></div>')
-            html_content <- paste0(html_content, add_table(results, "Time Analysis - Summary & Levels", "⏰"))
-          }
+        # Time Analysis - Summary
+        if ("time_summary" %in% sections && length(time_summary_groups) > 0) {
+          results <- calculate_group_metrics(data, metric_spec, time_summary_groups, current_filters(), extrap_factor())
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
+          html_content <- paste0(html_content, add_table(results, "Time Analysis - Summary", "⏰"))
+        }
+
+        # Time Analysis - Shift Hours Analysis
+        if ("time_shift_hours" %in% sections && length(time_shift_groups) > 0) {
+          results <- calculate_group_metrics(data, metric_spec, time_shift_groups, current_filters(), extrap_factor())
+          html_content <- paste0(html_content, add_table(results, "Time Analysis - Shift Hours Analysis", "📊"))
         }
 
         # Time Analysis - Punch Rounding
