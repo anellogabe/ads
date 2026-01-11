@@ -500,48 +500,49 @@ ui <- function(data_list, metric_spec, case_config) {
       "navbar-bg" = "#2c3e50"
     ),
     sidebar = filter_sidebar(data_list),
+    header = tagList(
+      # Initialize shinyjs
+      useShinyjs(),
 
-    # Initialize shinyjs
-    useShinyjs(),
+      # Filter status banner and custom CSS
+      tags$head(
+        tags$style(HTML("
+          #filter_banner {
+            display: none;
+            background-color: #e74c3c;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            font-weight: bold;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+          }
+          .dt-center { text-align: center !important; }
+          .dt-left { text-align: left !important; }
+          .dt-head-center { text-align: center !important; }
+          .dt-head-left { text-align: left !important; }
 
-    # Filter status banner and custom CSS
-    tags$head(
-      tags$style(HTML("
-        #filter_banner {
-          display: none;
-          background-color: #e74c3c;
-          color: white;
-          padding: 10px;
-          text-align: center;
-          font-weight: bold;
-          position: sticky;
-          top: 0;
-          z-index: 1000;
-        }
-        .dt-center { text-align: center !important; }
-        .dt-left { text-align: left !important; }
-        .dt-head-center { text-align: center !important; }
-        .dt-head-left { text-align: left !important; }
+          /* Time Data - Dark Blue */
+          .value-box.time-data {
+            border-left: 4px solid #2c3e50 !important;
+          }
+          .value-box.time-data .value-box-showcase {
+            background-color: #2c3e50 !important;
+          }
 
-        /* Time Data - Dark Blue */
-        .value-box.time-data {
-          border-left: 4px solid #2c3e50 !important;
-        }
-        .value-box.time-data .value-box-showcase {
-          background-color: #2c3e50 !important;
-        }
+          /* Pay Data - Green */
+          .value-box.pay-data {
+            border-left: 4px solid #27ae60 !important;
+          }
+          .value-box.pay-data .value-box-showcase {
+            background-color: #27ae60 !important;
+          }
+        "))
+      ),
 
-        /* Pay Data - Green */
-        .value-box.pay-data {
-          border-left: 4px solid #27ae60 !important;
-        }
-        .value-box.pay-data .value-box-showcase {
-          background-color: #27ae60 !important;
-        }
-      "))
+      div(id = "filter_banner", style = "display: none;", "⚠ FILTERS ACTIVE - Click 'Reset All Filters' to clear")
     ),
-
-    div(id = "filter_banner", style = "display: none;", "⚠ FILTERS ACTIVE - Click 'Reset All Filters' to clear"),
 
     # =======================================================================
     # CASE ANALYSIS DETAIL TAB
@@ -679,7 +680,7 @@ ui <- function(data_list, metric_spec, case_config) {
     # =======================================================================
     nav_panel(
       title = "Data Comparison",
-      icon = icon("venn-diagram"),
+      icon = icon("project-diagram"),
 
       layout_columns(
         col_widths = c(8, 4),
@@ -1070,7 +1071,7 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
         shift_key_groups = shift_key_groups,
         pay_key_groups = pay_key_groups
       )
-    })
+    }) %>% bindCache(current_filters())
 
     # ===========================================================================
     # CASE CONFIGURATION OUTPUTS
@@ -1233,7 +1234,8 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
       sources <- input$venn_sources
 
       # Create overlapping Venn diagram using plotly
-      plot_ly() %>%
+      plot_ly(x = 0, y = 0, type = "scatter", mode = "markers",
+              marker = list(size = 0, opacity = 0), showlegend = FALSE) %>%
         layout(
           title = "Employee Data Overlap",
           xaxis = list(range = c(-3, 3), showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE, title = ""),
