@@ -148,6 +148,11 @@ load_analysis_table <- function(filename) {
   filepath <- file.path(DATA_DIR, filename)
   if (file.exists(filepath)) {
     dt <- fread(filepath)
+    # Remove rows where first column is NA, empty, or "0"
+    if (nrow(dt) > 0 && ncol(dt) > 0) {
+      first_col <- names(dt)[1]
+      dt <- dt[!(is.na(get(first_col)) | get(first_col) == "" | get(first_col) == "0")]
+    }
     return(format_all_cols(dt))
   }
   NULL
@@ -377,8 +382,8 @@ create_dt_table <- function(dt, metric_col = "Metric") {
       scrollY = "600px",
       dom = 'frti',  # Removed 'p' for pagination
       columnDefs = list(
-        list(className = 'dt-left', targets = metric_cols_idx),
-        list(className = 'dt-center', targets = value_cols_idx)
+        list(className = 'dt-left dt-head-left', targets = metric_cols_idx),
+        list(className = 'dt-center dt-head-center', targets = value_cols_idx)
       ),
       initComplete = JS(
         "function(settings, json) {",
@@ -415,20 +420,6 @@ filter_sidebar <- function(data_list) {
     title = "Filters & Settings",
     width = 300,
 
-    # Font controls
-    h5("Display Settings"),
-    layout_columns(
-      col_widths = c(6, 6),
-      selectInput("font_family", "Font",
-                  choices = c("Default" = "inherit", "Times New Roman" = "Times New Roman"),
-                  selected = "inherit"),
-      selectInput("font_size", "Font Size",
-                  choices = c("Small" = "12px", "Medium" = "14px", "Large" = "16px", "X-Large" = "18px"),
-                  selected = "14px")
-    ),
-
-    hr(),
-
     h5("Date Range"),
     dateRangeInput(
       "date_range",
@@ -450,6 +441,20 @@ filter_sidebar <- function(data_list) {
       multiple = TRUE,
       options = list(placeholder = "All employees...")
     ),
+    selectizeInput(
+      "department_filter",
+      "Department",
+      choices = NULL,
+      multiple = TRUE,
+      options = list(placeholder = "All departments... (coming soon)")
+    ),
+    selectizeInput(
+      "location_filter",
+      "Location",
+      choices = NULL,
+      multiple = TRUE,
+      options = list(placeholder = "All locations... (coming soon)")
+    ),
 
     hr(),
 
@@ -462,8 +467,21 @@ filter_sidebar <- function(data_list) {
 
     hr(),
 
-    downloadButton("download_report", "Download CSV Report", class = "w-100 mt-2"),
-    actionButton("print_report", "Print Report (PDF)", icon = icon("print"), class = "btn-info w-100 mt-2")
+    # Display Settings
+    h5("Display Settings"),
+    layout_columns(
+      col_widths = c(6, 6),
+      selectInput("font_family", "Font",
+                  choices = c("Default" = "inherit", "Times New Roman" = "Times New Roman"),
+                  selected = "inherit"),
+      selectInput("font_size", "Font Size",
+                  choices = c("Small" = "12px", "Medium" = "14px", "Large" = "16px", "X-Large" = "18px"),
+                  selected = "14px")
+    ),
+
+    hr(),
+
+    downloadButton("download_report", "Download CSV Report", class = "w-100 mt-2")
   )
 }
 
@@ -502,6 +520,8 @@ ui <- function(data_list, metric_spec, case_config) {
         }
         .dt-center { text-align: center !important; }
         .dt-left { text-align: left !important; }
+        .dt-head-center { text-align: center !important; }
+        .dt-head-left { text-align: left !important; }
       "))
     ),
 
@@ -541,13 +561,14 @@ ui <- function(data_list, metric_spec, case_config) {
         card_header("Export to PDF"),
         card_body(
           h5("Select Sections to Include:"),
+          checkboxInput("pdf_select_all_appendix", "Appendix (All)", value = FALSE),
           checkboxGroupInput(
             "pdf_sections",
             NULL,
             choices = c(
-              "Case Information" = "case_info",
               "Overview Statistics" = "overview",
-              "Time Analysis - Summary & Levels" = "time_summary",
+              "Time Analysis - Summary" = "time_summary",
+              "Time Analysis - Shift Hours Analysis" = "time_shift_hours",
               "Time Analysis - Punch Rounding" = "time_rounding",
               "Meal & Rest Periods - Meal Analysis" = "meal_analysis",
               "Meal & Rest Periods - Meal Violations (>5 hrs)" = "meal_5hr",
@@ -561,11 +582,9 @@ ui <- function(data_list, metric_spec, case_config) {
               "Appendix - Meal Start Times" = "appendix_meal_start",
               "Appendix - Meal Quarter Hour" = "appendix_meal_quarter"
             ),
-            selected = c("case_info", "overview", "time_summary", "time_rounding",
+            selected = c("overview", "time_summary", "time_shift_hours", "time_rounding",
                         "meal_analysis", "meal_5hr", "meal_6hr", "rest_periods",
-                        "pay_summary", "pay_regular_rate",
-                        "appendix_shift", "appendix_nonwork", "appendix_meal",
-                        "appendix_meal_start", "appendix_meal_quarter")
+                        "pay_summary", "pay_regular_rate")
           ),
           hr(),
           downloadButton("download_pdf", "Generate PDF Report",
@@ -692,8 +711,12 @@ ui <- function(data_list, metric_spec, case_config) {
 
       navset_card_underline(
         nav_panel(
-          "Summary & Levels",
-          withSpinner(DTOutput("table_time_consolidated"), type = 6, color = "#2c3e50")
+          "Summary",
+          withSpinner(DTOutput("table_time_summary"), type = 6, color = "#2c3e50")
+        ),
+        nav_panel(
+          "Shift Hours Analysis",
+          withSpinner(DTOutput("table_shift_hours"), type = 6, color = "#2c3e50")
         ),
         nav_panel(
           "Punch Rounding",
@@ -716,12 +739,22 @@ ui <- function(data_list, metric_spec, case_config) {
 
       nav_panel(
         "Meal Violations >5hrs",
-        withSpinner(DTOutput("table_meal_5hr_consolidated"), type = 6, color = "#2c3e50")
+        navset_card_underline(
+          nav_panel(
+            "All Violations",
+            withSpinner(DTOutput("table_meal_5hr_consolidated"), type = 6, color = "#2c3e50")
+          )
+        )
       ),
 
       nav_panel(
         "Meal Violations >6hrs",
-        withSpinner(DTOutput("table_meal_6hr_consolidated"), type = 6, color = "#2c3e50")
+        navset_card_underline(
+          nav_panel(
+            "All Violations",
+            withSpinner(DTOutput("table_meal_6hr_consolidated"), type = 6, color = "#2c3e50")
+          )
+        )
       ),
 
       nav_panel(
@@ -928,6 +961,23 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
       current_filters(list())
     })
 
+    # Appendix checkbox toggle
+    observeEvent(input$pdf_select_all_appendix, {
+      appendix_items <- c("appendix_shift", "appendix_nonwork", "appendix_meal",
+                          "appendix_meal_start", "appendix_meal_quarter")
+      current_selection <- input$pdf_sections
+
+      if (input$pdf_select_all_appendix) {
+        # Add all appendix items
+        new_selection <- unique(c(current_selection, appendix_items))
+      } else {
+        # Remove all appendix items
+        new_selection <- setdiff(current_selection, appendix_items)
+      }
+
+      updateCheckboxGroupInput(session, "pdf_sections", selected = new_selection)
+    })
+
     # Filtered data with precomputed metadata
     filtered_data <- reactive({
       filters <- current_filters()
@@ -1084,18 +1134,19 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
       time_emp <- data$shift_data1[, .(
         Employees = uniqueN(ID),
         Type = "Time Data"
-      ), by = .(Period = ID_Period_End)]
+      ), by = .(Period = Period_End)]
 
       pay_emp <- data$pay1[, .(
         Employees = uniqueN(Pay_ID),
         Type = "Pay Data"
-      ), by = .(Period = Pay_ID_Period_End)]
+      ), by = .(Period = Pay_Period_End)]
 
       combined <- rbindlist(list(time_emp, pay_emp))
       combined <- combined[order(Period)]
 
       plot_ly(combined, x = ~Period, y = ~Employees, color = ~Type,
-              type = 'scatter', mode = 'lines+markers') %>%
+              type = 'scatter', mode = 'lines+markers',
+              colors = c("Time Data" = "#2c3e50", "Pay Data" = "#27ae60")) %>%
         layout(
           title = "Time & Pay Data Comparison During Relevant Period",
           xaxis = list(title = "Pay Period End Date"),
@@ -1268,14 +1319,22 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
       }
     })
 
-    # Time Analysis Consolidated
-    output$table_time_consolidated <- renderDT({
+    # Time Analysis - Summary
+    output$table_time_summary <- renderDT({
       data <- filtered_data()
       factor <- extrap_factor()
 
-      # Combine all time analysis groups
-      all_groups <- c(time_summary_groups, time_shift_groups)
-      results <- calculate_group_metrics(data, metric_spec, all_groups, current_filters(), factor)
+      results <- calculate_group_metrics(data, metric_spec, time_summary_groups, current_filters(), factor)
+
+      create_dt_table(results)
+    })
+
+    # Time Analysis - Shift Hours
+    output$table_shift_hours <- renderDT({
+      data <- filtered_data()
+      factor <- extrap_factor()
+
+      results <- calculate_group_metrics(data, metric_spec, time_shift_groups, current_filters(), factor)
 
       create_dt_table(results)
     })
@@ -1556,7 +1615,6 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
         if ("overview" %in% sections) {
           html_content <- paste0(html_content, '
   <h1>📊 Overview Statistics</h1>
-  <div class="page-break"></div>
   <div style="margin: 20px 0;">
     <div class="stat-box">
       <div class="stat-label">Employees (Time)</div>
@@ -1616,14 +1674,17 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
           return(table_html)
         }
 
-        # Time Analysis - Summary & Levels
-        if ("time_summary" %in% sections) {
-          all_groups <- c(time_summary_groups, time_shift_groups)
-          if (length(all_groups) > 0) {
-            results <- calculate_group_metrics(data, metric_spec, all_groups, current_filters(), extrap_factor())
-            html_content <- paste0(html_content, '<div class="page-break"></div>')
-            html_content <- paste0(html_content, add_table(results, "Time Analysis - Summary & Levels", "⏰"))
-          }
+        # Time Analysis - Summary
+        if ("time_summary" %in% sections && length(time_summary_groups) > 0) {
+          results <- calculate_group_metrics(data, metric_spec, time_summary_groups, current_filters(), extrap_factor())
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
+          html_content <- paste0(html_content, add_table(results, "Time Analysis - Summary", "⏰"))
+        }
+
+        # Time Analysis - Shift Hours Analysis
+        if ("time_shift_hours" %in% sections && length(time_shift_groups) > 0) {
+          results <- calculate_group_metrics(data, metric_spec, time_shift_groups, current_filters(), extrap_factor())
+          html_content <- paste0(html_content, add_table(results, "Time Analysis - Shift Hours Analysis", "📊"))
         }
 
         # Time Analysis - Punch Rounding
