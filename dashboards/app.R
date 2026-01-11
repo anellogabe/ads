@@ -472,8 +472,8 @@ filter_sidebar <- function(data_list) {
     layout_columns(
       col_widths = c(6, 6),
       selectInput("font_family", "Font",
-                  choices = c("Default" = "inherit", "Times New Roman" = "Times New Roman"),
-                  selected = "inherit"),
+                  choices = c("Calibri" = "Calibri, sans-serif", "Times New Roman" = "'Times New Roman', serif"),
+                  selected = "Calibri, sans-serif"),
       selectInput("font_size", "Font Size",
                   choices = c("Small" = "12px", "Medium" = "14px", "Large" = "16px", "X-Large" = "18px"),
                   selected = "14px")
@@ -538,71 +538,7 @@ ui <- function(data_list, metric_spec, case_config) {
         .value-box.pay-data .value-box-showcase {
           background-color: #27ae60 !important;
         }
-
-        /* Loading Overlay */
-        #loading-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background-color: rgba(44, 62, 80, 0.95);
-          z-index: 9999;
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-          align-items: center;
-        }
-
-        #loading-content {
-          text-align: center;
-          color: white;
-        }
-
-        .loader {
-          border: 8px solid #f3f3f3;
-          border-top: 8px solid #27ae60;
-          border-radius: 50%;
-          width: 60px;
-          height: 60px;
-          animation: spin 1s linear infinite;
-          margin: 0 auto 20px;
-        }
-
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-
-        .loading-text {
-          font-size: 24px;
-          font-weight: bold;
-          margin-bottom: 10px;
-        }
-
-        .loading-subtext {
-          font-size: 14px;
-          color: #ecf0f1;
-        }
-      ")),
-      tags$script(HTML("
-        $(document).on('shiny:sessioninitialized', function() {
-          setTimeout(function() {
-            $('#loading-overlay').fadeOut(500);
-          }, 500);
-        });
       "))
-    ),
-
-    # Loading overlay
-    tags$div(
-      id = "loading-overlay",
-      tags$div(
-        id = "loading-content",
-        tags$div(class = "loader"),
-        tags$div(class = "loading-text", "Loading Dashboard..."),
-        tags$div(class = "loading-subtext", "Initializing data tables and visualizations")
-      )
     ),
 
     div(id = "filter_banner", style = "display: none;", "⚠ FILTERS ACTIVE - Click 'Reset All Filters' to clear"),
@@ -823,8 +759,16 @@ ui <- function(data_list, metric_spec, case_config) {
         "Meal Violations >5hrs",
         navset_card_underline(
           nav_panel(
-            "All Violations",
+            "Summary",
             withSpinner(DTOutput("table_meal_5hr_consolidated"), type = 6, color = "#2c3e50")
+          ),
+          nav_panel(
+            "Short Meal Details",
+            withSpinner(DTOutput("table_meal_5hr_short_details"), type = 6, color = "#2c3e50")
+          ),
+          nav_panel(
+            "Late Meal Details",
+            withSpinner(DTOutput("table_meal_5hr_late_details"), type = 6, color = "#2c3e50")
           )
         )
       ),
@@ -833,8 +777,16 @@ ui <- function(data_list, metric_spec, case_config) {
         "Meal Violations >6hrs",
         navset_card_underline(
           nav_panel(
-            "All Violations",
+            "Summary",
             withSpinner(DTOutput("table_meal_6hr_consolidated"), type = 6, color = "#2c3e50")
+          ),
+          nav_panel(
+            "Short Meal Details",
+            withSpinner(DTOutput("table_meal_6hr_short_details"), type = 6, color = "#2c3e50")
+          ),
+          nav_panel(
+            "Late Meal Details",
+            withSpinner(DTOutput("table_meal_6hr_late_details"), type = 6, color = "#2c3e50")
           )
         )
       ),
@@ -856,6 +808,16 @@ ui <- function(data_list, metric_spec, case_config) {
     ),
 
     # =======================================================================
+    # REGULAR RATE TAB (CONSOLIDATED)
+    # =======================================================================
+    nav_panel(
+      title = "Regular Rate",
+      icon = icon("calculator"),
+
+      withSpinner(DTOutput("table_rrop_consolidated"), type = 6, color = "#2c3e50")
+    ),
+
+    # =======================================================================
     # PAY CODES TAB
     # =======================================================================
     nav_panel(
@@ -863,16 +825,6 @@ ui <- function(data_list, metric_spec, case_config) {
       icon = icon("tags"),
 
       withSpinner(DTOutput("table_pay_codes"), type = 6, color = "#2c3e50")
-    ),
-
-    # =======================================================================
-    # REGULAR RATE TAB (CONSOLIDATED)
-    # =======================================================================
-    nav_panel(
-      title = "Regular Rate (RROP)",
-      icon = icon("calculator"),
-
-      withSpinner(DTOutput("table_rrop_consolidated"), type = 6, color = "#2c3e50")
     ),
 
     # =======================================================================
@@ -990,13 +942,14 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
 
     # Apply dynamic font styling
     observe({
-      insertUI(
-        selector = "head",
-        where = "beforeEnd",
-        ui = tags$style(HTML(paste0(
-          "body, .dataTables_wrapper { font-family: ", input$font_family, "; font-size: ", input$font_size, "; }"
-        )))
-      )
+      shinyjs::runjs(paste0(
+        "$('#custom-font-style').remove();",
+        "$('head').append('<style id=\"custom-font-style\">",
+        "body, .dataTables_wrapper, .value-box, .card, .sidebar { ",
+        "font-family: ", input$font_family, " !important; ",
+        "font-size: ", input$font_size, " !important; }",
+        "</style>');"
+      ))
     })
 
     # Current filters
@@ -1603,12 +1556,68 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
       create_dt_table(results)
     })
 
+    # Meal 5hr Short Details
+    output$table_meal_5hr_short_details <- renderDT({
+      data <- filtered_data()
+      factor <- extrap_factor()
+
+      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_5, current_filters(), factor)
+      # Filter to only short meal metrics
+      if (nrow(results) > 0 && "Metric" %in% names(results)) {
+        results <- results[grepl("short|mins short", Metric, ignore.case = TRUE)]
+      }
+
+      create_dt_table(results)
+    })
+
+    # Meal 5hr Late Details
+    output$table_meal_5hr_late_details <- renderDT({
+      data <- filtered_data()
+      factor <- extrap_factor()
+
+      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_5, current_filters(), factor)
+      # Filter to only late meal metrics
+      if (nrow(results) > 0 && "Metric" %in% names(results)) {
+        results <- results[grepl("late|mins late", Metric, ignore.case = TRUE)]
+      }
+
+      create_dt_table(results)
+    })
+
     # Meal 6hr Consolidated
     output$table_meal_6hr_consolidated <- renderDT({
       data <- filtered_data()
       factor <- extrap_factor()
 
       results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6, current_filters(), factor)
+
+      create_dt_table(results)
+    })
+
+    # Meal 6hr Short Details
+    output$table_meal_6hr_short_details <- renderDT({
+      data <- filtered_data()
+      factor <- extrap_factor()
+
+      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6, current_filters(), factor)
+      # Filter to only short meal metrics
+      if (nrow(results) > 0 && "Metric" %in% names(results)) {
+        results <- results[grepl("short|mins short", Metric, ignore.case = TRUE)]
+      }
+
+      create_dt_table(results)
+    })
+
+    # Meal 6hr Late Details
+    output$table_meal_6hr_late_details <- renderDT({
+      data <- filtered_data()
+      factor <- extrap_factor()
+
+      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6, current_filters(), factor)
+      # Filter to only late meal metrics
+      if (nrow(results) > 0 && "Metric" %in% names(results)) {
+        results <- results[grepl("late|mins late", Metric, ignore.case = TRUE)]
+      }
 
       create_dt_table(results)
     })
@@ -1639,6 +1648,13 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
       factor <- extrap_factor()
 
       results <- calculate_group_metrics(data, metric_spec, pay_regular_rate, current_filters(), factor)
+
+      # Move Total and Net rows to end
+      if (nrow(results) > 0 && "Metric" %in% names(results)) {
+        total_rows <- results[grepl("^(Total|Net)", Metric, ignore.case = TRUE)]
+        other_rows <- results[!grepl("^(Total|Net)", Metric, ignore.case = TRUE)]
+        results <- rbindlist(list(other_rows, total_rows), fill = TRUE)
+      }
 
       create_dt_table(results)
     })
@@ -1887,91 +1903,101 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
         add_table <- function(dt_table, title, icon = "📊") {
           if (nrow(dt_table) == 0) return("")
 
+          # Limit rows for performance
+          max_rows <- min(nrow(dt_table), 500)  # Reduce from 1000 to 500
+          dt_table <- dt_table[1:max_rows]
+
           # Format column names
           col_names <- format_col_name(names(dt_table))
 
-          table_html <- paste0('
-  <h2>', icon, ' ', title, '</h2>
-  <table>
-    <thead>
-      <tr>')
+          # Build HTML using vectors for performance
+          html_parts <- character()
+          html_parts[1] <- paste0('\n  <h2>', icon, ' ', title, '</h2>\n  <table>\n    <thead>\n      <tr>')
 
-          for (col_name in col_names) {
-            table_html <- paste0(table_html, '\n        <th>', col_name, '</th>')
-          }
+          # Add headers
+          header_cells <- paste0('<th>', col_names, '</th>')
+          html_parts[2] <- paste0('\n        ', paste(header_cells, collapse = '\n        '))
 
-          table_html <- paste0(table_html, '\n      </tr>\n    </thead>\n    <tbody>')
+          html_parts[3] <- '\n      </tr>\n    </thead>\n    <tbody>'
 
-          for (i in 1:min(nrow(dt_table), 1000)) {  # Limit to 1000 rows for PDF
-            table_html <- paste0(table_html, '\n      <tr>')
+          # Build rows efficiently
+          row_html <- character(max_rows)
+          for (i in 1:max_rows) {
+            cells <- character(ncol(dt_table))
             for (j in 1:ncol(dt_table)) {
               val <- dt_table[i, j, with = FALSE][[1]]
               val <- if (is.na(val)) "" else as.character(val)
-              class_attr <- if (j == 1) ' class="metric-col"' else ' class="value-col"'
-              table_html <- paste0(table_html, '\n        <td', class_attr, '>', val, '</td>')
+              class_attr <- if (j == 1) 'metric-col' else 'value-col'
+              cells[j] <- paste0('<td class="', class_attr, '">', val, '</td>')
             }
-            table_html <- paste0(table_html, '\n      </tr>')
+            row_html[i] <- paste0('\n      <tr>', paste(cells, collapse = ''), '</tr>')
           }
 
-          table_html <- paste0(table_html, '\n    </tbody>\n  </table>\n')
-          return(table_html)
+          html_parts[4] <- paste(row_html, collapse = '')
+          html_parts[5] <- '\n    </tbody>\n  </table>\n'
+
+          return(paste(html_parts, collapse = ''))
         }
 
         # Time Analysis - Summary
         if ("time_summary" %in% sections && length(time_summary_groups) > 0) {
-          results <- calculate_group_metrics(data, metric_spec, time_summary_groups, current_filters(), extrap_factor())
           html_content <- paste0(html_content, '<div class="page-break"></div>')
+          results <- calculate_group_metrics(data, metric_spec, time_summary_groups, current_filters(), extrap_factor())
           html_content <- paste0(html_content, add_table(results, "Time Analysis - Summary", "⏰"))
         }
 
         # Time Analysis - Shift Hours Analysis
         if ("time_shift_hours" %in% sections && length(time_shift_groups) > 0) {
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
           results <- calculate_group_metrics(data, metric_spec, time_shift_groups, current_filters(), extrap_factor())
           html_content <- paste0(html_content, add_table(results, "Time Analysis - Shift Hours Analysis", "📊"))
         }
 
         # Time Analysis - Punch Rounding
         if ("time_rounding" %in% sections && length(time_rounding_groups) > 0) {
-          results <- calculate_group_metrics(data, metric_spec, time_rounding_groups, current_filters(), extrap_factor())
           html_content <- paste0(html_content, '<div class="page-break"></div>')
+          results <- calculate_group_metrics(data, metric_spec, time_rounding_groups, current_filters(), extrap_factor())
           html_content <- paste0(html_content, add_table(results, "Time Analysis - Punch Rounding", "🔄"))
         }
 
         # Meal Analysis
         if ("meal_analysis" %in% sections && length(time_meal_analysis) > 0) {
-          results <- calculate_group_metrics(data, metric_spec, time_meal_analysis, current_filters(), extrap_factor())
           html_content <- paste0(html_content, '<div class="page-break"></div>')
+          results <- calculate_group_metrics(data, metric_spec, time_meal_analysis, current_filters(), extrap_factor())
           html_content <- paste0(html_content, add_table(results, "Meal Period Analysis", "🍽️"))
         }
 
         # Meal Violations >5 hrs
         if ("meal_5hr" %in% sections && length(time_meal_violations_5) > 0) {
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
           results <- calculate_group_metrics(data, metric_spec, time_meal_violations_5, current_filters(), extrap_factor())
           html_content <- paste0(html_content, add_table(results, "Meal Violations (>5 hours)", "⚠️"))
         }
 
         # Meal Violations >6 hrs
         if ("meal_6hr" %in% sections && length(time_meal_violations_6) > 0) {
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
           results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6, current_filters(), extrap_factor())
           html_content <- paste0(html_content, add_table(results, "Meal Violations (>6 hours)", "⚠️"))
         }
 
         # Rest Periods
         if ("rest_periods" %in% sections && length(time_rest) > 0) {
-          results <- calculate_group_metrics(data, metric_spec, time_rest, current_filters(), extrap_factor())
           html_content <- paste0(html_content, '<div class="page-break"></div>')
+          results <- calculate_group_metrics(data, metric_spec, time_rest, current_filters(), extrap_factor())
           html_content <- paste0(html_content, add_table(results, "Rest Periods", "☕"))
         }
 
         # Pay Analysis - Summary
         if ("pay_summary" %in% sections && length(pay_summary_groups) > 0) {
-          results <- calculate_group_metrics(data, metric_spec, pay_summary_groups, current_filters(), extrap_factor())
           html_content <- paste0(html_content, '<div class="page-break"></div>')
+          results <- calculate_group_metrics(data, metric_spec, pay_summary_groups, current_filters(), extrap_factor())
           html_content <- paste0(html_content, add_table(results, "Pay Analysis - Summary", "💰"))
         }
 
         # Pay Analysis - Regular Rate
         if ("pay_regular_rate" %in% sections && length(pay_regular_rate) > 0) {
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
           results <- calculate_group_metrics(data, metric_spec, pay_regular_rate, current_filters(), extrap_factor())
           html_content <- paste0(html_content, add_table(results, "Pay Analysis - Regular Rate", "💵"))
         }
