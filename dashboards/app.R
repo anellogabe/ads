@@ -34,6 +34,7 @@ MEAL_PERIOD_FILE <- "Meal_Period_Table.csv"
 MEAL_START_TIME_FILE <- "Meal_Start_Time_Table.csv"
 MEAL_QUARTER_HR_FILE <- "Meal_Quarter_Hour_Table.csv"
 PAY_CODE_SUMMARY_FILE <- "Pay_Code_Summary.csv"
+RATE_TYPE_ANALYSIS_FILE <- "Rate_Type_Analysis.csv"
 DATA_COMPARISON_FILE <- "Data Comparison.csv"
 EMPLOYEE_COMPARISON_FILE <- "Employee Pay Period Comparison.csv"
 
@@ -593,6 +594,8 @@ ui <- function(data_list, metric_spec, case_config) {
               "Meal & Rest Periods - Rest Periods" = "rest_periods",
               "Pay Analysis - Summary" = "pay_summary",
               "Pay Analysis - Regular Rate" = "pay_regular_rate",
+              "Pay Analysis - Pay Codes" = "pay_codes",
+              "Pay Analysis - Rate Type Analysis" = "rate_type_analysis",
               "Appendix - Shift Hours" = "appendix_shift",
               "Appendix - Non-Work Hours" = "appendix_nonwork",
               "Appendix - Meal Period Distribution" = "appendix_meal",
@@ -601,7 +604,7 @@ ui <- function(data_list, metric_spec, case_config) {
             ),
             selected = c("overview", "time_summary", "time_shift_hours", "time_rounding",
                         "meal_analysis", "meal_5hr", "meal_6hr", "rest_periods",
-                        "pay_summary", "pay_regular_rate")
+                        "pay_summary", "pay_regular_rate", "pay_codes", "rate_type_analysis")
           ),
           hr(),
           downloadButton("download_pdf", "Generate PDF Report",
@@ -829,6 +832,16 @@ ui <- function(data_list, metric_spec, case_config) {
     ),
 
     # =======================================================================
+    # RATE TYPE ANALYSIS TAB
+    # =======================================================================
+    nav_panel(
+      title = "Rate Type Analysis",
+      icon = icon("chart-bar"),
+
+      withSpinner(DTOutput("table_rate_type"), type = 6, color = "#2c3e50")
+    ),
+
+    # =======================================================================
     # DAMAGES TAB
     # =======================================================================
     nav_panel(
@@ -942,16 +955,20 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
     )
 
     # Apply dynamic font styling
-    observe({
-      shinyjs::runjs(paste0(
-        "$('#custom-font-style').remove();",
-        "$('head').append('<style id=\"custom-font-style\">",
-        "body, .dataTables_wrapper, .value-box, .card, .sidebar { ",
-        "font-family: ", input$font_family, " !important; ",
-        "font-size: ", input$font_size, " !important; }",
-        "</style>');"
+    observeEvent(c(input$font_family, input$font_size), {
+      req(input$font_family, input$font_size)
+
+      font_css <- sprintf(
+        "body, .dataTables_wrapper, .value-box, .card, .sidebar, h1, h2, h3, h4, h5, p, span { font-family: %s !important; font-size: %s !important; }",
+        input$font_family,
+        input$font_size
+      )
+
+      shinyjs::runjs(sprintf(
+        "$('#custom-font-style').remove(); $('head').append('<style id=\"custom-font-style\">%s</style>');",
+        font_css
       ))
-    })
+    }, ignoreNULL = TRUE, ignoreInit = FALSE)
 
     # Current filters
     current_filters <- reactiveVal(list())
@@ -1669,6 +1686,10 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
       create_dt_table(analysis_tables$pay_code_summary, metric_col = "Pay Code")
     })
 
+    output$table_rate_type <- renderDT({
+      create_dt_table(analysis_tables$rate_type_analysis, metric_col = "Rate Type")
+    })
+
     output$table_shift_hrs <- renderDT({
       create_dt_table(analysis_tables$shift_hrs, metric_col = "Shift Hrs")
     })
@@ -1724,13 +1745,18 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
         paste0("Wage_Hour_Report_", format(Sys.Date(), "%Y%m%d"), ".html")
       },
       content = function(file) {
-        # Show notification
-        showNotification("Generating PDF report (HTML format)... This may take a moment.",
-                        type = "message", duration = 3)
+        withProgress(message = 'Generating PDF Report', value = 0, {
 
-        data <- filtered_data()
-        config <- case_config()
-        sections <- input$pdf_sections
+          # Calculate total steps for progress tracking
+          total_sections <- length(input$pdf_sections) + 2  # +2 for setup and finalization
+          current_step <- 0
+
+          incProgress(1/total_sections, detail = "Initializing...")
+          current_step <- current_step + 1
+
+          data <- filtered_data()
+          config <- case_config()
+          sections <- input$pdf_sections
 
         # Get case name
         case_name <- if (!is.null(config$case_name) && config$case_name != "") {
@@ -1874,6 +1900,7 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
 
         # Overview Statistics
         if ("overview" %in% sections) {
+          incProgress(1/total_sections, detail = "Overview Statistics")
           html_content <- paste0(html_content, '
   <h1>📊 Overview Statistics</h1>
   <div style="margin: 20px 0;">
@@ -1904,6 +1931,9 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
         # Helper function to add table HTML
         add_table <- function(dt_table, title, icon = "📊") {
           if (nrow(dt_table) == 0) return("")
+
+          # Update progress
+          incProgress(1/total_sections, detail = title)
 
           # Limit rows for performance
           max_rows <- min(nrow(dt_table), 500)  # Reduce from 1000 to 500
@@ -2004,6 +2034,18 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
           html_content <- paste0(html_content, add_table(results, "Pay Analysis - Regular Rate", "💵"))
         }
 
+        # Pay Analysis - Pay Codes
+        if ("pay_codes" %in% sections && !is.null(analysis_tables$pay_code_summary)) {
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
+          html_content <- paste0(html_content, add_table(analysis_tables$pay_code_summary, "Pay Analysis - Pay Codes", "💳"))
+        }
+
+        # Pay Analysis - Rate Type Analysis
+        if ("rate_type_analysis" %in% sections && !is.null(analysis_tables$rate_type_analysis)) {
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
+          html_content <- paste0(html_content, add_table(analysis_tables$rate_type_analysis, "Pay Analysis - Rate Type Analysis", "📊"))
+        }
+
         # Appendix Tables
         if ("appendix_shift" %in% sections && !is.null(analysis_tables$shift_hrs)) {
           html_content <- paste0(html_content, '<div class="page-break"></div>')
@@ -2030,14 +2072,16 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
           html_content <- paste0(html_content, add_table(analysis_tables$meal_quarter_hr, "Appendix - Meal Quarter Hour", "📑"))
         }
 
-        # Close HTML
-        html_content <- paste0(html_content, '\n</body>\n</html>')
+          # Close HTML
+          html_content <- paste0(html_content, '\n</body>\n</html>')
 
-        # Write to file
-        writeLines(html_content, file)
+          # Write to file
+          incProgress(1/total_sections, detail = "Finalizing report...")
+          writeLines(html_content, file)
 
-        showNotification("PDF report generated! Open the HTML file and use browser Print to PDF (Ctrl+P)",
-                        type = "message", duration = 10)
+          showNotification("PDF report generated! Open the HTML file and use browser Print to PDF (Ctrl+P)",
+                          type = "message", duration = 10)
+        })
       }
     )
   }
@@ -2055,6 +2099,7 @@ case_config <- load_case_config()
 message("Loading analysis tables...")
 analysis_tables <- list(
   pay_code_summary = load_analysis_table(PAY_CODE_SUMMARY_FILE),
+  rate_type_analysis = load_analysis_table(RATE_TYPE_ANALYSIS_FILE),
   shift_hrs = load_analysis_table(SHIFT_HRS_FILE),
   non_wrk_hrs = load_analysis_table(NON_WRK_HRS_FILE),
   meal_period = load_analysis_table(MEAL_PERIOD_FILE),
