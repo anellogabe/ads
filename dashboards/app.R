@@ -24,6 +24,8 @@ SHIFT_DATA_FILE <- "shift_data1.rds"
 PAY_DATA_FILE <- "pay1.rds"
 TIME_DATA_FILE <- "time1.rds"
 CLASS_DATA_FILE <- "class1.rds"
+PP_DATA_FILE <- "pp_data1.rds"  # Pay period level aggregate
+EE_DATA_FILE <- "ee_data1.rds"  # Employee level aggregate
 METRIC_SPEC_FILE <- "metrics_spec.csv"
 CASE_CONFIG_FILE <- "case_config.rds"
 
@@ -64,6 +66,8 @@ load_data <- function() {
   pay_path <- file.path(DATA_DIR, PAY_DATA_FILE)
   time_path <- file.path(DATA_DIR, TIME_DATA_FILE)
   class_path <- file.path(DATA_DIR, CLASS_DATA_FILE)
+  pp_path <- file.path(DATA_DIR, PP_DATA_FILE)
+  ee_path <- file.path(DATA_DIR, EE_DATA_FILE)
 
   result <- list()
 
@@ -97,6 +101,22 @@ load_data <- function() {
     result$class1 <- readRDS(class_path)
   } else {
     result$class1 <- NULL
+  }
+
+  # Load pay period aggregate data (optional)
+  if (file.exists(pp_path)) {
+    message("Loading pay period aggregate data...")
+    result$pp_data1 <- readRDS(pp_path)
+  } else {
+    result$pp_data1 <- NULL
+  }
+
+  # Load employee aggregate data (optional)
+  if (file.exists(ee_path)) {
+    message("Loading employee aggregate data...")
+    result$ee_data1 <- readRDS(ee_path)
+  } else {
+    result$ee_data1 <- NULL
   }
 
   result
@@ -258,23 +278,42 @@ calculate_group_metrics <- function(data_list, spec, group_names, filters = list
       row <- group_spec[i]
       source <- row$source
 
-      if (grepl("pay", source, ignore.case = TRUE)) {
-        src_data <- data_list$pay1
+      # Dynamically determine source data based on source name
+      src_data <- data_list[[source]]
+
+      # If source doesn't exist, return placeholder
+      if (is.null(src_data) || nrow(src_data) == 0) {
+        result_row <- data.table(Metric = row$metric_label, All_Data = "-")
+        return(result_row)
+      }
+
+      # Determine date and key columns based on source type
+      if (source == "pay1") {
         src_key_col <- "Pay_Key_Gps"
         src_date_col <- "Pay_Period_End"
         src_years <- data_list$pay_years
         src_key_groups <- data_list$pay_key_groups
-      } else {
-        src_data <- data_list$shift_data1
+      } else if (source == "shift_data1") {
         src_key_col <- "Key_Gps"
         src_date_col <- "Date"
         src_years <- data_list$shift_years
         src_key_groups <- data_list$shift_key_groups
-      }
-
-      if (nrow(src_data) == 0) {
-        result_row <- data.table(Metric = row$metric_label, All_Data = "-")
-        return(result_row)
+      } else if (source == "pp_data1") {
+        src_key_col <- "Key_Gps"  # Adjust based on actual column names
+        src_date_col <- "Period_End"  # Adjust based on actual column names
+        src_years <- data_list$shift_years  # Can use either shift or pay years
+        src_key_groups <- data_list$shift_key_groups
+      } else if (source == "ee_data1") {
+        src_key_col <- "Key_Gps"  # Adjust based on actual column names
+        src_date_col <- NULL  # Employee level may not have dates
+        src_years <- NULL
+        src_key_groups <- data_list$shift_key_groups
+      } else {
+        # Default fallback
+        src_key_col <- NULL
+        src_date_col <- NULL
+        src_years <- NULL
+        src_key_groups <- NULL
       }
 
       all_data_result <- calculate_single_metric(src_data, row$expr, row$digits, row$denom)
@@ -285,7 +324,7 @@ calculate_group_metrics <- function(data_list, spec, group_names, filters = list
       )
 
       # Add year columns
-      if (!is.null(src_years) && length(src_years) > 0 && src_date_col %in% names(src_data)) {
+      if (!is.null(src_years) && length(src_years) > 0 && !is.null(src_date_col) && src_date_col %in% names(src_data)) {
         for (yr in src_years) {
           yr_data <- src_data[year(get(src_date_col)) == yr]
           yr_result <- calculate_single_metric(yr_data, row$expr, row$digits, row$denom)
@@ -294,7 +333,7 @@ calculate_group_metrics <- function(data_list, spec, group_names, filters = list
       }
 
       # Add key group columns
-      if (!is.null(src_key_groups) && length(src_key_groups) > 0 && src_key_col %in% names(src_data)) {
+      if (!is.null(src_key_groups) && length(src_key_groups) > 0 && !is.null(src_key_col) && src_key_col %in% names(src_data)) {
         for (gp in src_key_groups) {
           gp_data <- src_data[get(src_key_col) == gp]
           gp_result <- calculate_single_metric(gp_data, row$expr, row$digits, row$denom)
@@ -321,6 +360,81 @@ calculate_group_metrics <- function(data_list, spec, group_names, filters = list
   # Combine all groups
   rbindlist(Filter(Negate(is.null), all_results), fill = TRUE)
 }
+
+# Damages-specific calculation (no year columns, only All Data and Key Groups)
+calculate_damages_metrics <- function(data_list, spec, group_names, filters = list(), extrapolation_factor = 1.0) {
+  if (length(group_names) == 0) return(data.table())
+
+  all_results <- lapply(group_names, function(group_name) {
+    group_spec <- spec[metric_group == group_name]
+    if (nrow(group_spec) == 0) return(NULL)
+
+    first_source <- group_spec$source[1]
+
+    # Determine key groups based on source
+    if (grepl("pay", first_source, ignore.case = TRUE)) {
+      key_groups <- data_list$pay_key_groups
+    } else {
+      key_groups <- data_list$shift_key_groups
+    }
+
+    results <- lapply(seq_len(nrow(group_spec)), function(i) {
+      row <- group_spec[i]
+      source <- row$source
+
+      # Get source data
+      src_data <- data_list[[source]]
+
+      if (is.null(src_data) || nrow(src_data) == 0) {
+        result_row <- data.table(Metric = row$metric_label, All_Data = "-")
+        return(result_row)
+      }
+
+      # Determine key column based on source
+      if (source == "pay1") {
+        src_key_col <- "Pay_Key_Gps"
+      } else if (source %in% c("shift_data1", "pp_data1", "ee_data1")) {
+        src_key_col <- "Key_Gps"
+      } else {
+        src_key_col <- NULL
+      }
+
+      # Calculate All Data value
+      all_data_result <- calculate_single_metric(src_data, row$expr, row$digits, row$denom)
+
+      result_row <- data.table(
+        Metric = row$metric_label,
+        All_Data = format_metric_value(all_data_result$value, all_data_result$pct)
+      )
+
+      # Add key group columns only (no years for damages)
+      if (!is.null(key_groups) && length(key_groups) > 0 && !is.null(src_key_col) && src_key_col %in% names(src_data)) {
+        for (gp in key_groups) {
+          gp_data <- src_data[get(src_key_col) == gp]
+          gp_result <- calculate_single_metric(gp_data, row$expr, row$digits, row$denom)
+          result_row[, (gp) := format_metric_value(gp_result$value, gp_result$pct)]
+        }
+      }
+
+      # Add extrapolated column if factor > 1
+      if (extrapolation_factor > 1.0) {
+        extrap_value <- if (is.numeric(all_data_result$value) && !is.na(all_data_result$value)) {
+          all_data_result$value * extrapolation_factor
+        } else {
+          NA
+        }
+        result_row[, Extrapolated := format_metric_value(extrap_value, NA)]
+      }
+
+      result_row
+    })
+
+    rbindlist(results, fill = TRUE)
+  })
+
+  rbindlist(Filter(Negate(is.null), all_results), fill = TRUE)
+}
+
 
 format_metric_value <- function(val, pct = NA) {
   if (is.null(val) || length(val) == 0 || (is.atomic(val) && all(is.na(val)))) {
@@ -850,20 +964,94 @@ ui <- function(data_list, metric_spec, case_config) {
 
       navset_card_underline(
         nav_panel(
-          "All Damages",
-          under_construction_card("Total Damages Summary")
-        ),
-        nav_panel(
-          "Meal",
-          under_construction_card("Meal Violation Damages")
-        ),
-        nav_panel(
-          "Rest",
-          under_construction_card("Rest Violation Damages")
+          "Class / Individual Claims",
+          card(
+            card_header("Meal Period Damages"),
+            card_body(
+              withSpinner(DTOutput("table_damages_meal"), type = 6, color = "#2c3e50")
+            )
+          ),
+          card(
+            card_header("Rest Period Damages"),
+            card_body(
+              withSpinner(DTOutput("table_damages_rest"), type = 6, color = "#2c3e50")
+            )
+          ),
+          card(
+            card_header("Regular Rate (RROP) Damages"),
+            card_body(
+              withSpinner(DTOutput("table_damages_rrop"), type = 6, color = "#2c3e50")
+            )
+          ),
+          card(
+            card_header("Other Damages"),
+            card_body(
+              withSpinner(DTOutput("table_damages_other"), type = 6, color = "#2c3e50")
+            )
+          ),
+          card(
+            card_header("Wage Statement Penalties"),
+            card_body(
+              withSpinner(DTOutput("table_damages_wsv"), type = 6, color = "#2c3e50")
+            )
+          ),
+          card(
+            card_header("Waiting Time Penalties"),
+            card_body(
+              withSpinner(DTOutput("table_damages_wt"), type = 6, color = "#2c3e50")
+            )
+          ),
+          card(
+            card_header("Total Class/Individual Damages"),
+            card_body(
+              withSpinner(DTOutput("table_damages_class_total"), type = 6, color = "#2c3e50")
+            )
+          )
         ),
         nav_panel(
           "PAGA",
-          under_construction_card("PAGA Penalties")
+          card(
+            card_header("PAGA - Meal Period Violations"),
+            card_body(
+              withSpinner(DTOutput("table_paga_meal"), type = 6, color = "#2c3e50")
+            )
+          ),
+          card(
+            card_header("PAGA - Rest Period Violations"),
+            card_body(
+              withSpinner(DTOutput("table_paga_rest"), type = 6, color = "#2c3e50")
+            )
+          ),
+          card(
+            card_header("PAGA - Regular Rate Violations"),
+            card_body(
+              withSpinner(DTOutput("table_paga_rrop"), type = 6, color = "#2c3e50")
+            )
+          ),
+          card(
+            card_header("PAGA - Wage Statement Violations (§226)"),
+            card_body(
+              withSpinner(DTOutput("table_paga_226"), type = 6, color = "#2c3e50")
+            )
+          ),
+          card(
+            card_header("PAGA - Unpaid Wages (§558)"),
+            card_body(
+              withSpinner(DTOutput("table_paga_558"), type = 6, color = "#2c3e50")
+            )
+          ),
+          card(
+            card_header("PAGA - Other Violations"),
+            card_body(
+              withSpinner(DTOutput("table_paga_other"), type = 6, color = "#2c3e50")
+            )
+          ),
+          card(
+            card_header("Total PAGA Penalties"),
+            card_body(
+              withSpinner(DTOutput("table_paga_total"), type = 6, color = "#2c3e50")
+            )
+          )
         )
       )
     ),
@@ -932,6 +1120,24 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
     time_rest <- metric_groups[grepl("^Time Rest", metric_groups)]
     pay_summary_groups <- metric_groups[grepl("^Pay Summary$|^Pay Overtime$|^Pay Double Time$|^Pay Meal Premiums$|^Pay Rest Premiums$|^Pay Bonuses$|^Pay Shift Differentials$|^Pay Sick Pay$", metric_groups)]
     pay_regular_rate <- metric_groups[grepl("^Pay Regular Rate", metric_groups)]
+
+    # Damages metric groups (Class/Individual Claims)
+    damages_meal_groups <- metric_groups[grepl("^Time Meal Violations.*Damages", metric_groups)]
+    damages_rest_groups <- metric_groups[grepl("^Time Rest Violations.*Damages", metric_groups)]
+    damages_rrop_groups <- metric_groups[grepl("^Pay Regular Rate.*RROP Damages", metric_groups)]
+    damages_other_groups <- metric_groups[grepl("^Off-the-clock.*Damages|^Clock Rounding.*Damages|^Unpaid OT/DT.*Damages|^Unreimbursed Expenses.*Damages", metric_groups)]
+    damages_wsv_groups <- metric_groups[grepl("^Wage Statement Penalties", metric_groups)]
+    damages_wt_groups <- metric_groups[grepl("^Waiting Time Penalties", metric_groups)]
+    damages_class_total_groups <- metric_groups[grepl("^Total damages", metric_groups)]
+
+    # PAGA metric groups
+    paga_meal_groups <- metric_groups[grepl("^PAGA - Meal Periods", metric_groups)]
+    paga_rest_groups <- metric_groups[grepl("^PAGA - Rest Periods", metric_groups)]
+    paga_rrop_groups <- metric_groups[grepl("^PAGA - Regular Rate", metric_groups)]
+    paga_226_groups <- metric_groups[grepl("^PAGA - Wage Statement", metric_groups)]
+    paga_558_groups <- metric_groups[grepl("^PAGA - Unpaid Wages", metric_groups)]
+    paga_other_groups <- metric_groups[grepl("^PAGA$|^PAGA - (Min Wage|Unreimbursed Expenses|Recordkeeping|Waiting Time)", metric_groups)]
+    paga_total_groups <- metric_groups[grepl("^PAGA - Total", metric_groups)]
 
     # Original date range
     original_date_min <- min(
@@ -1038,7 +1244,7 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
       shift_filtered <- copy(data_list$shift_data1)
       pay_filtered <- copy(data_list$pay1)
 
-      # Apply filters
+      # Apply filters to shift data
       if (!is.null(filters$date_min)) {
         shift_filtered <- shift_filtered[Date >= filters$date_min]
       }
@@ -1049,6 +1255,7 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
         shift_filtered <- shift_filtered[ID %in% filters$ID]
       }
 
+      # Apply filters to pay data
       if (!is.null(filters$date_min)) {
         pay_filtered <- pay_filtered[Pay_Period_End >= filters$date_min]
       }
@@ -1057,6 +1264,31 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
       }
       if (!is.null(filters$Pay_ID)) {
         pay_filtered <- pay_filtered[Pay_ID %in% filters$Pay_ID]
+      }
+
+      # Filter pp_data1 (pay period aggregate) if it exists
+      pp_filtered <- NULL
+      if (!is.null(data_list$pp_data1)) {
+        pp_filtered <- copy(data_list$pp_data1)
+        if (!is.null(filters$date_min) && "Period_End" %in% names(pp_filtered)) {
+          pp_filtered <- pp_filtered[Period_End >= filters$date_min]
+        }
+        if (!is.null(filters$date_max) && "Period_End" %in% names(pp_filtered)) {
+          pp_filtered <- pp_filtered[Period_End <= filters$date_max]
+        }
+        if (!is.null(filters$ID) && "ID" %in% names(pp_filtered)) {
+          pp_filtered <- pp_filtered[ID %in% filters$ID]
+        }
+      }
+
+      # Filter ee_data1 (employee aggregate) if it exists
+      ee_filtered <- NULL
+      if (!is.null(data_list$ee_data1)) {
+        ee_filtered <- copy(data_list$ee_data1)
+        if (!is.null(filters$ID) && "ID" %in% names(ee_filtered)) {
+          ee_filtered <- ee_filtered[ID %in% filters$ID]
+        }
+        # Note: ee_data1 may not have date ranges since it's employee-level aggregate
       }
 
       # Precompute years and key groups
@@ -1083,6 +1315,8 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
       list(
         shift_data1 = shift_filtered,
         pay1 = pay_filtered,
+        pp_data1 = pp_filtered,
+        ee_data1 = ee_filtered,
         shift_years = shift_years,
         pay_years = pay_years,
         shift_key_groups = shift_key_groups,
@@ -1674,6 +1908,154 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
         other_rows <- results[!grepl("^(Total|Net)", Metric, ignore.case = TRUE)]
         results <- rbindlist(list(other_rows, total_rows), fill = TRUE)
       }
+
+      create_dt_table(results)
+    })
+
+    # ===========================================================================
+    # DAMAGES TABLES (Class/Individual Claims)
+    # ===========================================================================
+
+    # Meal Period Damages
+    output$table_damages_meal <- renderDT({
+      data <- filtered_data()
+      factor <- extrap_factor()
+
+      results <- calculate_damages_metrics(data, metric_spec, damages_meal_groups, current_filters(), factor)
+
+      create_dt_table(results)
+    })
+
+    # Rest Period Damages
+    output$table_damages_rest <- renderDT({
+      data <- filtered_data()
+      factor <- extrap_factor()
+
+      results <- calculate_damages_metrics(data, metric_spec, damages_rest_groups, current_filters(), factor)
+
+      create_dt_table(results)
+    })
+
+    # RROP Damages
+    output$table_damages_rrop <- renderDT({
+      data <- filtered_data()
+      factor <- extrap_factor()
+
+      results <- calculate_damages_metrics(data, metric_spec, damages_rrop_groups, current_filters(), factor)
+
+      create_dt_table(results)
+    })
+
+    # Other Damages
+    output$table_damages_other <- renderDT({
+      data <- filtered_data()
+      factor <- extrap_factor()
+
+      results <- calculate_damages_metrics(data, metric_spec, damages_other_groups, current_filters(), factor)
+
+      create_dt_table(results)
+    })
+
+    # Wage Statement Penalties
+    output$table_damages_wsv <- renderDT({
+      data <- filtered_data()
+      factor <- extrap_factor()
+
+      results <- calculate_damages_metrics(data, metric_spec, damages_wsv_groups, current_filters(), factor)
+
+      create_dt_table(results)
+    })
+
+    # Waiting Time Penalties
+    output$table_damages_wt <- renderDT({
+      data <- filtered_data()
+      factor <- extrap_factor()
+
+      results <- calculate_damages_metrics(data, metric_spec, damages_wt_groups, current_filters(), factor)
+
+      create_dt_table(results)
+    })
+
+    # Total Class/Individual Damages
+    output$table_damages_class_total <- renderDT({
+      data <- filtered_data()
+      factor <- extrap_factor()
+
+      results <- calculate_damages_metrics(data, metric_spec, damages_class_total_groups, current_filters(), factor)
+
+      create_dt_table(results)
+    })
+
+    # ===========================================================================
+    # PAGA TABLES
+    # ===========================================================================
+
+    # PAGA - Meal Violations
+    output$table_paga_meal <- renderDT({
+      data <- filtered_data()
+      factor <- extrap_factor()
+
+      results <- calculate_damages_metrics(data, metric_spec, paga_meal_groups, current_filters(), factor)
+
+      create_dt_table(results)
+    })
+
+    # PAGA - Rest Violations
+    output$table_paga_rest <- renderDT({
+      data <- filtered_data()
+      factor <- extrap_factor()
+
+      results <- calculate_damages_metrics(data, metric_spec, paga_rest_groups, current_filters(), factor)
+
+      create_dt_table(results)
+    })
+
+    # PAGA - RROP Violations
+    output$table_paga_rrop <- renderDT({
+      data <- filtered_data()
+      factor <- extrap_factor()
+
+      results <- calculate_damages_metrics(data, metric_spec, paga_rrop_groups, current_filters(), factor)
+
+      create_dt_table(results)
+    })
+
+    # PAGA - Section 226
+    output$table_paga_226 <- renderDT({
+      data <- filtered_data()
+      factor <- extrap_factor()
+
+      results <- calculate_damages_metrics(data, metric_spec, paga_226_groups, current_filters(), factor)
+
+      create_dt_table(results)
+    })
+
+    # PAGA - Section 558
+    output$table_paga_558 <- renderDT({
+      data <- filtered_data()
+      factor <- extrap_factor()
+
+      results <- calculate_damages_metrics(data, metric_spec, paga_558_groups, current_filters(), factor)
+
+      create_dt_table(results)
+    })
+
+    # PAGA - Other Violations
+    output$table_paga_other <- renderDT({
+      data <- filtered_data()
+      factor <- extrap_factor()
+
+      results <- calculate_damages_metrics(data, metric_spec, paga_other_groups, current_filters(), factor)
+
+      create_dt_table(results)
+    })
+
+    # PAGA - Total
+    output$table_paga_total <- renderDT({
+      data <- filtered_data()
+      factor <- extrap_factor()
+
+      results <- calculate_damages_metrics(data, metric_spec, paga_total_groups, current_filters(), factor)
 
       create_dt_table(results)
     })
