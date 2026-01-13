@@ -511,12 +511,16 @@ create_dt_table <- function(dt, metric_col = "Metric") {
     return(datatable(data.table(Message = "No data available"), rownames = FALSE, options = list(dom = 't')))
   }
 
+  # Replace underscores with spaces in column names
+  formatted_names <- gsub("_", " ", names(dt))
+
   # Determine which columns are metrics vs values
   metric_cols_idx <- which(names(dt) == metric_col) - 1  # 0-indexed for JS
   value_cols_idx <- setdiff(seq_along(names(dt)) - 1, metric_cols_idx)
 
   datatable(
     dt,
+    colnames = formatted_names,
     options = list(
       paging = FALSE,  # Remove pagination entirely
       scrollX = TRUE,
@@ -529,6 +533,24 @@ create_dt_table <- function(dt, metric_col = "Metric") {
       initComplete = JS(
         "function(settings, json) {",
         "$(this.api().table().header()).css({'background-color': '#2c3e50', 'color': '#fff'});",
+        "}"
+      ),
+      rowCallback = JS(
+        "function(row, data) {",
+        "  if (data[0] && data[0].toString().startsWith('### ')) {",
+        "    $(row).find('td:first').html(data[0].replace('### ', ''));",
+        "    $(row).css({",
+        "      'background-color': '#3498db',",
+        "      'color': '#fff',",
+        "      'font-weight': 'bold',",
+        "      'border-bottom': '3px solid #2980b9',",
+        "      'font-size': '14px'",
+        "    });",
+        "    $(row).find('td').css({",
+        "      'background-color': '#3498db',",
+        "      'color': '#fff'",
+        "    });",
+        "  }",
         "}"
       )
     ),
