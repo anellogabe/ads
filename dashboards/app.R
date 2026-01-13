@@ -24,6 +24,8 @@ SHIFT_DATA_FILE <- "shift_data1.rds"
 PAY_DATA_FILE <- "pay1.rds"
 TIME_DATA_FILE <- "time1.rds"
 CLASS_DATA_FILE <- "class1.rds"
+PP_DATA_FILE <- "pp_data1.rds"  # Pay period level aggregate
+EE_DATA_FILE <- "ee_data1.rds"  # Employee level aggregate
 METRIC_SPEC_FILE <- "metrics_spec.csv"
 CASE_CONFIG_FILE <- "case_config.rds"
 
@@ -64,6 +66,8 @@ load_data <- function() {
   pay_path <- file.path(DATA_DIR, PAY_DATA_FILE)
   time_path <- file.path(DATA_DIR, TIME_DATA_FILE)
   class_path <- file.path(DATA_DIR, CLASS_DATA_FILE)
+  pp_path <- file.path(DATA_DIR, PP_DATA_FILE)
+  ee_path <- file.path(DATA_DIR, EE_DATA_FILE)
 
   result <- list()
 
@@ -97,6 +101,22 @@ load_data <- function() {
     result$class1 <- readRDS(class_path)
   } else {
     result$class1 <- NULL
+  }
+
+  # Load pay period aggregate data (optional)
+  if (file.exists(pp_path)) {
+    message("Loading pay period aggregate data...")
+    result$pp_data1 <- readRDS(pp_path)
+  } else {
+    result$pp_data1 <- NULL
+  }
+
+  # Load employee aggregate data (optional)
+  if (file.exists(ee_path)) {
+    message("Loading employee aggregate data...")
+    result$ee_data1 <- readRDS(ee_path)
+  } else {
+    result$ee_data1 <- NULL
   }
 
   result
@@ -258,23 +278,42 @@ calculate_group_metrics <- function(data_list, spec, group_names, filters = list
       row <- group_spec[i]
       source <- row$source
 
-      if (grepl("pay", source, ignore.case = TRUE)) {
-        src_data <- data_list$pay1
+      # Dynamically determine source data based on source name
+      src_data <- data_list[[source]]
+
+      # If source doesn't exist, return placeholder
+      if (is.null(src_data) || nrow(src_data) == 0) {
+        result_row <- data.table(Metric = row$metric_label, All_Data = "-")
+        return(result_row)
+      }
+
+      # Determine date and key columns based on source type
+      if (source == "pay1") {
         src_key_col <- "Pay_Key_Gps"
         src_date_col <- "Pay_Period_End"
         src_years <- data_list$pay_years
         src_key_groups <- data_list$pay_key_groups
-      } else {
-        src_data <- data_list$shift_data1
+      } else if (source == "shift_data1") {
         src_key_col <- "Key_Gps"
         src_date_col <- "Date"
         src_years <- data_list$shift_years
         src_key_groups <- data_list$shift_key_groups
-      }
-
-      if (nrow(src_data) == 0) {
-        result_row <- data.table(Metric = row$metric_label, All_Data = "-")
-        return(result_row)
+      } else if (source == "pp_data1") {
+        src_key_col <- "Key_Gps"  # Adjust based on actual column names
+        src_date_col <- "Period_End"  # Adjust based on actual column names
+        src_years <- data_list$shift_years  # Can use either shift or pay years
+        src_key_groups <- data_list$shift_key_groups
+      } else if (source == "ee_data1") {
+        src_key_col <- "Key_Gps"  # Adjust based on actual column names
+        src_date_col <- NULL  # Employee level may not have dates
+        src_years <- NULL
+        src_key_groups <- data_list$shift_key_groups
+      } else {
+        # Default fallback
+        src_key_col <- NULL
+        src_date_col <- NULL
+        src_years <- NULL
+        src_key_groups <- NULL
       }
 
       all_data_result <- calculate_single_metric(src_data, row$expr, row$digits, row$denom)
@@ -285,7 +324,7 @@ calculate_group_metrics <- function(data_list, spec, group_names, filters = list
       )
 
       # Add year columns
-      if (!is.null(src_years) && length(src_years) > 0 && src_date_col %in% names(src_data)) {
+      if (!is.null(src_years) && length(src_years) > 0 && !is.null(src_date_col) && src_date_col %in% names(src_data)) {
         for (yr in src_years) {
           yr_data <- src_data[year(get(src_date_col)) == yr]
           yr_result <- calculate_single_metric(yr_data, row$expr, row$digits, row$denom)
@@ -294,7 +333,7 @@ calculate_group_metrics <- function(data_list, spec, group_names, filters = list
       }
 
       # Add key group columns
-      if (!is.null(src_key_groups) && length(src_key_groups) > 0 && src_key_col %in% names(src_data)) {
+      if (!is.null(src_key_groups) && length(src_key_groups) > 0 && !is.null(src_key_col) && src_key_col %in% names(src_data)) {
         for (gp in src_key_groups) {
           gp_data <- src_data[get(src_key_col) == gp]
           gp_result <- calculate_single_metric(gp_data, row$expr, row$digits, row$denom)
@@ -1038,7 +1077,7 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
       shift_filtered <- copy(data_list$shift_data1)
       pay_filtered <- copy(data_list$pay1)
 
-      # Apply filters
+      # Apply filters to shift data
       if (!is.null(filters$date_min)) {
         shift_filtered <- shift_filtered[Date >= filters$date_min]
       }
@@ -1049,6 +1088,7 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
         shift_filtered <- shift_filtered[ID %in% filters$ID]
       }
 
+      # Apply filters to pay data
       if (!is.null(filters$date_min)) {
         pay_filtered <- pay_filtered[Pay_Period_End >= filters$date_min]
       }
@@ -1057,6 +1097,31 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
       }
       if (!is.null(filters$Pay_ID)) {
         pay_filtered <- pay_filtered[Pay_ID %in% filters$Pay_ID]
+      }
+
+      # Filter pp_data1 (pay period aggregate) if it exists
+      pp_filtered <- NULL
+      if (!is.null(data_list$pp_data1)) {
+        pp_filtered <- copy(data_list$pp_data1)
+        if (!is.null(filters$date_min) && "Period_End" %in% names(pp_filtered)) {
+          pp_filtered <- pp_filtered[Period_End >= filters$date_min]
+        }
+        if (!is.null(filters$date_max) && "Period_End" %in% names(pp_filtered)) {
+          pp_filtered <- pp_filtered[Period_End <= filters$date_max]
+        }
+        if (!is.null(filters$ID) && "ID" %in% names(pp_filtered)) {
+          pp_filtered <- pp_filtered[ID %in% filters$ID]
+        }
+      }
+
+      # Filter ee_data1 (employee aggregate) if it exists
+      ee_filtered <- NULL
+      if (!is.null(data_list$ee_data1)) {
+        ee_filtered <- copy(data_list$ee_data1)
+        if (!is.null(filters$ID) && "ID" %in% names(ee_filtered)) {
+          ee_filtered <- ee_filtered[ID %in% filters$ID]
+        }
+        # Note: ee_data1 may not have date ranges since it's employee-level aggregate
       }
 
       # Precompute years and key groups
@@ -1083,6 +1148,8 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
       list(
         shift_data1 = shift_filtered,
         pay1 = pay_filtered,
+        pp_data1 = pp_filtered,
+        ee_data1 = ee_filtered,
         shift_years = shift_years,
         pay_years = pay_years,
         shift_key_groups = shift_key_groups,
