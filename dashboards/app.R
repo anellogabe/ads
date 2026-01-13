@@ -1122,22 +1122,22 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
     pay_regular_rate <- metric_groups[grepl("^Pay Regular Rate", metric_groups)]
 
     # Damages metric groups (Class/Individual Claims)
-    damages_meal_groups <- metric_groups[grepl("^Damages.*Meal|^Meal.*Damages", metric_groups, ignore.case = TRUE)]
-    damages_rest_groups <- metric_groups[grepl("^Damages.*Rest|^Rest.*Damages", metric_groups, ignore.case = TRUE)]
-    damages_rrop_groups <- metric_groups[grepl("^Damages.*RROP|^RROP.*Damages|^Damages.*Regular Rate", metric_groups, ignore.case = TRUE)]
-    damages_other_groups <- metric_groups[grepl("^Damages.*Other|^Other.*Damages|^Damages.*(OTC|Unreimb|Clock|Unpaid|Min Wage)", metric_groups, ignore.case = TRUE)]
-    damages_wsv_groups <- metric_groups[grepl("^Damages.*Wage Statement|^Wage Statement.*Penalty|^WSV", metric_groups, ignore.case = TRUE)]
-    damages_wt_groups <- metric_groups[grepl("^Damages.*Waiting Time|^Waiting Time.*Penalty|^WT Penalty", metric_groups, ignore.case = TRUE)]
-    damages_class_total_groups <- metric_groups[grepl("^Damages.*Total|^Total.*Class|^Total.*Individual", metric_groups, ignore.case = TRUE)]
+    damages_meal_groups <- metric_groups[grepl("^Time Meal Violations.*Damages", metric_groups)]
+    damages_rest_groups <- metric_groups[grepl("^Time Rest Violations.*Damages", metric_groups)]
+    damages_rrop_groups <- metric_groups[grepl("^Pay Regular Rate.*RROP Damages", metric_groups)]
+    damages_other_groups <- metric_groups[grepl("^Off-the-clock.*Damages|^Clock Rounding.*Damages|^Unpaid OT/DT.*Damages|^Unreimbursed Expenses.*Damages", metric_groups)]
+    damages_wsv_groups <- metric_groups[grepl("^Wage Statement Penalties", metric_groups)]
+    damages_wt_groups <- metric_groups[grepl("^Waiting Time Penalties", metric_groups)]
+    damages_class_total_groups <- metric_groups[grepl("^Total damages", metric_groups)]
 
     # PAGA metric groups
-    paga_meal_groups <- metric_groups[grepl("^PAGA.*Meal", metric_groups, ignore.case = TRUE)]
-    paga_rest_groups <- metric_groups[grepl("^PAGA.*Rest", metric_groups, ignore.case = TRUE)]
-    paga_rrop_groups <- metric_groups[grepl("^PAGA.*RROP|^PAGA.*Regular Rate", metric_groups, ignore.case = TRUE)]
-    paga_226_groups <- metric_groups[grepl("^PAGA.*226|^PAGA.*Wage Statement", metric_groups, ignore.case = TRUE)]
-    paga_558_groups <- metric_groups[grepl("^PAGA.*558|^PAGA.*Unpaid", metric_groups, ignore.case = TRUE)]
-    paga_other_groups <- metric_groups[grepl("^PAGA.*(1197|1174|2802|203|Other)", metric_groups, ignore.case = TRUE)]
-    paga_total_groups <- metric_groups[grepl("^PAGA.*Total|^Total.*PAGA", metric_groups, ignore.case = TRUE)]
+    paga_meal_groups <- metric_groups[grepl("^PAGA - Meal Periods", metric_groups)]
+    paga_rest_groups <- metric_groups[grepl("^PAGA - Rest Periods", metric_groups)]
+    paga_rrop_groups <- metric_groups[grepl("^PAGA - Regular Rate", metric_groups)]
+    paga_226_groups <- metric_groups[grepl("^PAGA - Wage Statement", metric_groups)]
+    paga_558_groups <- metric_groups[grepl("^PAGA - Unpaid Wages", metric_groups)]
+    paga_other_groups <- metric_groups[grepl("^PAGA$|^PAGA - (Min Wage|Unreimbursed Expenses|Recordkeeping|Waiting Time)", metric_groups)]
+    paga_total_groups <- metric_groups[grepl("^PAGA - Total", metric_groups)]
 
     # Original date range
     original_date_min <- min(
