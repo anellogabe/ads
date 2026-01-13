@@ -748,6 +748,7 @@ ui <- function(data_list, metric_spec) {
         card_header("Export to PDF"),
         card_body(
           h5("Select Sections to Include:"),
+          checkboxInput("pdf_select_all_damages", "Damages (All)", value = FALSE),
           checkboxInput("pdf_select_all_appendix", "Appendix (All)", value = FALSE),
           checkboxGroupInput(
             "pdf_sections",
@@ -765,6 +766,10 @@ ui <- function(data_list, metric_spec) {
               "Pay Analysis - Regular Rate" = "pay_regular_rate",
               "Pay Analysis - Pay Codes" = "pay_codes",
               "Pay Analysis - Rate Type Analysis" = "rate_type_analysis",
+              "Damages - Class/Individual Claims - No Waivers" = "damages_class_no_waivers",
+              "Damages - Class/Individual Claims - Waivers" = "damages_class_waivers",
+              "Damages - PAGA - No Waivers" = "damages_paga_no_waivers",
+              "Damages - PAGA - Waivers" = "damages_paga_waivers",
               "Appendix - Shift Hours" = "appendix_shift",
               "Appendix - Non-Work Hours" = "appendix_nonwork",
               "Appendix - Meal Period Distribution" = "appendix_meal",
@@ -1218,6 +1223,23 @@ server <- function(data_list, metric_spec, analysis_tables) {
                            end = original_date_max)
       updateSelectizeInput(session, "employee_filter", selected = character(0))
       current_filters(list())
+    })
+
+    # Damages checkbox toggle
+    observeEvent(input$pdf_select_all_damages, {
+      damages_items <- c("damages_class_no_waivers", "damages_class_waivers",
+                         "damages_paga_no_waivers", "damages_paga_waivers")
+      current_selection <- input$pdf_sections
+
+      if (input$pdf_select_all_damages) {
+        # Add all damages items
+        new_selection <- unique(c(current_selection, damages_items))
+      } else {
+        # Remove all damages items
+        new_selection <- setdiff(current_selection, damages_items)
+      }
+
+      updateCheckboxGroupInput(session, "pdf_sections", selected = new_selection)
     })
 
     # Appendix checkbox toggle
@@ -2600,6 +2622,135 @@ server <- function(data_list, metric_spec, analysis_tables) {
         if ("rate_type_analysis" %in% sections && !is.null(analysis_tables$rate_type_analysis)) {
           html_content <- paste0(html_content, '<div class="page-break"></div>')
           html_content <- paste0(html_content, add_table(analysis_tables$rate_type_analysis, "Pay Analysis - Rate Type Analysis", "📊"))
+        }
+
+        # Damages - Class/Individual Claims - No Waivers
+        if ("damages_class_no_waivers" %in% sections) {
+          incProgress(1/total_sections, detail = "Damages - Class/Individual (No Waivers)")
+
+          # Split each metric group by waiver status
+          meal_split <- split_by_waiver(damages_meal_groups)
+          rest_split <- split_by_waiver(damages_rest_groups)
+          rrop_split <- split_by_waiver(damages_rrop_groups)
+          otc_split <- split_by_waiver(damages_otc_groups)
+          rounding_split <- split_by_waiver(damages_rounding_groups)
+          unpaid_ot_split <- split_by_waiver(damages_unpaid_ot_groups)
+          expenses_split <- split_by_waiver(damages_expenses_groups)
+          wsv_split <- split_by_waiver(damages_wsv_groups)
+          wt_split <- split_by_waiver(damages_wt_groups)
+          total_split <- split_by_waiver(damages_class_total_groups)
+
+          damage_sections <- list()
+          if (length(meal_split$no_waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "MEAL PERIOD DAMAGES", groups = meal_split$no_waiver)
+          if (length(rest_split$no_waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "REST PERIOD DAMAGES", groups = rest_split$no_waiver)
+          if (length(rrop_split$no_waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "RROP DAMAGES", groups = rrop_split$no_waiver)
+          if (length(otc_split$no_waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "OFF-THE-CLOCK DAMAGES", groups = otc_split$no_waiver)
+          if (length(rounding_split$no_waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "CLOCK ROUNDING DAMAGES", groups = rounding_split$no_waiver)
+          if (length(unpaid_ot_split$no_waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "UNPAID OT/DT DAMAGES", groups = unpaid_ot_split$no_waiver)
+          if (length(expenses_split$no_waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "UNREIMBURSED EXPENSES DAMAGES", groups = expenses_split$no_waiver)
+          if (length(wsv_split$no_waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "WAGE STATEMENT PENALTIES", groups = wsv_split$no_waiver)
+          if (length(wt_split$no_waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "WAITING TIME PENALTIES", groups = wt_split$no_waiver)
+          if (length(total_split$no_waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "TOTAL DAMAGES", groups = total_split$no_waiver)
+
+          damages_table <- combine_damages_with_headers(data, metric_spec, damage_sections, list(), 1.0)
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
+          html_content <- paste0(html_content, add_table(damages_table, "Damages - Class/Individual Claims (No Waivers)", "⚖️"))
+        }
+
+        # Damages - Class/Individual Claims - Waivers
+        if ("damages_class_waivers" %in% sections) {
+          incProgress(1/total_sections, detail = "Damages - Class/Individual (Waivers)")
+
+          meal_split <- split_by_waiver(damages_meal_groups)
+          rest_split <- split_by_waiver(damages_rest_groups)
+          rrop_split <- split_by_waiver(damages_rrop_groups)
+          otc_split <- split_by_waiver(damages_otc_groups)
+          rounding_split <- split_by_waiver(damages_rounding_groups)
+          unpaid_ot_split <- split_by_waiver(damages_unpaid_ot_groups)
+          expenses_split <- split_by_waiver(damages_expenses_groups)
+          wsv_split <- split_by_waiver(damages_wsv_groups)
+          wt_split <- split_by_waiver(damages_wt_groups)
+          total_split <- split_by_waiver(damages_class_total_groups)
+
+          damage_sections <- list()
+          if (length(meal_split$waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "MEAL PERIOD DAMAGES", groups = meal_split$waiver)
+          if (length(rest_split$waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "REST PERIOD DAMAGES", groups = rest_split$waiver)
+          if (length(rrop_split$waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "RROP DAMAGES", groups = rrop_split$waiver)
+          if (length(otc_split$waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "OFF-THE-CLOCK DAMAGES", groups = otc_split$waiver)
+          if (length(rounding_split$waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "CLOCK ROUNDING DAMAGES", groups = rounding_split$waiver)
+          if (length(unpaid_ot_split$waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "UNPAID OT/DT DAMAGES", groups = unpaid_ot_split$waiver)
+          if (length(expenses_split$waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "UNREIMBURSED EXPENSES DAMAGES", groups = expenses_split$waiver)
+          if (length(wsv_split$waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "WAGE STATEMENT PENALTIES", groups = wsv_split$waiver)
+          if (length(wt_split$waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "WAITING TIME PENALTIES", groups = wt_split$waiver)
+          if (length(total_split$waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "TOTAL DAMAGES", groups = total_split$waiver)
+
+          damages_table <- combine_damages_with_headers(data, metric_spec, damage_sections, list(), 1.0)
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
+          html_content <- paste0(html_content, add_table(damages_table, "Damages - Class/Individual Claims (Waivers)", "⚖️"))
+        }
+
+        # Damages - PAGA - No Waivers
+        if ("damages_paga_no_waivers" %in% sections) {
+          incProgress(1/total_sections, detail = "Damages - PAGA (No Waivers)")
+
+          meal_split <- split_by_waiver(paga_meal_groups)
+          rest_split <- split_by_waiver(paga_rest_groups)
+          rrop_split <- split_by_waiver(paga_rrop_groups)
+          s226_split <- split_by_waiver(paga_226_groups)
+          s558_split <- split_by_waiver(paga_558_groups)
+          min_wage_split <- split_by_waiver(paga_min_wage_groups)
+          expenses_split <- split_by_waiver(paga_expenses_groups)
+          recordkeeping_split <- split_by_waiver(paga_recordkeeping_groups)
+          waiting_time_split <- split_by_waiver(paga_waiting_time_groups)
+          total_split <- split_by_waiver(paga_total_groups)
+
+          damage_sections <- list()
+          if (length(meal_split$no_waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "PAGA - MEAL PERIODS", groups = meal_split$no_waiver)
+          if (length(rest_split$no_waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "PAGA - REST PERIODS", groups = rest_split$no_waiver)
+          if (length(rrop_split$no_waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "PAGA - REGULAR RATE (RROP)", groups = rrop_split$no_waiver)
+          if (length(s226_split$no_waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "PAGA - WAGE STATEMENT (226)", groups = s226_split$no_waiver)
+          if (length(s558_split$no_waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "PAGA - UNPAID WAGES (558)", groups = s558_split$no_waiver)
+          if (length(min_wage_split$no_waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "PAGA - MIN WAGE (1197.1)", groups = min_wage_split$no_waiver)
+          if (length(expenses_split$no_waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "PAGA - UNREIMBURSED EXPENSES (2802)", groups = expenses_split$no_waiver)
+          if (length(recordkeeping_split$no_waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "PAGA - RECORDKEEPING (1174)", groups = recordkeeping_split$no_waiver)
+          if (length(waiting_time_split$no_waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "PAGA - WAITING TIME (203)", groups = waiting_time_split$no_waiver)
+          if (length(total_split$no_waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "PAGA - TOTAL", groups = total_split$no_waiver)
+
+          damages_table <- combine_damages_with_headers(data, metric_spec, damage_sections, list(), 1.0)
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
+          html_content <- paste0(html_content, add_table(damages_table, "Damages - PAGA (No Waivers)", "⚖️"))
+        }
+
+        # Damages - PAGA - Waivers
+        if ("damages_paga_waivers" %in% sections) {
+          incProgress(1/total_sections, detail = "Damages - PAGA (Waivers)")
+
+          meal_split <- split_by_waiver(paga_meal_groups)
+          rest_split <- split_by_waiver(paga_rest_groups)
+          rrop_split <- split_by_waiver(paga_rrop_groups)
+          s226_split <- split_by_waiver(paga_226_groups)
+          s558_split <- split_by_waiver(paga_558_groups)
+          min_wage_split <- split_by_waiver(paga_min_wage_groups)
+          expenses_split <- split_by_waiver(paga_expenses_groups)
+          recordkeeping_split <- split_by_waiver(paga_recordkeeping_groups)
+          waiting_time_split <- split_by_waiver(paga_waiting_time_groups)
+          total_split <- split_by_waiver(paga_total_groups)
+
+          damage_sections <- list()
+          if (length(meal_split$waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "PAGA - MEAL PERIODS", groups = meal_split$waiver)
+          if (length(rest_split$waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "PAGA - REST PERIODS", groups = rest_split$waiver)
+          if (length(rrop_split$waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "PAGA - REGULAR RATE (RROP)", groups = rrop_split$waiver)
+          if (length(s226_split$waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "PAGA - WAGE STATEMENT (226)", groups = s226_split$waiver)
+          if (length(s558_split$waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "PAGA - UNPAID WAGES (558)", groups = s558_split$waiver)
+          if (length(min_wage_split$waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "PAGA - MIN WAGE (1197.1)", groups = min_wage_split$waiver)
+          if (length(expenses_split$waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "PAGA - UNREIMBURSED EXPENSES (2802)", groups = expenses_split$waiver)
+          if (length(recordkeeping_split$waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "PAGA - RECORDKEEPING (1174)", groups = recordkeeping_split$waiver)
+          if (length(waiting_time_split$waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "PAGA - WAITING TIME (203)", groups = waiting_time_split$waiver)
+          if (length(total_split$waiver) > 0) damage_sections[[length(damage_sections) + 1]] <- list(section_name = "PAGA - TOTAL", groups = total_split$waiver)
+
+          damages_table <- combine_damages_with_headers(data, metric_spec, damage_sections, list(), 1.0)
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
+          html_content <- paste0(html_content, add_table(damages_table, "Damages - PAGA (Waivers)", "⚖️"))
         }
 
         # Appendix Tables
