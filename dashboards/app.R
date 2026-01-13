@@ -444,14 +444,18 @@ combine_damages_with_headers <- function(data, spec, group_definitions, filters 
 
 # Determine if a metric group name indicates waiver-only variant
 is_waiver_only_group <- function(group_name) {
-  # Waiver-only groups have ">6 hrs", "(w)", "with waiver", or "(waivers)" in the name
-  grepl(">6 hrs|\\(w\\)|with waiver|\\(waivers\\)", group_name, ignore.case = TRUE)
+  # Waiver-only groups have:
+  # - ">6 hrs" or ">6hrs" (with or without space)
+  # - "(w)" or "(waivers)" or "with waiver"
+  grepl(">6\\s*hrs|\\(w\\)|with waiver|\\(waivers\\)", group_name, ignore.case = TRUE)
 }
 
 # Determine if a metric group name indicates no-waiver-only variant
 is_no_waiver_only_group <- function(group_name) {
-  # No-waiver-only groups have "(no waivers)" in the name
-  grepl("\\(no waivers\\)", group_name, ignore.case = TRUE)
+  # No-waiver-only groups have:
+  # - ">5 hrs" or ">5hrs" (with or without space)
+  # - "(no waivers)"
+  grepl(">5\\s*hrs|\\(no waivers\\)", group_name, ignore.case = TRUE)
 }
 
 # Split metric groups into waiver, no-waiver, and both categories
