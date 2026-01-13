@@ -27,7 +27,6 @@ CLASS_DATA_FILE <- "class1.rds"
 PP_DATA_FILE <- "pp_data1.rds"  # Pay period level aggregate
 EE_DATA_FILE <- "ee_data1.rds"  # Employee level aggregate
 METRIC_SPEC_FILE <- "metrics_spec.csv"
-CASE_CONFIG_FILE <- "case_config.rds"
 
 # Analysis table files
 SHIFT_HRS_FILE <- "Shift_Hrs_Table.csv"
@@ -136,34 +135,6 @@ load_metric_spec <- function(path = NULL) {
   spec[, metric_order := .I]
   spec
 }
-
-load_case_config <- function() {
-  config_path <- file.path(DATA_DIR, CASE_CONFIG_FILE)
-
-  if (file.exists(config_path)) {
-    return(readRDS(config_path))
-  }
-
-  # Default configuration
-  list(
-    case_name = "Unknown",
-    case_number = "Unknown",
-    date_filed = NA,
-    relevant_period_start = NA,
-    relevant_period_end = NA,
-    paga_period_start = NA,
-    paga_period_end = NA,
-    sample_size = "Unknown",
-    sample_type = "Unknown",
-    mediation_date = NA,
-    class_cert_deadline = NA,
-    notes = "",
-    extrapolation_enabled = FALSE,
-    extrapolation_factor = 1.0,
-    extrapolation_method = "None"
-  )
-}
-
 # Load analysis tables
 load_analysis_table <- function(filename) {
   filepath <- file.path(DATA_DIR, filename)
@@ -659,7 +630,7 @@ filter_sidebar <- function(data_list) {
 # UI
 # =============================================================================
 
-ui <- function(data_list, metric_spec, case_config) {
+ui <- function(data_list, metric_spec) {
 
   page_navbar(
     title = "Wage & Hour Compliance Dashboard",
@@ -1094,11 +1065,8 @@ ui <- function(data_list, metric_spec, case_config) {
 # SERVER (Part 1 - will continue in next message due to length)
 # =============================================================================
 
-server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
+server <- function(data_list, metric_spec, analysis_tables) {
   function(input, output, session) {
-
-    # Case configuration
-    case_config <- reactiveVal(case_config_init)
 
     # Categorize metric groups for consolidation
     metric_groups <- unique(metric_spec$metric_group)
@@ -1314,51 +1282,6 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
         pay_key_groups = pay_key_groups
       )
     }) %>% bindCache(current_filters())
-
-    # ===========================================================================
-    # CASE CONFIGURATION OUTPUTS
-    # ===========================================================================
-
-    output$case_name <- renderText({
-      config <- case_config()
-      config$case_name %||% "Unknown"
-    })
-
-    output$case_number <- renderText({
-      config <- case_config()
-      config$case_number %||% "Unknown"
-    })
-
-    output$date_filed <- renderText({
-      config <- case_config()
-      if (!is.null(config$date_filed) && !is.na(config$date_filed)) {
-        as.character(config$date_filed)
-      } else {
-        "Unknown"
-      }
-    })
-
-    output$relevant_period <- renderText({
-      config <- case_config()
-      start <- config$relevant_period_start
-      end <- config$relevant_period_end
-
-      if (!is.null(start) && !is.na(start) && !is.null(end) && !is.na(end)) {
-        paste(start, "to", end)
-      } else {
-        "Unknown"
-      }
-    })
-
-    output$sample_size <- renderText({
-      config <- case_config()
-      config$sample_size %||% "Unknown"
-    })
-
-    output$sample_type <- renderText({
-      config <- case_config()
-      config$sample_type %||% "Unknown"
-    })
 
     # ===========================================================================
     # OVERVIEW OUTPUTS
@@ -1741,13 +1664,7 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
 
     # Get extrapolation factor
     extrap_factor <- reactive({
-      config <- case_config()
-      if (!is.null(input$show_extrapolation) && input$show_extrapolation &&
-          !is.null(config$extrapolation_enabled) && config$extrapolation_enabled) {
-        config$extrapolation_factor %||% 1.0
-      } else {
-        1.0
-      }
+      1.0
     })
 
     # Time Analysis - Summary
@@ -2266,15 +2183,10 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
           current_step <- current_step + 1
 
           data <- filtered_data()
-          config <- case_config()
           sections <- input$pdf_sections
 
-        # Get case name
-        case_name <- if (!is.null(config$case_name) && config$case_name != "") {
-          config$case_name
-        } else {
-          "Unknown Case"
-        }
+        # Case name for PDF
+        case_name <- "Wage & Hour Analysis"
 
         # Start building HTML
         html_content <- paste0('
@@ -2402,8 +2314,6 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
   <h1>📋 Case Information</h1>
   <div style="margin: 20px 0;">
     <p><strong>Case Name:</strong> ', case_name, '</p>
-    <p><strong>Case Number:</strong> ', ifelse(!is.null(config$case_number), config$case_number, "N/A"), '</p>
-    <p><strong>Date Filed:</strong> ', ifelse(!is.null(config$date_filed), config$date_filed, "N/A"), '</p>
     <p><strong>Report Generated:</strong> ', format(Sys.Date(), "%B %d, %Y"), '</p>
   </div>
 ')
@@ -2605,7 +2515,6 @@ server <- function(data_list, metric_spec, case_config_init, analysis_tables) {
 message("Loading data...")
 data_list <- load_data()
 metric_spec <- load_metric_spec()
-case_config <- load_case_config()
 
 message("Loading analysis tables...")
 analysis_tables <- list(
@@ -2621,6 +2530,6 @@ analysis_tables <- list(
 
 message("Starting dashboard...")
 shinyApp(
-  ui = ui(data_list, metric_spec, case_config),
-  server = server(data_list, metric_spec, case_config, analysis_tables)
+  ui = ui(data_list, metric_spec),
+  server = server(data_list, metric_spec, analysis_tables)
 )
