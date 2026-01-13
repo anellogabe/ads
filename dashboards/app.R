@@ -444,8 +444,8 @@ combine_damages_with_headers <- function(data, spec, group_definitions, filters 
 
 # Determine if a metric group name indicates waiver variant
 is_waiver_group <- function(group_name) {
-  # Waiver groups typically have ">6 hrs" or "(w)" or "with waivers" in the name
-  grepl(">6 hrs|\\(w\\)|with waiver", group_name, ignore.case = TRUE)
+  # Waiver groups have ">6 hrs", "(w)", "with waiver", or "(waivers)" in the name
+  grepl(">6 hrs|\\(w\\)|with waiver|\\(waivers\\)", group_name, ignore.case = TRUE)
 }
 
 
@@ -511,12 +511,16 @@ create_dt_table <- function(dt, metric_col = "Metric") {
     return(datatable(data.table(Message = "No data available"), rownames = FALSE, options = list(dom = 't')))
   }
 
+  # Replace underscores with spaces in column names
+  formatted_names <- gsub("_", " ", names(dt))
+
   # Determine which columns are metrics vs values
   metric_cols_idx <- which(names(dt) == metric_col) - 1  # 0-indexed for JS
   value_cols_idx <- setdiff(seq_along(names(dt)) - 1, metric_cols_idx)
 
   datatable(
     dt,
+    colnames = formatted_names,
     options = list(
       paging = FALSE,  # Remove pagination entirely
       scrollX = TRUE,
@@ -529,6 +533,24 @@ create_dt_table <- function(dt, metric_col = "Metric") {
       initComplete = JS(
         "function(settings, json) {",
         "$(this.api().table().header()).css({'background-color': '#2c3e50', 'color': '#fff'});",
+        "}"
+      ),
+      rowCallback = JS(
+        "function(row, data) {",
+        "  if (data[0] && data[0].toString().startsWith('### ')) {",
+        "    $(row).find('td:first').html(data[0].replace('### ', ''));",
+        "    $(row).css({",
+        "      'background-color': '#3498db',",
+        "      'color': '#fff',",
+        "      'font-weight': 'bold',",
+        "      'border-bottom': '3px solid #2980b9',",
+        "      'font-size': '14px'",
+        "    });",
+        "    $(row).find('td').css({",
+        "      'background-color': '#3498db',",
+        "      'color': '#fff'",
+        "    });",
+        "  }",
         "}"
       )
     ),
@@ -1839,52 +1861,52 @@ server <- function(data_list, metric_spec, analysis_tables) {
       total_split <- split_by_waiver(damages_class_total_groups)
 
       # Build section definitions for no-waiver metrics
-      # If a category has no waiver variant, include all metrics in both tables
+      # If a category has no waiver variant, show all metrics (appears in both tabs)
       sections <- list()
 
-      if (length(meal_split$no_waiver) > 0 || length(meal_split$waiver) == 0) {
+      if (length(damages_meal_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "MEAL PERIOD DAMAGES",
           groups = if (length(meal_split$no_waiver) > 0) meal_split$no_waiver else damages_meal_groups
         )
       }
 
-      if (length(rest_split$no_waiver) > 0 || length(rest_split$waiver) == 0) {
+      if (length(damages_rest_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "REST PERIOD DAMAGES",
           groups = if (length(rest_split$no_waiver) > 0) rest_split$no_waiver else damages_rest_groups
         )
       }
 
-      if (length(rrop_split$no_waiver) > 0 || length(rrop_split$waiver) == 0) {
+      if (length(damages_rrop_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "RROP DAMAGES",
           groups = if (length(rrop_split$no_waiver) > 0) rrop_split$no_waiver else damages_rrop_groups
         )
       }
 
-      if (length(other_split$no_waiver) > 0 || length(other_split$waiver) == 0) {
+      if (length(damages_other_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "OTHER DAMAGES (OTC, ROUNDING, UNPAID OT/DT, EXPENSES)",
           groups = if (length(other_split$no_waiver) > 0) other_split$no_waiver else damages_other_groups
         )
       }
 
-      if (length(wsv_split$no_waiver) > 0 || length(wsv_split$waiver) == 0) {
+      if (length(damages_wsv_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "WAGE STATEMENT PENALTIES",
           groups = if (length(wsv_split$no_waiver) > 0) wsv_split$no_waiver else damages_wsv_groups
         )
       }
 
-      if (length(wt_split$no_waiver) > 0 || length(wt_split$waiver) == 0) {
+      if (length(damages_wt_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "WAITING TIME PENALTIES",
           groups = if (length(wt_split$no_waiver) > 0) wt_split$no_waiver else damages_wt_groups
         )
       }
 
-      if (length(total_split$no_waiver) > 0 || length(total_split$waiver) == 0) {
+      if (length(damages_class_total_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "TOTAL DAMAGES",
           groups = if (length(total_split$no_waiver) > 0) total_split$no_waiver else damages_class_total_groups
@@ -1910,52 +1932,52 @@ server <- function(data_list, metric_spec, analysis_tables) {
       total_split <- split_by_waiver(damages_class_total_groups)
 
       # Build section definitions for waiver metrics
-      # If a category has no waiver variant, include all metrics in both tables
+      # If a category has no waiver variant, show all metrics (appears in both tabs)
       sections <- list()
 
-      if (length(meal_split$waiver) > 0 || length(meal_split$no_waiver) == 0) {
+      if (length(damages_meal_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "MEAL PERIOD DAMAGES",
           groups = if (length(meal_split$waiver) > 0) meal_split$waiver else damages_meal_groups
         )
       }
 
-      if (length(rest_split$waiver) > 0 || length(rest_split$no_waiver) == 0) {
+      if (length(damages_rest_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "REST PERIOD DAMAGES",
           groups = if (length(rest_split$waiver) > 0) rest_split$waiver else damages_rest_groups
         )
       }
 
-      if (length(rrop_split$waiver) > 0 || length(rrop_split$no_waiver) == 0) {
+      if (length(damages_rrop_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "RROP DAMAGES",
           groups = if (length(rrop_split$waiver) > 0) rrop_split$waiver else damages_rrop_groups
         )
       }
 
-      if (length(other_split$waiver) > 0 || length(other_split$no_waiver) == 0) {
+      if (length(damages_other_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "OTHER DAMAGES (OTC, ROUNDING, UNPAID OT/DT, EXPENSES)",
           groups = if (length(other_split$waiver) > 0) other_split$waiver else damages_other_groups
         )
       }
 
-      if (length(wsv_split$waiver) > 0 || length(wsv_split$no_waiver) == 0) {
+      if (length(damages_wsv_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "WAGE STATEMENT PENALTIES",
           groups = if (length(wsv_split$waiver) > 0) wsv_split$waiver else damages_wsv_groups
         )
       }
 
-      if (length(wt_split$waiver) > 0 || length(wt_split$no_waiver) == 0) {
+      if (length(damages_wt_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "WAITING TIME PENALTIES",
           groups = if (length(wt_split$waiver) > 0) wt_split$waiver else damages_wt_groups
         )
       }
 
-      if (length(total_split$waiver) > 0 || length(total_split$no_waiver) == 0) {
+      if (length(damages_class_total_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "TOTAL DAMAGES",
           groups = if (length(total_split$waiver) > 0) total_split$waiver else damages_class_total_groups
@@ -1981,51 +2003,52 @@ server <- function(data_list, metric_spec, analysis_tables) {
       total_split <- split_by_waiver(paga_total_groups)
 
       # Build section definitions for no-waiver metrics
+      # If a category has no waiver variant, show all metrics (appears in both tabs)
       sections <- list()
 
-      if (length(meal_split$no_waiver) > 0 || length(meal_split$waiver) == 0) {
+      if (length(paga_meal_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - MEAL PERIODS",
           groups = if (length(meal_split$no_waiver) > 0) meal_split$no_waiver else paga_meal_groups
         )
       }
 
-      if (length(rest_split$no_waiver) > 0 || length(rest_split$waiver) == 0) {
+      if (length(paga_rest_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - REST PERIODS",
           groups = if (length(rest_split$no_waiver) > 0) rest_split$no_waiver else paga_rest_groups
         )
       }
 
-      if (length(rrop_split$no_waiver) > 0 || length(rrop_split$waiver) == 0) {
+      if (length(paga_rrop_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - REGULAR RATE (RROP)",
           groups = if (length(rrop_split$no_waiver) > 0) rrop_split$no_waiver else paga_rrop_groups
         )
       }
 
-      if (length(s226_split$no_waiver) > 0 || length(s226_split$waiver) == 0) {
+      if (length(paga_226_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - WAGE STATEMENT (226)",
           groups = if (length(s226_split$no_waiver) > 0) s226_split$no_waiver else paga_226_groups
         )
       }
 
-      if (length(s558_split$no_waiver) > 0 || length(s558_split$waiver) == 0) {
+      if (length(paga_558_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - UNPAID WAGES (558)",
           groups = if (length(s558_split$no_waiver) > 0) s558_split$no_waiver else paga_558_groups
         )
       }
 
-      if (length(other_split$no_waiver) > 0 || length(other_split$waiver) == 0) {
+      if (length(paga_other_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - OTHER (MIN WAGE, EXPENSES, RECORDKEEPING, WAITING TIME)",
           groups = if (length(other_split$no_waiver) > 0) other_split$no_waiver else paga_other_groups
         )
       }
 
-      if (length(total_split$no_waiver) > 0 || length(total_split$waiver) == 0) {
+      if (length(paga_total_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - TOTAL",
           groups = if (length(total_split$no_waiver) > 0) total_split$no_waiver else paga_total_groups
@@ -2051,51 +2074,52 @@ server <- function(data_list, metric_spec, analysis_tables) {
       total_split <- split_by_waiver(paga_total_groups)
 
       # Build section definitions for waiver metrics
+      # If a category has no waiver variant, show all metrics (appears in both tabs)
       sections <- list()
 
-      if (length(meal_split$waiver) > 0 || length(meal_split$no_waiver) == 0) {
+      if (length(paga_meal_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - MEAL PERIODS",
           groups = if (length(meal_split$waiver) > 0) meal_split$waiver else paga_meal_groups
         )
       }
 
-      if (length(rest_split$waiver) > 0 || length(rest_split$no_waiver) == 0) {
+      if (length(paga_rest_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - REST PERIODS",
           groups = if (length(rest_split$waiver) > 0) rest_split$waiver else paga_rest_groups
         )
       }
 
-      if (length(rrop_split$waiver) > 0 || length(rrop_split$no_waiver) == 0) {
+      if (length(paga_rrop_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - REGULAR RATE (RROP)",
           groups = if (length(rrop_split$waiver) > 0) rrop_split$waiver else paga_rrop_groups
         )
       }
 
-      if (length(s226_split$waiver) > 0 || length(s226_split$no_waiver) == 0) {
+      if (length(paga_226_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - WAGE STATEMENT (226)",
           groups = if (length(s226_split$waiver) > 0) s226_split$waiver else paga_226_groups
         )
       }
 
-      if (length(s558_split$waiver) > 0 || length(s558_split$no_waiver) == 0) {
+      if (length(paga_558_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - UNPAID WAGES (558)",
           groups = if (length(s558_split$waiver) > 0) s558_split$waiver else paga_558_groups
         )
       }
 
-      if (length(other_split$waiver) > 0 || length(other_split$no_waiver) == 0) {
+      if (length(paga_other_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - OTHER (MIN WAGE, EXPENSES, RECORDKEEPING, WAITING TIME)",
           groups = if (length(other_split$waiver) > 0) other_split$waiver else paga_other_groups
         )
       }
 
-      if (length(total_split$waiver) > 0 || length(total_split$no_waiver) == 0) {
+      if (length(paga_total_groups) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - TOTAL",
           groups = if (length(total_split$waiver) > 0) total_split$waiver else paga_total_groups
