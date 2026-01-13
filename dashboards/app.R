@@ -825,22 +825,28 @@ ui <- function(data_list, metric_spec) {
       ),
 
       layout_columns(
-        col_widths = c(6, 6),
+        col_widths = c(4, 4, 4),
 
         value_box(
-          title = "Pay Periods",
-          value = textOutput("total_pay_periods_combined"),
+          title = "Pay Periods (Time)",
+          value = textOutput("time_pay_periods"),
           showcase = icon("calendar"),
           theme = "secondary",
-          p(class = "small text-muted",
-            "Time: ", textOutput("time_pay_periods", inline = TRUE), " | ",
-            "Pay: ", textOutput("pay_pay_periods", inline = TRUE))
+          class = "time-data"
         ),
         value_box(
-          title = "Weeks",
+          title = "Pay Periods (Pay)",
+          value = textOutput("pay_pay_periods"),
+          showcase = icon("calendar"),
+          theme = "secondary",
+          class = "pay-data"
+        ),
+        value_box(
+          title = "Weeks (Time)",
           value = textOutput("total_weeks"),
           showcase = icon("calendar-week"),
-          theme = "secondary"
+          theme = "secondary",
+          class = "time-data"
         )
       ),
 
@@ -1370,14 +1376,6 @@ server <- function(data_list, metric_spec, analysis_tables) {
       } else {
         "N/A"
       }
-    })
-
-    output$total_pay_periods_combined <- renderText({
-      data <- filtered_data()
-      time_pp <- uniqueN(data$shift_data1$ID_Period_End)
-      pay_pp <- uniqueN(data$pay1$Pay_ID_Period_End)
-      total <- uniqueN(c(data$shift_data1$ID_Period_End, data$pay1$Pay_ID_Period_End))
-      format(total, big.mark = ",")
     })
 
     output$time_pay_periods <- renderText({
@@ -2499,12 +2497,16 @@ server <- function(data_list, metric_spec, analysis_tables) {
       <div class="stat-value">', format(nrow(data$shift_data1), big.mark = ","), '</div>
     </div>
     <div class="stat-box">
-      <div class="stat-label">Total Weeks</div>
-      <div class="stat-value">', format(uniqueN(data$shift_data1$ID_Week_End), big.mark = ","), '</div>
+      <div class="stat-label">Pay Periods (Time)</div>
+      <div class="stat-value">', format(uniqueN(data$shift_data1$ID_Period_End), big.mark = ","), '</div>
     </div>
     <div class="stat-box">
-      <div class="stat-label">Pay Periods (Combined)</div>
-      <div class="stat-value">', format(uniqueN(c(data$shift_data1$ID_Period_End, data$pay1$Pay_ID_Period_End)), big.mark = ","), '</div>
+      <div class="stat-label">Pay Periods (Pay)</div>
+      <div class="stat-value">', format(uniqueN(data$pay1$Pay_ID_Period_End), big.mark = ","), '</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Weeks (Time)</div>
+      <div class="stat-value">', format(uniqueN(data$shift_data1$ID_Week_End), big.mark = ","), '</div>
     </div>
   </div>
 ')
