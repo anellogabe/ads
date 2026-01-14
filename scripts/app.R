@@ -858,8 +858,8 @@ ui <- function(data_list, metric_spec) {
                 "pdf_sections_col2",
                 NULL,
                 choices = c(
-                  "Meal - Violations (>5 hrs)" = "meal_5hr",
-                  "Meal - Violations (>6 hrs)" = "meal_6hr",
+                  "Meal - Violations (no waivers)" = "meal_5hr",
+                  "Meal - Violations (waivers)" = "meal_6hr",
                   "Rest Periods" = "rest_periods",
                   "Pay - Summary" = "pay_summary",
                   "Pay - Regular Rate" = "pay_regular_rate"
@@ -1064,7 +1064,7 @@ ui <- function(data_list, metric_spec) {
       ),
 
       nav_panel(
-        "Meal Violations >5hrs",
+        "Meal Violations (no waivers)",
         navset_card_underline(
           nav_panel(
             "Summary",
@@ -1082,7 +1082,7 @@ ui <- function(data_list, metric_spec) {
       ),
 
       nav_panel(
-        "Meal Violations >6hrs",
+        "Meal Violations (waivers)",
         navset_card_underline(
           nav_panel(
             "Summary",
@@ -1293,8 +1293,15 @@ server <- function(data_list, metric_spec, analysis_tables) {
     time_shift_groups <- metric_groups[grepl("^Time Shift Hours Analysis", metric_groups)]
     time_rounding_groups <- metric_groups[grepl("^Time Punch Rounding", metric_groups)]
     time_meal_analysis <- metric_groups[grepl("^Time Meal Period Analysis", metric_groups)]
-    time_meal_violations_5 <- metric_groups[grepl("^Time Meal Violations \\(>5", metric_groups)]
-    time_meal_violations_6 <- metric_groups[grepl("^Time Meal Violations \\(>6", metric_groups)]
+
+    # Meal violations - split into summary and detail groups
+    time_meal_violations_5_summary <- metric_groups[grepl("^Time Meal Violations \\(>5 hrs\\)$", metric_groups)]
+    time_meal_violations_5_short <- metric_groups[grepl("^Time Meal Violations \\(>5 hrs\\) - Short Detail", metric_groups)]
+    time_meal_violations_5_late <- metric_groups[grepl("^Time Meal Violations \\(>5 hrs\\) - Late Detail", metric_groups)]
+    time_meal_violations_6_summary <- metric_groups[grepl("^Time Meal Violations \\(>6 hrs\\)$", metric_groups)]
+    time_meal_violations_6_short <- metric_groups[grepl("^Time Meal Violations \\(>6 hrs\\) - Short Detail", metric_groups)]
+    time_meal_violations_6_late <- metric_groups[grepl("^Time Meal Violations \\(>6 hrs\\) - Late Detail", metric_groups)]
+
     time_rest <- metric_groups[grepl("^Time Rest", metric_groups)]
     pay_summary_groups <- metric_groups[grepl("^Pay Summary$|^Pay Overtime$|^Pay Double Time$|^Pay Meal Premiums$|^Pay Rest Premiums$|^Pay Bonuses$|^Pay Shift Differentials$|^Pay Sick Pay$", metric_groups)]
     pay_regular_rate <- metric_groups[grepl("^Pay Regular Rate", metric_groups)]
@@ -1874,78 +1881,62 @@ server <- function(data_list, metric_spec, analysis_tables) {
       create_dt_table(results)
     })
 
-    # Meal 5hr Consolidated
+    # Meal 5hr (no waivers) - Summary
     output$table_meal_5hr_consolidated <- renderDT({
       data <- filtered_data()
       factor <- extrap_factor()
 
-      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_5, current_filters(), factor)
+      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_5_summary, current_filters(), factor)
 
       create_dt_table(results)
     })
 
-    # Meal 5hr Short Details
+    # Meal 5hr (no waivers) - Short Details
     output$table_meal_5hr_short_details <- renderDT({
       data <- filtered_data()
       factor <- extrap_factor()
 
-      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_5, current_filters(), factor)
-      # Filter to only short meal metrics
-      if (nrow(results) > 0 && "Metric" %in% names(results)) {
-        results <- results[grepl("short|mins short", Metric, ignore.case = TRUE)]
-      }
+      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_5_short, current_filters(), factor)
 
       create_dt_table(results)
     })
 
-    # Meal 5hr Late Details
+    # Meal 5hr (no waivers) - Late Details
     output$table_meal_5hr_late_details <- renderDT({
       data <- filtered_data()
       factor <- extrap_factor()
 
-      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_5, current_filters(), factor)
-      # Filter to only late meal metrics
-      if (nrow(results) > 0 && "Metric" %in% names(results)) {
-        results <- results[grepl("late|mins late", Metric, ignore.case = TRUE)]
-      }
+      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_5_late, current_filters(), factor)
 
       create_dt_table(results)
     })
 
-    # Meal 6hr Consolidated
+    # Meal 6hr (waivers) - Summary
     output$table_meal_6hr_consolidated <- renderDT({
       data <- filtered_data()
       factor <- extrap_factor()
 
-      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6, current_filters(), factor)
+      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6_summary, current_filters(), factor)
 
       create_dt_table(results)
     })
 
-    # Meal 6hr Short Details
+    # Meal 6hr (waivers) - Short Details
     output$table_meal_6hr_short_details <- renderDT({
       data <- filtered_data()
       factor <- extrap_factor()
 
-      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6, current_filters(), factor)
-      # Filter to only short meal metrics
-      if (nrow(results) > 0 && "Metric" %in% names(results)) {
-        results <- results[grepl("short|mins short", Metric, ignore.case = TRUE)]
-      }
+      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6_short, current_filters(), factor)
 
       create_dt_table(results)
     })
 
-    # Meal 6hr Late Details
+    # Meal 6hr (waivers) - Late Details
     output$table_meal_6hr_late_details <- renderDT({
       data <- filtered_data()
       factor <- extrap_factor()
 
-      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6, current_filters(), factor)
-      # Filter to only late meal metrics
-      if (nrow(results) > 0 && "Metric" %in% names(results)) {
-        results <- results[grepl("late|mins late", Metric, ignore.case = TRUE)]
-      }
+      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6_late, current_filters(), factor)
 
       create_dt_table(results)
     })
@@ -3134,18 +3125,18 @@ server <- function(data_list, metric_spec, analysis_tables) {
           html_content <- paste0(html_content, add_table(results, "Meal Period Analysis", "🍽️"))
         }
 
-        # Meal Violations >5 hrs
-        if ("meal_5hr" %in% sections && length(time_meal_violations_5) > 0) {
+        # Meal Violations (no waivers)
+        if ("meal_5hr" %in% sections && length(time_meal_violations_5_summary) > 0) {
           html_content <- paste0(html_content, '<div class="page-break"></div>')
-          results <- calculate_group_metrics(data, metric_spec, time_meal_violations_5, current_filters(), extrap_factor())
-          html_content <- paste0(html_content, add_table(results, "Meal Violations (>5 hours)", "⚠️"))
+          results <- calculate_group_metrics(data, metric_spec, time_meal_violations_5_summary, current_filters(), extrap_factor())
+          html_content <- paste0(html_content, add_table(results, "Meal Violations (no waivers)", "⚠️"))
         }
 
-        # Meal Violations >6 hrs
-        if ("meal_6hr" %in% sections && length(time_meal_violations_6) > 0) {
+        # Meal Violations (waivers)
+        if ("meal_6hr" %in% sections && length(time_meal_violations_6_summary) > 0) {
           html_content <- paste0(html_content, '<div class="page-break"></div>')
-          results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6, current_filters(), extrap_factor())
-          html_content <- paste0(html_content, add_table(results, "Meal Violations (>6 hours)", "⚠️"))
+          results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6_summary, current_filters(), extrap_factor())
+          html_content <- paste0(html_content, add_table(results, "Meal Violations (waivers)", "⚠️"))
         }
 
         # Rest Periods
