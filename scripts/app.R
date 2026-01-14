@@ -1068,21 +1068,15 @@ ui <- function(data_list, metric_spec) {
         navset_card_underline(
           nav_panel(
             "Summary",
-            div(style = "padding: 10px;",
-              withSpinner(DTOutput("table_meal_5hr_consolidated"), type = 6, color = "#2c3e50")
-            )
+            withSpinner(DTOutput("table_meal_5hr_consolidated"), type = 6, color = "#2c3e50")
           ),
           nav_panel(
             "Short Meal Details",
-            div(style = "padding: 10px;",
-              withSpinner(DTOutput("table_meal_5hr_short_details"), type = 6, color = "#2c3e50")
-            )
+            withSpinner(DTOutput("table_meal_5hr_short_details"), type = 6, color = "#2c3e50")
           ),
           nav_panel(
             "Late Meal Details",
-            div(style = "padding: 10px;",
-              withSpinner(DTOutput("table_meal_5hr_late_details"), type = 6, color = "#2c3e50")
-            )
+            withSpinner(DTOutput("table_meal_5hr_late_details"), type = 6, color = "#2c3e50")
           )
         )
       ),
@@ -1092,21 +1086,15 @@ ui <- function(data_list, metric_spec) {
         navset_card_underline(
           nav_panel(
             "Summary",
-            div(style = "padding: 10px;",
-              withSpinner(DTOutput("table_meal_6hr_consolidated"), type = 6, color = "#2c3e50")
-            )
+            withSpinner(DTOutput("table_meal_6hr_consolidated"), type = 6, color = "#2c3e50")
           ),
           nav_panel(
             "Short Meal Details",
-            div(style = "padding: 10px;",
-              withSpinner(DTOutput("table_meal_6hr_short_details"), type = 6, color = "#2c3e50")
-            )
+            withSpinner(DTOutput("table_meal_6hr_short_details"), type = 6, color = "#2c3e50")
           ),
           nav_panel(
             "Late Meal Details",
-            div(style = "padding: 10px;",
-              withSpinner(DTOutput("table_meal_6hr_late_details"), type = 6, color = "#2c3e50")
-            )
+            withSpinner(DTOutput("table_meal_6hr_late_details"), type = 6, color = "#2c3e50")
           )
         )
       ),
