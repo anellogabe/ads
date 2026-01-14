@@ -667,15 +667,9 @@ filter_sidebar <- function(data_list) {
 
     # Display Settings
     h5("Display Settings"),
-    layout_columns(
-      col_widths = c(6, 6),
-      selectInput("font_family", "Font",
-                  choices = c("Calibri" = "Calibri, sans-serif", "Times New Roman" = "'Times New Roman', serif"),
-                  selected = "Calibri, sans-serif"),
-      selectInput("font_size", "Font Size",
-                  choices = c("Small" = "12px", "Medium" = "14px", "Large" = "16px", "X-Large" = "18px"),
-                  selected = "14px")
-    ),
+    selectInput("font_size", "Font Size",
+                choices = c("Small" = "12px", "Medium" = "14px", "Large" = "16px", "X-Large" = "18px"),
+                selected = "14px"),
 
     hr(),
 
@@ -769,37 +763,53 @@ ui <- function(data_list, metric_spec) {
         card_header("Export to PDF"),
         card_body(
           h5("Select Sections to Include:"),
-          checkboxInput("pdf_select_all_damages", "Damages (All)", value = FALSE),
-          checkboxInput("pdf_select_all_appendix", "Appendix (All)", value = FALSE),
-          checkboxGroupInput(
-            "pdf_sections",
-            NULL,
-            choices = c(
-              "Overview Statistics" = "overview",
-              "Time Analysis - Summary" = "time_summary",
-              "Time Analysis - Shift Hours Analysis" = "time_shift_hours",
-              "Time Analysis - Punch Rounding" = "time_rounding",
-              "Meal & Rest Periods - Meal Analysis" = "meal_analysis",
-              "Meal & Rest Periods - Meal Violations (>5 hrs)" = "meal_5hr",
-              "Meal & Rest Periods - Meal Violations (>6 hrs)" = "meal_6hr",
-              "Meal & Rest Periods - Rest Periods" = "rest_periods",
-              "Pay Analysis - Summary" = "pay_summary",
-              "Pay Analysis - Regular Rate" = "pay_regular_rate",
-              "Pay Analysis - Pay Codes" = "pay_codes",
-              "Pay Analysis - Rate Type Analysis" = "rate_type_analysis",
-              "Damages - Class/Individual Claims - No Waivers" = "damages_class_no_waivers",
-              "Damages - Class/Individual Claims - Waivers" = "damages_class_waivers",
-              "Damages - PAGA - No Waivers" = "damages_paga_no_waivers",
-              "Damages - PAGA - Waivers" = "damages_paga_waivers",
-              "Appendix - Shift Hours" = "appendix_shift",
-              "Appendix - Non-Work Hours" = "appendix_nonwork",
-              "Appendix - Meal Period Distribution" = "appendix_meal",
-              "Appendix - Meal Start Times" = "appendix_meal_start",
-              "Appendix - Meal Quarter Hour" = "appendix_meal_quarter"
+          layout_columns(
+            col_widths = c(6, 6),
+
+            div(
+              checkboxInput("pdf_select_all_damages", "Damages (All)", value = FALSE),
+              checkboxInput("pdf_select_all_appendix", "Appendix (All)", value = FALSE),
+              checkboxGroupInput(
+                "pdf_sections_col1",
+                NULL,
+                choices = c(
+                  "Overview Statistics" = "overview",
+                  "Time Analysis - Summary" = "time_summary",
+                  "Time Analysis - Shift Hours Analysis" = "time_shift_hours",
+                  "Time Analysis - Punch Rounding" = "time_rounding",
+                  "Meal & Rest Periods - Meal Analysis" = "meal_analysis",
+                  "Meal & Rest Periods - Meal Violations (>5 hrs)" = "meal_5hr",
+                  "Meal & Rest Periods - Meal Violations (>6 hrs)" = "meal_6hr",
+                  "Meal & Rest Periods - Rest Periods" = "rest_periods",
+                  "Pay Analysis - Summary" = "pay_summary",
+                  "Pay Analysis - Regular Rate" = "pay_regular_rate",
+                  "Pay Analysis - Pay Codes" = "pay_codes"
+                ),
+                selected = c("overview", "time_summary", "time_shift_hours", "time_rounding",
+                            "meal_analysis", "meal_5hr", "meal_6hr", "rest_periods",
+                            "pay_summary", "pay_regular_rate", "pay_codes")
+              )
             ),
-            selected = c("overview", "time_summary", "time_shift_hours", "time_rounding",
-                        "meal_analysis", "meal_5hr", "meal_6hr", "rest_periods",
-                        "pay_summary", "pay_regular_rate", "pay_codes", "rate_type_analysis")
+
+            div(
+              checkboxGroupInput(
+                "pdf_sections_col2",
+                NULL,
+                choices = c(
+                  "Pay Analysis - Rate Type Analysis" = "rate_type_analysis",
+                  "Damages - Class/Individual Claims - No Waivers" = "damages_class_no_waivers",
+                  "Damages - Class/Individual Claims - Waivers" = "damages_class_waivers",
+                  "Damages - PAGA - No Waivers" = "damages_paga_no_waivers",
+                  "Damages - PAGA - Waivers" = "damages_paga_waivers",
+                  "Appendix - Shift Hours" = "appendix_shift",
+                  "Appendix - Non-Work Hours" = "appendix_nonwork",
+                  "Appendix - Meal Period Distribution" = "appendix_meal",
+                  "Appendix - Meal Start Times" = "appendix_meal_start",
+                  "Appendix - Meal Quarter Hour" = "appendix_meal_quarter"
+                ),
+                selected = c("rate_type_analysis")
+              )
+            )
           ),
           hr(),
           downloadButton("download_pdf", "Generate PDF Report",
@@ -1253,12 +1263,11 @@ server <- function(data_list, metric_spec, analysis_tables) {
     )
 
     # Apply dynamic font styling
-    observeEvent(c(input$font_family, input$font_size), {
-      req(input$font_family, input$font_size)
+    observeEvent(input$font_size, {
+      req(input$font_size)
 
       font_css <- sprintf(
-        "body, .dataTables_wrapper, .value-box, .card, .sidebar, h1, h2, h3, h4, h5, p, span { font-family: %s !important; font-size: %s !important; }",
-        input$font_family,
+        "body, .dataTables_wrapper, .value-box, .card, .sidebar, h1, h2, h3, h4, h5, p, span { font-size: %s !important; }",
         input$font_size
       )
 
@@ -1322,34 +1331,34 @@ server <- function(data_list, metric_spec, analysis_tables) {
     observeEvent(input$pdf_select_all_damages, {
       damages_items <- c("damages_class_no_waivers", "damages_class_waivers",
                          "damages_paga_no_waivers", "damages_paga_waivers")
-      current_selection <- input$pdf_sections
+      current_selection_col2 <- input$pdf_sections_col2
 
       if (input$pdf_select_all_damages) {
         # Add all damages items
-        new_selection <- unique(c(current_selection, damages_items))
+        new_selection <- unique(c(current_selection_col2, damages_items))
       } else {
         # Remove all damages items
-        new_selection <- setdiff(current_selection, damages_items)
+        new_selection <- setdiff(current_selection_col2, damages_items)
       }
 
-      updateCheckboxGroupInput(session, "pdf_sections", selected = new_selection)
+      updateCheckboxGroupInput(session, "pdf_sections_col2", selected = new_selection)
     })
 
     # Appendix checkbox toggle
     observeEvent(input$pdf_select_all_appendix, {
       appendix_items <- c("appendix_shift", "appendix_nonwork", "appendix_meal",
                           "appendix_meal_start", "appendix_meal_quarter")
-      current_selection <- input$pdf_sections
+      current_selection_col2 <- input$pdf_sections_col2
 
       if (input$pdf_select_all_appendix) {
         # Add all appendix items
-        new_selection <- unique(c(current_selection, appendix_items))
+        new_selection <- unique(c(current_selection_col2, appendix_items))
       } else {
         # Remove all appendix items
-        new_selection <- setdiff(current_selection, appendix_items)
+        new_selection <- setdiff(current_selection_col2, appendix_items)
       }
 
-      updateCheckboxGroupInput(session, "pdf_sections", selected = new_selection)
+      updateCheckboxGroupInput(session, "pdf_sections_col2", selected = new_selection)
     })
 
     # Filtered data with precomputed metadata
@@ -2672,14 +2681,15 @@ server <- function(data_list, metric_spec, analysis_tables) {
         withProgress(message = 'Generating PDF Report', value = 0, {
 
           # Calculate total steps for progress tracking
-          total_sections <- length(input$pdf_sections) + 2  # +2 for setup and finalization
+          # Combine both column selections
+          sections <- c(input$pdf_sections_col1, input$pdf_sections_col2)
+          total_sections <- length(sections) + 2  # +2 for setup and finalization
           current_step <- 0
 
           incProgress(1/total_sections, detail = "Initializing...")
           current_step <- current_step + 1
 
           data <- filtered_data()
-          sections <- input$pdf_sections
 
         # Case name for PDF
         case_name <- "Wage & Hour Analysis"
