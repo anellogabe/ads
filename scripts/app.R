@@ -666,6 +666,13 @@ filter_sidebar <- function(data_list) {
       selected = "all",
       multiple = FALSE
     ),
+    selectizeInput(
+      "subclass_filter",
+      "Subclass(es)",
+      choices = NULL,
+      multiple = TRUE,
+      options = list(placeholder = "All subclasses...")
+    ),
 
     hr(),
 
@@ -824,6 +831,8 @@ ui <- function(data_list, metric_spec) {
               )
             )
           ),
+          hr(),
+          checkboxInput("pdf_include_data_comparison", "Data Comparison (1-Page Landscape)", value = TRUE),
           hr(),
           downloadButton("download_pdf", "Generate PDF Report",
                         class = "btn-primary btn-lg",
@@ -1109,54 +1118,66 @@ ui <- function(data_list, metric_spec) {
       title = "Example",
       icon = icon("user-clock"),
 
-      card(
-        card_header("Select Employee-Period"),
-        card_body(
-          selectizeInput(
-            "example_period_select",
-            "Select Period:",
-            choices = NULL,
-            options = list(
-              placeholder = "Choose an employee-period...",
-              maxOptions = 50  # Only show 50 at a time for performance
+      # Search bar at top
+      layout_columns(
+        col_widths = c(4, 8),
+
+        card(
+          card_header("Select Employee-Period"),
+          card_body(
+            style = "padding: 10px;",
+            selectizeInput(
+              "example_period_select",
+              NULL,
+              choices = NULL,
+              options = list(
+                placeholder = "Type to search employee-period...",
+                maxOptions = 100,
+                closeAfterSelect = TRUE,
+                openOnFocus = FALSE
+              )
             )
           )
-        )
-      ),
-
-      layout_columns(
-        col_widths = c(4, 4, 4),
-
-        card(
-          card_header("Shift Data (shift_data1)"),
-          card_body(
-            withSpinner(DTOutput("table_example_shift"), type = 6, color = "#2c3e50")
-          )
         ),
 
         card(
-          card_header("Pay Data (pay1)"),
+          card_header("Instructions"),
           card_body(
-            withSpinner(DTOutput("table_example_pay"), type = 6, color = "#2c3e50")
-          )
-        ),
-
-        card(
-          card_header("Time Records (time1)"),
-          card_body(
-            withSpinner(DTOutput("table_example_time"), type = 6, color = "#2c3e50")
+            style = "padding: 10px;",
+            p("Type employee ID or date to search. Select a period to view detailed breakdown of all data sources.")
           )
         )
       ),
 
-      layout_columns(
-        col_widths = c(12),
+      # Punch Detail - time1
+      card(
+        card_header("Punch Detail (time1)"),
+        card_body(
+          withSpinner(DTOutput("table_example_punches"), type = 6, color = "#2c3e50")
+        )
+      ),
 
-        card(
-          card_header("Aggregate Data (pp_data1 / ee_data1)"),
-          card_body(
-            withSpinner(DTOutput("table_example_aggregate"), type = 6, color = "#2c3e50")
-          )
+      # Shift Data - shift_data1
+      card(
+        card_header("Shift Data (shift_data1)"),
+        card_body(
+          withSpinner(DTOutput("table_example_shift"), type = 6, color = "#2c3e50")
+        )
+      ),
+
+      # Pay Data - pay1
+      card(
+        card_header("Pay Data (pay1)"),
+        card_body(
+          withSpinner(DTOutput("table_example_pay"), type = 6, color = "#2c3e50")
+        )
+      ),
+
+      # Damages - pp_data1/ee_data1
+      card(
+        card_header("Damages (pp_data1 / ee_data1)"),
+        card_body(
+          withSpinner(DTOutput("table_example_damages"), type = 6, color = "#2c3e50")
         )
       )
     ),
@@ -1273,6 +1294,27 @@ server <- function(data_list, metric_spec, analysis_tables) {
       choices = all_employee_ids
     )
 
+    # Server-side selectize for subclass filter
+    all_subclasses <- c()
+    if ("Subclass" %in% names(data_list$shift_data1)) {
+      all_subclasses <- c(all_subclasses, unique(data_list$shift_data1$Subclass))
+    }
+    if ("Pay_Subclass" %in% names(data_list$pay1)) {
+      all_subclasses <- c(all_subclasses, unique(data_list$pay1$Pay_Subclass))
+    }
+    if ("Subclass" %in% names(data_list$pay1)) {
+      all_subclasses <- c(all_subclasses, unique(data_list$pay1$Subclass))
+    }
+    all_subclasses <- sort(unique(all_subclasses[!is.na(all_subclasses) & all_subclasses != ""]))
+
+    if (length(all_subclasses) > 0) {
+      updateSelectizeInput(
+        session,
+        "subclass_filter",
+        choices = all_subclasses
+      )
+    }
+
     # Apply dynamic font styling
     observeEvent(input$font_size, {
       req(input$font_size)
@@ -1325,6 +1367,12 @@ server <- function(data_list, metric_spec, analysis_tables) {
         filters$Sample <- as.integer(input$sample_filter)
       }
 
+      # Subclass filter
+      if (length(input$subclass_filter) > 0) {
+        filters$Subclass <- input$subclass_filter
+        filters$Pay_Subclass <- input$subclass_filter
+      }
+
       current_filters(filters)
     })
 
@@ -1335,6 +1383,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
                            end = original_date_max)
       updateSelectizeInput(session, "employee_filter", selected = character(0))
       updateSelectizeInput(session, "sample_filter", selected = "all")
+      updateSelectizeInput(session, "subclass_filter", selected = character(0))
       current_filters(list())
     })
 
@@ -1392,6 +1441,9 @@ server <- function(data_list, metric_spec, analysis_tables) {
       if (!is.null(filters$Sample) && "Sample" %in% names(shift_filtered)) {
         shift_filtered <- shift_filtered[Sample == filters$Sample]
       }
+      if (!is.null(filters$Subclass) && "Subclass" %in% names(shift_filtered)) {
+        shift_filtered <- shift_filtered[Subclass %in% filters$Subclass]
+      }
 
       # Apply filters to pay data
       if (!is.null(filters$date_min)) {
@@ -1405,6 +1457,12 @@ server <- function(data_list, metric_spec, analysis_tables) {
       }
       if (!is.null(filters$Sample) && "Pay_Sample" %in% names(pay_filtered)) {
         pay_filtered <- pay_filtered[Pay_Sample == filters$Sample]
+      }
+      if (!is.null(filters$Pay_Subclass) && "Pay_Subclass" %in% names(pay_filtered)) {
+        pay_filtered <- pay_filtered[Pay_Subclass %in% filters$Pay_Subclass]
+      }
+      if (!is.null(filters$Subclass) && "Subclass" %in% names(pay_filtered)) {
+        pay_filtered <- pay_filtered[Subclass %in% filters$Subclass]
       }
 
       # Filter pp_data1 (pay period aggregate) if it exists
@@ -2380,6 +2438,16 @@ server <- function(data_list, metric_spec, analysis_tables) {
         filter_parts <- c(filter_parts, sample_str)
       }
 
+      # Subclass filter
+      if (!is.null(filters$Subclass) && length(filters$Subclass) > 0) {
+        if (length(filters$Subclass) <= 3) {
+          subclass_str <- paste0("Subclass: ", paste(filters$Subclass, collapse = ", "))
+        } else {
+          subclass_str <- paste0("Subclass: ", length(filters$Subclass), " selected")
+        }
+        filter_parts <- c(filter_parts, subclass_str)
+      }
+
       # Combine all filter descriptions
       if (length(filter_parts) > 0) {
         filter_text <- paste("⚠ ACTIVE FILTERS:", paste(filter_parts, collapse = " | "))
@@ -2393,70 +2461,155 @@ server <- function(data_list, metric_spec, analysis_tables) {
     # Example Tab Outputs
     # ===========================================================================
 
-    # Shift Data Table
-    output$table_example_shift <- renderDT({
-      req(input$example_period_select)
-      data <- filtered_data()
-
-      if (is.null(data$shift_data1) || !"ID_Period_End" %in% names(data$shift_data1)) {
-        return(datatable(data.table(Metric = "No shift data available")))
-      }
-
-      # Filter to selected period
-      filtered <- data$shift_data1[ID_Period_End == input$example_period_select]
-
-      if (nrow(filtered) == 0) {
-        return(datatable(data.table(Metric = "No data for this period")))
-      }
-
-      # Transpose and display
-      transposed <- transpose_data_for_display(filtered, "Shift Data")
-      create_dt_table(transposed)
-    })
-
-    # Pay Data Table
-    output$table_example_pay <- renderDT({
-      req(input$example_period_select)
-      data <- filtered_data()
-
-      if (is.null(data$pay1) || !"Pay_ID_Period_End" %in% names(data$pay1)) {
-        return(datatable(data.table(Metric = "No pay data available")))
-      }
-
-      # Filter to selected period
-      filtered <- data$pay1[Pay_ID_Period_End == input$example_period_select]
-
-      if (nrow(filtered) == 0) {
-        return(datatable(data.table(Metric = "No data for this period")))
-      }
-
-      # Transpose and display
-      transposed <- transpose_data_for_display(filtered, "Pay Data")
-      create_dt_table(transposed)
-    })
-
-    # Time Data Table (time1)
-    output$table_example_time <- renderDT({
+    # Punch Detail (time1) - Show punch records as small table
+    output$table_example_punches <- renderDT({
       req(input$example_period_select)
 
       if (is.null(data_list$time1) || !"ID_Period_End" %in% names(data_list$time1)) {
-        return(datatable(data.table(Metric = "No time1 data available")))
+        return(datatable(data.table(Message = "No time1 data available"), rownames = FALSE, options = list(dom = 't')))
       }
 
       # Filter to selected period
       filtered <- data_list$time1[ID_Period_End == input$example_period_select]
 
       if (nrow(filtered) == 0) {
-        return(datatable(data.table(Metric = "No data for this period")))
+        return(datatable(data.table(Message = "No punch records for this period"), rownames = FALSE, options = list(dom = 't')))
       }
 
-      # Transpose and display
-      transposed <- transpose_data_for_display(filtered, "Time Data")
-      create_dt_table(transposed)
+      # Select punch detail columns: ID, Name, Date, punch_time, punch_type
+      punch_cols <- c("ID", "Name", "Date", "punch_time", "punch_type")
+      available_cols <- punch_cols[punch_cols %in% names(filtered)]
+
+      if (length(available_cols) == 0) {
+        return(datatable(data.table(Message = "Punch detail columns not available"), rownames = FALSE, options = list(dom = 't')))
+      }
+
+      display_data <- filtered[, ..available_cols]
+
+      datatable(
+        display_data,
+        rownames = FALSE,
+        options = list(
+          paging = FALSE,
+          scrollX = TRUE,
+          scrollY = "300px",
+          dom = 't'
+        ),
+        class = 'cell-border stripe hover compact',
+        style = 'bootstrap4'
+      )
     })
 
-    # Aggregate Data Table
-    output$table_example_aggregate <- renderDT({
+    # Shift Data (shift_data1) - Show all meal/rest violation columns horizontally
+    output$table_example_shift <- renderDT({
+      req(input$example_period_select)
+      data <- filtered_data()
+
+      if (is.null(data$shift_data1) || !"ID_Period_End" %in% names(data$shift_data1)) {
+        return(datatable(data.table(Message = "No shift data available"), rownames = FALSE, options = list(dom = 't')))
+      }
+
+      # Filter to selected period
+      filtered <- data$shift_data1[ID_Period_End == input$example_period_select]
+
+      if (nrow(filtered) == 0) {
+        return(datatable(data.table(Message = "No shift data for this period"), rownames = FALSE, options = list(dom = 't')))
+      }
+
+      # Key columns for shift data
+      priority_cols <- c("ID", "Name", "Date", "shift_hrs",
+                        "MissMP1", "LateMP1", "ShortMP1", "MissMP2", "LateMP2", "ShortMP2",
+                        "MissMP1_w", "LateMP1_w", "ShortMP1_w", "MissMP2_w", "LateMP2_w", "ShortMP2_w",
+                        "mpv_shift", "mpv_shift_w", "wk_shift_hrs", "wk_Hours",
+                        "mpv_per_pp", "mpv_per_pp_w", "rpv_per_pp",
+                        "pp_shift_hrs", "pp_Hours",
+                        "MissRP1", "LateRP1", "ShortRP1", "MissRP2", "LateRP2", "ShortRP2",
+                        "rpv_shift", "Source", "Page", "Sheet")
+
+      # Get available columns in priority order
+      available_cols <- priority_cols[priority_cols %in% names(filtered)]
+
+      # Add any remaining columns not in priority list
+      remaining_cols <- setdiff(names(filtered), c(available_cols, "ID_Period_End", "ID_Week_End", "Period_End"))
+      final_cols <- c(available_cols, remaining_cols)
+
+      display_data <- filtered[, ..final_cols]
+
+      datatable(
+        display_data,
+        rownames = FALSE,
+        options = list(
+          paging = FALSE,
+          scrollX = TRUE,
+          scrollY = "400px",
+          dom = 't',
+          columnDefs = list(
+            list(width = '100px', targets = "_all")
+          )
+        ),
+        class = 'cell-border stripe hover compact',
+        style = 'bootstrap4'
+      )
+    })
+
+    # Pay Data (pay1) - Show all pay columns horizontally
+    output$table_example_pay <- renderDT({
+      req(input$example_period_select)
+      data <- filtered_data()
+
+      if (is.null(data$pay1) || !"Pay_ID_Period_End" %in% names(data$pay1)) {
+        return(datatable(data.table(Message = "No pay data available"), rownames = FALSE, options = list(dom = 't')))
+      }
+
+      # Filter to selected period
+      filtered <- data$pay1[Pay_ID_Period_End == input$example_period_select]
+
+      if (nrow(filtered) == 0) {
+        return(datatable(data.table(Message = "No pay data for this period"), rownames = FALSE, options = list(dom = 't')))
+      }
+
+      # Key pay columns based on the green image
+      priority_cols <- c("Pay_ID", "Pay_Name", "Pay_Date", "Pay_Period_End", "Pay_Code", "Pay_Hours", "Pay_Amount",
+                        "Base_Rate1", "Base_Rate2", "RROP", "Calc_Rate", "Rate_Gp",
+                        "Hrs_Wkd_Pay_Code", "Reg_Pay_Code", "OT_Pay_Code", "DT_Pay_Code",
+                        "Meal_Pay_Code", "Rest_Pay_Code", "Sick_Pay_Code", "RROP_Pay_Code",
+                        "pp_Hrs_Wkd", "pp_Reg_Hrs", "pp_OT_Hrs", "pp_DT_Hrs",
+                        "pp_Straight_Time_Amt", "pp_OT_Amt", "pp_DT_Amt", "pp_Oth_RROP_Amt", "pp_Oth_Amt",
+                        "Actual_Wages", "Calc_Tot_Wages",
+                        "OT_Overpayment", "DT_Overpayment", "Meal_Overpayment", "Rest_Overpayment",
+                        "Sick_Overpayment", "Gross_Overpayment", "Net_Overpayment",
+                        "OT_rrop_dmgs", "DT_rrop_dmgs", "Meal_rrop_dmgs", "Rest_rrop_dmgs",
+                        "Sick_rrop_dmgs", "Gross_rrop_dmgs", "Net_rrop_dmgs",
+                        "Pay_Source")
+
+      # Get available columns
+      available_cols <- priority_cols[priority_cols %in% names(filtered)]
+
+      # Add remaining columns
+      remaining_cols <- setdiff(names(filtered), c(available_cols, "Pay_ID_Period_End"))
+      final_cols <- c(available_cols, remaining_cols)
+
+      display_data <- filtered[, ..final_cols]
+
+      datatable(
+        display_data,
+        rownames = FALSE,
+        options = list(
+          paging = FALSE,
+          scrollX = TRUE,
+          scrollY = "400px",
+          dom = 't',
+          columnDefs = list(
+            list(width = '100px', targets = "_all")
+          )
+        ),
+        class = 'cell-border stripe hover compact',
+        style = 'bootstrap4'
+      )
+    })
+
+    # Damages Data (pp_data1 / ee_data1) - Show damage columns
+    output$table_example_damages <- renderDT({
       req(input$example_period_select)
       data <- filtered_data()
 
@@ -2472,12 +2625,40 @@ server <- function(data_list, metric_spec, analysis_tables) {
       }
 
       if (is.null(aggregate_data) || nrow(aggregate_data) == 0) {
-        return(datatable(data.table(Metric = "No aggregate data available")))
+        return(datatable(data.table(Message = "No damage data available"), rownames = FALSE, options = list(dom = 't')))
       }
 
-      # Transpose and display
-      transposed <- transpose_data_for_display(aggregate_data, "Aggregate Data")
-      create_dt_table(transposed)
+      # Select only damage-related columns (containing "dmg", "Dmg", "penalty", "Penalty", "PAGA")
+      all_cols <- names(aggregate_data)
+      damage_cols <- all_cols[grepl("dmg|Dmg|penalty|Penalty|PAGA|paga|violation|Violation", all_cols, ignore.case = TRUE)]
+
+      # Also include ID columns for reference
+      id_cols <- c("ID", "Name", "Period_End", "ID_Period_End")
+      id_cols_available <- id_cols[id_cols %in% all_cols]
+
+      final_cols <- unique(c(id_cols_available, damage_cols))
+
+      if (length(final_cols) == 0) {
+        return(datatable(data.table(Message = "No damage columns available"), rownames = FALSE, options = list(dom = 't')))
+      }
+
+      display_data <- aggregate_data[, ..final_cols]
+
+      datatable(
+        display_data,
+        rownames = FALSE,
+        options = list(
+          paging = FALSE,
+          scrollX = TRUE,
+          scrollY = "400px",
+          dom = 't',
+          columnDefs = list(
+            list(width = '120px', targets = "_all")
+          )
+        ),
+        class = 'cell-border stripe hover compact',
+        style = 'bootstrap4'
+      )
     })
 
     # ===========================================================================
@@ -2999,6 +3180,162 @@ server <- function(data_list, metric_spec, analysis_tables) {
         if ("appendix_meal_quarter" %in% sections && !is.null(analysis_tables$meal_quarter_hr)) {
           html_content <- paste0(html_content, '<div class="page-break"></div>')
           html_content <- paste0(html_content, add_table(analysis_tables$meal_quarter_hr, "Appendix - Meal Quarter Hour", "📑"))
+        }
+
+        # Data Comparison Chart
+        if (input$pdf_include_data_comparison) {
+          incProgress(1/total_sections, detail = "Data Comparison")
+
+          # Calculate overlap data (similar to venn_data reactive)
+          time_ids <- unique(data$shift_data1$ID)
+          pay_ids <- unique(data$pay1$Pay_ID)
+          class_ids <- if (!is.null(data_list$class1) && "Class_ID" %in% names(data_list$class1)) {
+            unique(data_list$class1$Class_ID)
+          } else {
+            character(0)
+          }
+
+          # Calculate overlaps
+          time_only <- setdiff(time_ids, union(pay_ids, class_ids))
+          pay_only <- setdiff(pay_ids, union(time_ids, class_ids))
+          class_only <- setdiff(class_ids, union(time_ids, pay_ids))
+
+          time_pay <- setdiff(intersect(time_ids, pay_ids), class_ids)
+          time_class <- setdiff(intersect(time_ids, class_ids), pay_ids)
+          pay_class <- setdiff(intersect(pay_ids, class_ids), time_ids)
+
+          all_three <- intersect(intersect(time_ids, pay_ids), class_ids)
+
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
+          html_content <- paste0(html_content, '
+  <h1>📊 Data Comparison - Employee Data Overlap Analysis</h1>
+
+  <h2>Summary Statistics</h2>
+  <div style="margin: 20px 0;">
+    <div class="stat-box">
+      <div class="stat-label">Employees in Time Data</div>
+      <div class="stat-value">', format(length(time_ids), big.mark = ","), '</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Employees in Pay Data</div>
+      <div class="stat-value">', format(length(pay_ids), big.mark = ","), '</div>
+    </div>')
+
+          if (length(class_ids) > 0) {
+            html_content <- paste0(html_content, '
+    <div class="stat-box">
+      <div class="stat-label">Employees in Class Data</div>
+      <div class="stat-value">', format(length(class_ids), big.mark = ","), '</div>
+    </div>')
+          }
+
+          html_content <- paste0(html_content, '
+  </div>
+
+  <h2>Overlap Analysis</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Category</th>
+        <th class="value-col">Employee Count</th>
+        <th class="value-col">Percentage</th>
+      </tr>
+    </thead>
+    <tbody>')
+
+          # Total unique employees
+          all_unique_ids <- unique(c(time_ids, pay_ids, class_ids))
+          total_unique <- length(all_unique_ids)
+
+          # All three sources
+          if (length(all_three) > 0 && length(class_ids) > 0) {
+            pct <- sprintf("%.1f%%", (length(all_three) / total_unique) * 100)
+            html_content <- paste0(html_content, '
+      <tr style="background-color: #d4edda;">
+        <td class="metric-col"><strong>All Three Sources</strong></td>
+        <td class="value-col">', format(length(all_three), big.mark = ","), '</td>
+        <td class="value-col">', pct, '</td>
+      </tr>')
+          }
+
+          # Two-source overlaps
+          if (length(time_pay) > 0) {
+            pct <- sprintf("%.1f%%", (length(time_pay) / total_unique) * 100)
+            html_content <- paste0(html_content, '
+      <tr>
+        <td class="metric-col">Time & Pay Only</td>
+        <td class="value-col">', format(length(time_pay), big.mark = ","), '</td>
+        <td class="value-col">', pct, '</td>
+      </tr>')
+          }
+
+          if (length(time_class) > 0 && length(class_ids) > 0) {
+            pct <- sprintf("%.1f%%", (length(time_class) / total_unique) * 100)
+            html_content <- paste0(html_content, '
+      <tr>
+        <td class="metric-col">Time & Class Only</td>
+        <td class="value-col">', format(length(time_class), big.mark = ","), '</td>
+        <td class="value-col">', pct, '</td>
+      </tr>')
+          }
+
+          if (length(pay_class) > 0 && length(class_ids) > 0) {
+            pct <- sprintf("%.1f%%", (length(pay_class) / total_unique) * 100)
+            html_content <- paste0(html_content, '
+      <tr>
+        <td class="metric-col">Pay & Class Only</td>
+        <td class="value-col">', format(length(pay_class), big.mark = ","), '</td>
+        <td class="value-col">', pct, '</td>
+      </tr>')
+          }
+
+          # Single-source only
+          if (length(time_only) > 0) {
+            pct <- sprintf("%.1f%%", (length(time_only) / total_unique) * 100)
+            html_content <- paste0(html_content, '
+      <tr>
+        <td class="metric-col">Time Data Only</td>
+        <td class="value-col">', format(length(time_only), big.mark = ","), '</td>
+        <td class="value-col">', pct, '</td>
+      </tr>')
+          }
+
+          if (length(pay_only) > 0) {
+            pct <- sprintf("%.1f%%", (length(pay_only) / total_unique) * 100)
+            html_content <- paste0(html_content, '
+      <tr>
+        <td class="metric-col">Pay Data Only</td>
+        <td class="value-col">', format(length(pay_only), big.mark = ","), '</td>
+        <td class="value-col">', pct, '</td>
+      </tr>')
+          }
+
+          if (length(class_only) > 0 && length(class_ids) > 0) {
+            pct <- sprintf("%.1f%%", (length(class_only) / total_unique) * 100)
+            html_content <- paste0(html_content, '
+      <tr>
+        <td class="metric-col">Class Data Only</td>
+        <td class="value-col">', format(length(class_only), big.mark = ","), '</td>
+        <td class="value-col">', pct, '</td>
+      </tr>')
+          }
+
+          # Total row
+          html_content <- paste0(html_content, '
+      <tr style="background-color: #e9ecef; font-weight: bold;">
+        <td class="metric-col">Total Unique Employees</td>
+        <td class="value-col">', format(total_unique, big.mark = ","), '</td>
+        <td class="value-col">100.0%</td>
+      </tr>')
+
+          html_content <- paste0(html_content, '
+    </tbody>
+  </table>
+
+  <div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-left: 4px solid #0066cc;">
+    <p style="margin: 0;"><strong>Note:</strong> This analysis shows how employee data overlaps across different data sources (Time records, Pay records, and Class Action list). Employees appearing in multiple sources indicate good data matching, while single-source employees may require verification.</p>
+  </div>
+')
         }
 
           # Close HTML
