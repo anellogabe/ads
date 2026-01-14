@@ -1295,12 +1295,12 @@ server <- function(data_list, metric_spec, analysis_tables) {
     time_meal_analysis <- metric_groups[grepl("^Time Meal Period Analysis", metric_groups)]
 
     # Meal violations - split into summary and detail groups
-    time_meal_violations_5_summary <- metric_groups[grepl("^Time Meal Violations \\(>5 hrs\\)$", metric_groups)]
-    time_meal_violations_5_short <- metric_groups[grepl("^Time Meal Violations \\(>5 hrs\\) - Short Detail", metric_groups)]
-    time_meal_violations_5_late <- metric_groups[grepl("^Time Meal Violations \\(>5 hrs\\) - Late Detail", metric_groups)]
-    time_meal_violations_6_summary <- metric_groups[grepl("^Time Meal Violations \\(>6 hrs\\)$", metric_groups)]
-    time_meal_violations_6_short <- metric_groups[grepl("^Time Meal Violations \\(>6 hrs\\) - Short Detail", metric_groups)]
-    time_meal_violations_6_late <- metric_groups[grepl("^Time Meal Violations \\(>6 hrs\\) - Late Detail", metric_groups)]
+    time_meal_violations_5_summary <- metric_groups[grepl("^Time Meal Violations \\(no waivers\\)$", metric_groups)]
+    time_meal_violations_5_short <- metric_groups[grepl("^Time Meal Violations \\(no waivers\\) - Short Detail", metric_groups)]
+    time_meal_violations_5_late <- metric_groups[grepl("^Time Meal Violations \\(no waivers\\) - Late Detail", metric_groups)]
+    time_meal_violations_6_summary <- metric_groups[grepl("^Time Meal Violations \\(waivers\\)$", metric_groups)]
+    time_meal_violations_6_short <- metric_groups[grepl("^Time Meal Violations \\(waivers\\) - Short Detail", metric_groups)]
+    time_meal_violations_6_late <- metric_groups[grepl("^Time Meal Violations \\(waivers\\) - Late Detail", metric_groups)]
 
     time_rest <- metric_groups[grepl("^Time Rest", metric_groups)]
     pay_summary_groups <- metric_groups[grepl("^Pay Summary$|^Pay Overtime$|^Pay Double Time$|^Pay Meal Premiums$|^Pay Rest Premiums$|^Pay Bonuses$|^Pay Shift Differentials$|^Pay Sick Pay$", metric_groups)]
