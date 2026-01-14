@@ -1074,29 +1074,48 @@ ui <- function(data_list, metric_spec) {
             "example_period_select",
             "Select Period:",
             choices = NULL,
-            options = list(placeholder = "Choose an employee-period...")
+            options = list(
+              placeholder = "Choose an employee-period...",
+              maxOptions = 50  # Only show 50 at a time for performance
+            ),
+            server = TRUE  # Enable server-side selectize for better performance
           )
         )
       ),
 
-      card(
-        card_header("Shift Data"),
-        card_body(
-          withSpinner(DTOutput("table_example_shift"), type = 6, color = "#2c3e50")
+      layout_columns(
+        col_widths = c(4, 4, 4),
+
+        card(
+          card_header("Shift Data (shift_data1)"),
+          card_body(
+            withSpinner(DTOutput("table_example_shift"), type = 6, color = "#2c3e50")
+          )
+        ),
+
+        card(
+          card_header("Pay Data (pay1)"),
+          card_body(
+            withSpinner(DTOutput("table_example_pay"), type = 6, color = "#2c3e50")
+          )
+        ),
+
+        card(
+          card_header("Time Records (time1)"),
+          card_body(
+            withSpinner(DTOutput("table_example_time"), type = 6, color = "#2c3e50")
+          )
         )
       ),
 
-      card(
-        card_header("Pay Data"),
-        card_body(
-          withSpinner(DTOutput("table_example_pay"), type = 6, color = "#2c3e50")
-        )
-      ),
+      layout_columns(
+        col_widths = c(12),
 
-      card(
-        card_header("Aggregate Data"),
-        card_body(
-          withSpinner(DTOutput("table_example_aggregate"), type = 6, color = "#2c3e50")
+        card(
+          card_header("Aggregate Data (pp_data1 / ee_data1)"),
+          card_body(
+            withSpinner(DTOutput("table_example_aggregate"), type = 6, color = "#2c3e50")
+          )
         )
       )
     ),
@@ -2396,6 +2415,26 @@ server <- function(data_list, metric_spec, analysis_tables) {
 
       # Transpose and display
       transposed <- transpose_data_for_display(filtered, "Pay Data")
+      create_dt_table(transposed)
+    })
+
+    # Time Data Table (time1)
+    output$table_example_time <- renderDT({
+      req(input$example_period_select)
+
+      if (is.null(data_list$time1) || !"ID_Period_End" %in% names(data_list$time1)) {
+        return(datatable(data.table(Metric = "No time1 data available")))
+      }
+
+      # Filter to selected period
+      filtered <- data_list$time1[ID_Period_End == input$example_period_select]
+
+      if (nrow(filtered) == 0) {
+        return(datatable(data.table(Metric = "No data for this period")))
+      }
+
+      # Transpose and display
+      transposed <- transpose_data_for_display(filtered, "Time Data")
       create_dt_table(transposed)
     })
 
