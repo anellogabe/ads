@@ -1561,235 +1561,93 @@ server <- function(data_list, metric_spec, analysis_tables) {
       venn <- venn_data()
       sources <- input$venn_sources
 
-      # Create overlapping Venn diagram using plotly
-      plot_ly(x = 0, y = 0, type = "scatter", mode = "markers",
-              marker = list(size = 0, opacity = 0), showlegend = FALSE) %>%
+      # Create clearer overlap visualization using grouped bar chart
+      # Much easier to read than a Venn diagram
+
+      # Build categorized data
+      categories <- c()
+      counts <- c()
+      colors <- c()
+
+      # All three sources
+      if (venn$all_three > 0 && all(c("time", "pay", "class") %in% sources)) {
+        categories <- c(categories, "All Three Sources")
+        counts <- c(counts, venn$all_three)
+        colors <- c(colors, "#2ecc71")
+      }
+
+      # Two-source overlaps
+      if (venn$time_pay > 0 && all(c("time", "pay") %in% sources)) {
+        categories <- c(categories, "Time & Pay")
+        counts <- c(counts, venn$time_pay)
+        colors <- c(colors, "#3498db")
+      }
+      if (venn$time_class > 0 && all(c("time", "class") %in% sources) && venn$class_total > 0) {
+        categories <- c(categories, "Time & Class")
+        counts <- c(counts, venn$time_class)
+        colors <- c(colors, "#9b59b6")
+      }
+      if (venn$pay_class > 0 && all(c("pay", "class") %in% sources) && venn$class_total > 0) {
+        categories <- c(categories, "Pay & Class")
+        counts <- c(counts, venn$pay_class)
+        colors <- c(colors, "#e67e22")
+      }
+
+      # Single-source only
+      if (venn$time_only > 0 && "time" %in% sources) {
+        categories <- c(categories, "Time Only")
+        counts <- c(counts, venn$time_only)
+        colors <- c(colors, "#2c3e50")
+      }
+      if (venn$pay_only > 0 && "pay" %in% sources) {
+        categories <- c(categories, "Pay Only")
+        counts <- c(counts, venn$pay_only)
+        colors <- c(colors, "#27ae60")
+      }
+      if (venn$class_only > 0 && "class" %in% sources && venn$class_total > 0) {
+        categories <- c(categories, "Class Only")
+        counts <- c(counts, venn$class_only)
+        colors <- c(colors, "#c0392b")
+      }
+
+      # Create horizontal bar chart
+      plot_ly(
+        x = counts,
+        y = categories,
+        type = "bar",
+        orientation = "h",
+        marker = list(color = colors),
+        text = paste0(format(counts, big.mark = ","), " employees"),
+        textposition = "inside",
+        insidetextanchor = "middle",
+        insidetextfont = list(color = "white", size = 12, weight = "bold"),
+        hovertemplate = paste0(
+          "<b>%{y}</b><br>",
+          "Count: %{x:,} employees<br>",
+          "<extra></extra>"
+        )
+      ) %>%
         layout(
-          title = "Employee Data Overlap",
-          xaxis = list(range = c(-3, 3), showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE, title = ""),
-          yaxis = list(range = c(-2.5, 2.5), showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE, title = ""),
-          shapes = list(),
-          annotations = list(),
-          showlegend = FALSE
-        ) -> p
-
-      shapes_list <- list()
-      annot_list <- list()
-
-      # Two-circle Venn diagram (Time and Pay only)
-      if (length(sources) == 2 && "time" %in% sources && "pay" %in% sources) {
-        # Time circle (left, dark blue)
-        shapes_list[[length(shapes_list) + 1]] <- list(
-          type = "circle",
-          xref = "x", yref = "y",
-          x0 = -2, y0 = -1, x1 = 0, y1 = 1,
-          line = list(color = "#2c3e50", width = 3),
-          fillcolor = "rgba(44, 62, 80, 0.3)"
+          title = list(
+            text = "Employee Data Overlap Analysis",
+            font = list(size = 16, weight = "bold")
+          ),
+          xaxis = list(
+            title = "Number of Employees",
+            showgrid = TRUE,
+            gridcolor = "#ecf0f1"
+          ),
+          yaxis = list(
+            title = "",
+            showgrid = FALSE,
+            categoryorder = "total ascending"
+          ),
+          showlegend = FALSE,
+          hovermode = "closest",
+          margin = list(l = 150, r = 50, t = 60, b = 50),
+          plot_bgcolor = "#ffffff",
+          paper_bgcolor = "#ffffff"
         )
-
-        # Pay circle (right, green)
-        shapes_list[[length(shapes_list) + 1]] <- list(
-          type = "circle",
-          xref = "x", yref = "y",
-          x0 = 0, y0 = -1, x1 = 2, y1 = 1,
-          line = list(color = "#27ae60", width = 3),
-          fillcolor = "rgba(39, 174, 96, 0.3)"
-        )
-
-        # Labels outside circles
-        annot_list[[length(annot_list) + 1]] <- list(
-          x = -1.5, y = 1.5,
-          text = paste0("<b>Time Data</b><br>", format(venn$time_total, big.mark = ",")),
-          showarrow = FALSE,
-          font = list(size = 12, color = "#2c3e50")
-        )
-
-        annot_list[[length(annot_list) + 1]] <- list(
-          x = 1.5, y = 1.5,
-          text = paste0("<b>Pay Data</b><br>", format(venn$pay_total, big.mark = ",")),
-          showarrow = FALSE,
-          font = list(size = 12, color = "#27ae60")
-        )
-
-        # Time only (left region)
-        if (venn$time_only > 0) {
-          annot_list[[length(annot_list) + 1]] <- list(
-            x = -1.3, y = 0,
-            text = format(venn$time_only, big.mark = ","),
-            showarrow = FALSE,
-            font = list(size = 14, color = "#2c3e50", weight = "bold")
-          )
-        }
-
-        # Overlap region (center)
-        overlap_count <- venn$time_pay + venn$all_three
-        if (overlap_count > 0) {
-          annot_list[[length(annot_list) + 1]] <- list(
-            x = 0, y = 0,
-            text = format(overlap_count, big.mark = ","),
-            showarrow = FALSE,
-            font = list(size = 16, color = "#34495e", weight = "bold"),
-            bgcolor = "rgba(255,255,255,0.8)",
-            borderpad = 4
-          )
-        }
-
-        # Pay only (right region)
-        if (venn$pay_only > 0) {
-          annot_list[[length(annot_list) + 1]] <- list(
-            x = 1.3, y = 0,
-            text = format(venn$pay_only, big.mark = ","),
-            showarrow = FALSE,
-            font = list(size = 14, color = "#27ae60", weight = "bold")
-          )
-        }
-      }
-
-      # Three-circle Venn diagram
-      else if (length(sources) == 3 && venn$class_total > 0) {
-        # Time circle (top left, dark blue)
-        shapes_list[[length(shapes_list) + 1]] <- list(
-          type = "circle",
-          xref = "x", yref = "y",
-          x0 = -2, y0 = 0.2, x1 = 0, y1 = 2.2,
-          line = list(color = "#2c3e50", width = 3),
-          fillcolor = "rgba(44, 62, 80, 0.25)"
-        )
-
-        # Pay circle (top right, green)
-        shapes_list[[length(shapes_list) + 1]] <- list(
-          type = "circle",
-          xref = "x", yref = "y",
-          x0 = 0, y0 = 0.2, x1 = 2, y1 = 2.2,
-          line = list(color = "#27ae60", width = 3),
-          fillcolor = "rgba(39, 174, 96, 0.25)"
-        )
-
-        # Class circle (bottom, orange)
-        shapes_list[[length(shapes_list) + 1]] <- list(
-          type = "circle",
-          xref = "x", yref = "y",
-          x0 = -1, y0 = -2, x1 = 1, y1 = 0,
-          line = list(color = "#e67e22", width = 3),
-          fillcolor = "rgba(230, 126, 34, 0.25)"
-        )
-
-        # Labels
-        annot_list[[length(annot_list) + 1]] <- list(
-          x = -1.5, y = 2.2,
-          text = paste0("<b>Time</b> (", format(venn$time_total, big.mark = ","), ")"),
-          showarrow = FALSE,
-          font = list(size = 11, color = "#2c3e50")
-        )
-
-        annot_list[[length(annot_list) + 1]] <- list(
-          x = 1.5, y = 2.2,
-          text = paste0("<b>Pay</b> (", format(venn$pay_total, big.mark = ","), ")"),
-          showarrow = FALSE,
-          font = list(size = 11, color = "#27ae60")
-        )
-
-        annot_list[[length(annot_list) + 1]] <- list(
-          x = 0, y = -2.2,
-          text = paste0("<b>Class</b> (", format(venn$class_total, big.mark = ","), ")"),
-          showarrow = FALSE,
-          font = list(size = 11, color = "#e67e22")
-        )
-
-        # Add counts in regions
-        # Time only (top left)
-        if (venn$time_only > 0) {
-          annot_list[[length(annot_list) + 1]] <- list(
-            x = -1.4, y = 1.5,
-            text = format(venn$time_only, big.mark = ","),
-            showarrow = FALSE,
-            font = list(size = 12, color = "#2c3e50", weight = "bold")
-          )
-        }
-
-        # Pay only (top right)
-        if (venn$pay_only > 0) {
-          annot_list[[length(annot_list) + 1]] <- list(
-            x = 1.4, y = 1.5,
-            text = format(venn$pay_only, big.mark = ","),
-            showarrow = FALSE,
-            font = list(size = 12, color = "#27ae60", weight = "bold")
-          )
-        }
-
-        # Class only (bottom)
-        if (venn$class_only > 0) {
-          annot_list[[length(annot_list) + 1]] <- list(
-            x = 0, y = -1.3,
-            text = format(venn$class_only, big.mark = ","),
-            showarrow = FALSE,
-            font = list(size = 12, color = "#e67e22", weight = "bold")
-          )
-        }
-
-        # Time & Pay overlap (top center)
-        if (venn$time_pay > 0) {
-          annot_list[[length(annot_list) + 1]] <- list(
-            x = 0, y = 1.5,
-            text = format(venn$time_pay, big.mark = ","),
-            showarrow = FALSE,
-            font = list(size = 12, color = "#34495e", weight = "bold")
-          )
-        }
-
-        # Time & Class overlap (left)
-        if (venn$time_class > 0) {
-          annot_list[[length(annot_list) + 1]] <- list(
-            x = -0.9, y = 0.3,
-            text = format(venn$time_class, big.mark = ","),
-            showarrow = FALSE,
-            font = list(size = 12, color = "#34495e", weight = "bold")
-          )
-        }
-
-        # Pay & Class overlap (right)
-        if (venn$pay_class > 0) {
-          annot_list[[length(annot_list) + 1]] <- list(
-            x = 0.9, y = 0.3,
-            text = format(venn$pay_class, big.mark = ","),
-            showarrow = FALSE,
-            font = list(size = 12, color = "#34495e", weight = "bold")
-          )
-        }
-
-        # All three overlap (center)
-        if (venn$all_three > 0) {
-          annot_list[[length(annot_list) + 1]] <- list(
-            x = 0, y = 0.7,
-            text = format(venn$all_three, big.mark = ","),
-            showarrow = FALSE,
-            font = list(size = 14, color = "#000000", weight = "bold"),
-            bgcolor = "rgba(255,255,255,0.9)",
-            borderpad = 4
-          )
-        }
-      }
-
-      # Single circle or other combinations - simplified view
-      else {
-        if ("time" %in% sources) {
-          shapes_list[[length(shapes_list) + 1]] <- list(
-            type = "circle",
-            xref = "x", yref = "y",
-            x0 = -1, y0 = -1, x1 = 1, y1 = 1,
-            line = list(color = "#2c3e50", width = 3),
-            fillcolor = "rgba(44, 62, 80, 0.3)"
-          )
-          annot_list[[length(annot_list) + 1]] <- list(
-            x = 0, y = 0,
-            text = paste0("<b>Time Data</b><br>", format(venn$time_total, big.mark = ",")),
-            showarrow = FALSE,
-            font = list(size = 14, color = "#2c3e50")
-          )
-        }
-      }
-
-      p %>% layout(shapes = shapes_list, annotations = annot_list)
     })
 
     output$coverage_statistics <- renderUI({
