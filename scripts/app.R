@@ -585,8 +585,8 @@ create_dt_table <- function(dt, metric_col = "Metric") {
         "        // Remove commas and parse as number",
         "        var num = parseFloat(val.toString().replace(/,/g, ''));",
         "        if (!isNaN(num)) {",
-        "          // Format with $ and commas",
-        "          var formatted = '$' + num.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});",
+        "          // Format with $ and commas with .00 cents",
+        "          var formatted = '$' + num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});",
         "          $(row).find('td:eq(' + i + ')').html(formatted);",
         "        }",
         "      }",
@@ -728,7 +728,7 @@ ui <- function(data_list, metric_spec) {
             font-weight: bold;
             position: sticky;
             top: 0;
-            z-index: 1000;
+            z-index: 500;
           }
           .dt-center { text-align: center !important; }
           .dt-left { text-align: left !important; }
@@ -782,13 +782,23 @@ ui <- function(data_list, metric_spec) {
       card(
         card_header("Export to PDF"),
         card_body(
-          h5("Select Sections to Include:"),
-          layout_columns(
-            col_widths = c(6, 6),
-
+          div(
+            style = "margin-bottom: 15px;",
+            h5("Select Sections to Include:"),
             div(
-              checkboxInput("pdf_select_all_damages", "Damages (All)", value = FALSE),
-              checkboxInput("pdf_select_all_appendix", "Appendix (All)", value = FALSE),
+              style = "display: inline-block; margin-right: 20px;",
+              actionButton("pdf_select_all", "Select All", class = "btn-sm btn-primary")
+            ),
+            div(
+              style = "display: inline-block;",
+              actionButton("pdf_deselect_all", "Deselect All", class = "btn-sm btn-secondary")
+            )
+          ),
+          layout_columns(
+            col_widths = c(4, 4, 4),
+
+            # Column 1
+            div(
               checkboxGroupInput(
                 "pdf_sections_col1",
                 NULL,
@@ -797,37 +807,49 @@ ui <- function(data_list, metric_spec) {
                   "Time Analysis - Summary" = "time_summary",
                   "Time Analysis - Shift Hours Analysis" = "time_shift_hours",
                   "Time Analysis - Punch Rounding" = "time_rounding",
-                  "Meal & Rest Periods - Meal Analysis" = "meal_analysis",
-                  "Meal & Rest Periods - Meal Violations (>5 hrs)" = "meal_5hr",
-                  "Meal & Rest Periods - Meal Violations (>6 hrs)" = "meal_6hr",
-                  "Meal & Rest Periods - Rest Periods" = "rest_periods",
-                  "Pay Analysis - Summary" = "pay_summary",
-                  "Pay Analysis - Regular Rate" = "pay_regular_rate",
-                  "Pay Analysis - Pay Codes" = "pay_codes"
+                  "Meal & Rest - Meal Analysis" = "meal_analysis",
+                  "Meal & Rest - Violations (>5 hrs)" = "meal_5hr",
+                  "Meal & Rest - Violations (>6 hrs)" = "meal_6hr"
                 ),
                 selected = c("overview", "time_summary", "time_shift_hours", "time_rounding",
-                            "meal_analysis", "meal_5hr", "meal_6hr", "rest_periods",
-                            "pay_summary", "pay_regular_rate", "pay_codes")
+                            "meal_analysis", "meal_5hr", "meal_6hr")
               )
             ),
 
+            # Column 2
             div(
               checkboxGroupInput(
                 "pdf_sections_col2",
                 NULL,
                 choices = c(
-                  "Pay Analysis - Rate Type Analysis" = "rate_type_analysis",
-                  "Damages - Class/Individual Claims - No Waivers" = "damages_class_no_waivers",
-                  "Damages - Class/Individual Claims - Waivers" = "damages_class_waivers",
-                  "Damages - PAGA - No Waivers" = "damages_paga_no_waivers",
-                  "Damages - PAGA - Waivers" = "damages_paga_waivers",
+                  "Meal & Rest - Rest Periods" = "rest_periods",
+                  "Pay Analysis - Summary" = "pay_summary",
+                  "Pay Analysis - Regular Rate" = "pay_regular_rate",
+                  "Pay Analysis - Pay Codes" = "pay_codes",
+                  "Pay Analysis - Rate Type" = "rate_type_analysis",
+                  "Damages - Class (No Waivers)" = "damages_class_no_waivers",
+                  "Damages - Class (Waivers)" = "damages_class_waivers"
+                ),
+                selected = c("rest_periods", "pay_summary", "pay_regular_rate",
+                            "pay_codes", "rate_type_analysis")
+              )
+            ),
+
+            # Column 3
+            div(
+              checkboxGroupInput(
+                "pdf_sections_col3",
+                NULL,
+                choices = c(
+                  "Damages - PAGA (No Waivers)" = "damages_paga_no_waivers",
+                  "Damages - PAGA (Waivers)" = "damages_paga_waivers",
                   "Appendix - Shift Hours" = "appendix_shift",
                   "Appendix - Non-Work Hours" = "appendix_nonwork",
-                  "Appendix - Meal Period Distribution" = "appendix_meal",
+                  "Appendix - Meal Period Dist." = "appendix_meal",
                   "Appendix - Meal Start Times" = "appendix_meal_start",
                   "Appendix - Meal Quarter Hour" = "appendix_meal_quarter"
                 ),
-                selected = c("rate_type_analysis")
+                selected = c()
               )
             )
           ),
@@ -1118,66 +1140,78 @@ ui <- function(data_list, metric_spec) {
       title = "Example",
       icon = icon("user-clock"),
 
-      # Search bar at top
-      layout_columns(
-        col_widths = c(4, 8),
+      div(
+        style = "height: calc(100vh - 150px); overflow-y: auto; padding: 10px;",
 
-        card(
-          card_header("Select Employee-Period"),
-          card_body(
-            style = "padding: 10px;",
-            selectizeInput(
-              "example_period_select",
-              NULL,
-              choices = NULL,
-              options = list(
-                placeholder = "Type to search employee-period...",
-                maxOptions = 100,
-                closeAfterSelect = TRUE,
-                openOnFocus = FALSE
+        # Search bar at top
+        layout_columns(
+          col_widths = c(4, 8),
+
+          card(
+            card_header("Select Employee-Period"),
+            card_body(
+              style = "padding: 10px;",
+              selectizeInput(
+                "example_period_select",
+                NULL,
+                choices = NULL,
+                options = list(
+                  placeholder = "Type to search employee-period...",
+                  maxOptions = 100,
+                  closeAfterSelect = TRUE,
+                  openOnFocus = FALSE
+                )
               )
+            )
+          ),
+
+          card(
+            card_header("Instructions"),
+            card_body(
+              style = "padding: 10px;",
+              p("Type employee ID or date to search. Select a period to view detailed breakdown of all data sources.")
             )
           )
         ),
 
+        # Punch Detail - time1
         card(
-          card_header("Instructions"),
+          card_header("Punch Detail (time1)"),
           card_body(
-            style = "padding: 10px;",
-            p("Type employee ID or date to search. Select a period to view detailed breakdown of all data sources.")
+            div(style = "overflow-x: auto;",
+              withSpinner(DTOutput("table_example_punches"), type = 6, color = "#2c3e50")
+            )
           )
-        )
-      ),
+        ),
 
-      # Punch Detail - time1
-      card(
-        card_header("Punch Detail (time1)"),
-        card_body(
-          withSpinner(DTOutput("table_example_punches"), type = 6, color = "#2c3e50")
-        )
-      ),
+        # Shift Data - shift_data1
+        card(
+          card_header("Shift Data (shift_data1)"),
+          card_body(
+            div(style = "overflow-x: auto;",
+              withSpinner(DTOutput("table_example_shift"), type = 6, color = "#2c3e50")
+            )
+          )
+        ),
 
-      # Shift Data - shift_data1
-      card(
-        card_header("Shift Data (shift_data1)"),
-        card_body(
-          withSpinner(DTOutput("table_example_shift"), type = 6, color = "#2c3e50")
-        )
-      ),
+        # Pay Data - pay1
+        card(
+          card_header("Pay Data (pay1)"),
+          card_body(
+            div(style = "overflow-x: auto;",
+              withSpinner(DTOutput("table_example_pay"), type = 6, color = "#2c3e50")
+            )
+          )
+        ),
 
-      # Pay Data - pay1
-      card(
-        card_header("Pay Data (pay1)"),
-        card_body(
-          withSpinner(DTOutput("table_example_pay"), type = 6, color = "#2c3e50")
-        )
-      ),
-
-      # Damages - pp_data1/ee_data1
-      card(
-        card_header("Damages (pp_data1 / ee_data1)"),
-        card_body(
-          withSpinner(DTOutput("table_example_damages"), type = 6, color = "#2c3e50")
+        # Damages - pp_data1/ee_data1
+        card(
+          card_header("Damages (pp_data1 / ee_data1)"),
+          card_body(
+            div(style = "overflow-x: auto;",
+              withSpinner(DTOutput("table_example_damages"), type = 6, color = "#2c3e50")
+            )
+          )
         )
       )
     ),
@@ -1387,38 +1421,26 @@ server <- function(data_list, metric_spec, analysis_tables) {
       current_filters(list())
     })
 
-    # Damages checkbox toggle
-    observeEvent(input$pdf_select_all_damages, {
-      damages_items <- c("damages_class_no_waivers", "damages_class_waivers",
-                         "damages_paga_no_waivers", "damages_paga_waivers")
-      current_selection_col2 <- input$pdf_sections_col2
+    # PDF Select All button
+    observeEvent(input$pdf_select_all, {
+      # Get all choices from all three columns
+      all_choices_col1 <- c("overview", "time_summary", "time_shift_hours", "time_rounding",
+                           "meal_analysis", "meal_5hr", "meal_6hr")
+      all_choices_col2 <- c("rest_periods", "pay_summary", "pay_regular_rate", "pay_codes",
+                           "rate_type_analysis", "damages_class_no_waivers", "damages_class_waivers")
+      all_choices_col3 <- c("damages_paga_no_waivers", "damages_paga_waivers", "appendix_shift",
+                           "appendix_nonwork", "appendix_meal", "appendix_meal_start", "appendix_meal_quarter")
 
-      if (input$pdf_select_all_damages) {
-        # Add all damages items
-        new_selection <- unique(c(current_selection_col2, damages_items))
-      } else {
-        # Remove all damages items
-        new_selection <- setdiff(current_selection_col2, damages_items)
-      }
-
-      updateCheckboxGroupInput(session, "pdf_sections_col2", selected = new_selection)
+      updateCheckboxGroupInput(session, "pdf_sections_col1", selected = all_choices_col1)
+      updateCheckboxGroupInput(session, "pdf_sections_col2", selected = all_choices_col2)
+      updateCheckboxGroupInput(session, "pdf_sections_col3", selected = all_choices_col3)
     })
 
-    # Appendix checkbox toggle
-    observeEvent(input$pdf_select_all_appendix, {
-      appendix_items <- c("appendix_shift", "appendix_nonwork", "appendix_meal",
-                          "appendix_meal_start", "appendix_meal_quarter")
-      current_selection_col2 <- input$pdf_sections_col2
-
-      if (input$pdf_select_all_appendix) {
-        # Add all appendix items
-        new_selection <- unique(c(current_selection_col2, appendix_items))
-      } else {
-        # Remove all appendix items
-        new_selection <- setdiff(current_selection_col2, appendix_items)
-      }
-
-      updateCheckboxGroupInput(session, "pdf_sections_col2", selected = new_selection)
+    # PDF Deselect All button
+    observeEvent(input$pdf_deselect_all, {
+      updateCheckboxGroupInput(session, "pdf_sections_col1", selected = character(0))
+      updateCheckboxGroupInput(session, "pdf_sections_col2", selected = character(0))
+      updateCheckboxGroupInput(session, "pdf_sections_col3", selected = character(0))
     })
 
     # Filtered data with precomputed metadata
@@ -2731,8 +2753,8 @@ server <- function(data_list, metric_spec, analysis_tables) {
         withProgress(message = 'Generating PDF Report', value = 0, {
 
           # Calculate total steps for progress tracking
-          # Combine both column selections
-          sections <- c(input$pdf_sections_col1, input$pdf_sections_col2)
+          # Combine all three column selections
+          sections <- c(input$pdf_sections_col1, input$pdf_sections_col2, input$pdf_sections_col3)
           total_sections <- length(sections) + 2  # +2 for setup and finalization
           current_step <- 0
 
