@@ -40,6 +40,19 @@ DATA_COMPARISON_FILE <- "Data Comparison.csv"
 EMPLOYEE_COMPARISON_FILE <- "Employee Pay Period Comparison.csv"
 
 # =============================================================================
+# CASE METADATA - Load from environment or set defaults
+# =============================================================================
+
+# These variables should be defined in clean_data.R before running the app
+# If not defined, use placeholder values
+if (!exists("case_name")) case_name <- "Wage & Hour Analysis"
+if (!exists("case_no")) case_no <- "Not specified"
+if (!exists("sample_size")) sample_size <- "Not specified"
+if (!exists("date_filed")) date_filed <- Sys.Date()
+if (!exists("complaint_date")) complaint_date <- Sys.Date()
+if (!exists("mediation_date")) mediation_date <- Sys.Date()
+
+# =============================================================================
 # UTILITY FUNCTIONS
 # =============================================================================
 
