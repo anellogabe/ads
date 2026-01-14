@@ -459,18 +459,18 @@ combine_damages_with_headers <- function(data, spec, group_definitions, filters 
 is_waiver_only_group <- function(group_name) {
   # Waiver-only groups have:
   # 1. ">6 hrs" or ">6hrs" (meal period waivers)
-  # 2. "(waivers)" in the name
-  # 3. "(waiver)" in the name
-  grepl(">6\\s*hrs|\\(waivers?\\)", group_name, ignore.case = TRUE)
+  # 2. "(waivers)" or "(waiver)" in the name
+  # Pattern matches: (waiver), (waivers), (Waiver), etc.
+  grepl(">6\\s*hrs|\\(\\s*waivers?\\s*\\)", group_name, ignore.case = TRUE)
 }
 
 # Determine if a metric group name indicates no-waiver-only variant
 is_no_waiver_only_group <- function(group_name) {
   # No-waiver-only groups have:
   # 1. ">5 hrs" or ">5hrs" (meal periods without waivers)
-  # 2. "(no waivers)" in the name
-  # 3. "(no waiver)" in the name
-  grepl(">5\\s*hrs|\\(no\\s+waivers?\\)", group_name, ignore.case = TRUE)
+  # 2. "(no waivers)" in the name (with or without 's')
+  # Pattern matches: (no waiver), (no waivers), (No Waiver), etc.
+  grepl(">5\\s*hrs|\\(\\s*no\\s+waivers?\\s*\\)", group_name, ignore.case = TRUE)
 }
 
 # Split metric groups into waiver and no-waiver categories
@@ -701,6 +701,25 @@ filter_sidebar <- function(data_list) {
 
     actionButton("apply_filters", "Apply Filters", class = "btn-primary w-100"),
     actionButton("reset_filters", "Reset All Filters", class = "btn-outline-secondary w-100 mt-2"),
+
+    hr(),
+
+    # Employee-Period Selection (for Example tab)
+    h5("Select Employee-Period"),
+    div(
+      style = "max-height: 300px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 4px; padding: 5px;",
+      selectizeInput(
+        "example_period_select",
+        NULL,
+        choices = NULL,
+        options = list(
+          placeholder = "Type to search employee-period...",
+          maxOptions = 100,
+          closeAfterSelect = TRUE,
+          openOnFocus = TRUE
+        )
+      )
+    ),
 
     hr(),
 
@@ -1049,15 +1068,21 @@ ui <- function(data_list, metric_spec) {
         navset_card_underline(
           nav_panel(
             "Summary",
-            withSpinner(DTOutput("table_meal_5hr_consolidated"), type = 6, color = "#2c3e50")
+            div(style = "padding: 10px;",
+              withSpinner(DTOutput("table_meal_5hr_consolidated"), type = 6, color = "#2c3e50")
+            )
           ),
           nav_panel(
             "Short Meal Details",
-            withSpinner(DTOutput("table_meal_5hr_short_details"), type = 6, color = "#2c3e50")
+            div(style = "padding: 10px;",
+              withSpinner(DTOutput("table_meal_5hr_short_details"), type = 6, color = "#2c3e50")
+            )
           ),
           nav_panel(
             "Late Meal Details",
-            withSpinner(DTOutput("table_meal_5hr_late_details"), type = 6, color = "#2c3e50")
+            div(style = "padding: 10px;",
+              withSpinner(DTOutput("table_meal_5hr_late_details"), type = 6, color = "#2c3e50")
+            )
           )
         )
       ),
@@ -1067,15 +1092,21 @@ ui <- function(data_list, metric_spec) {
         navset_card_underline(
           nav_panel(
             "Summary",
-            withSpinner(DTOutput("table_meal_6hr_consolidated"), type = 6, color = "#2c3e50")
+            div(style = "padding: 10px;",
+              withSpinner(DTOutput("table_meal_6hr_consolidated"), type = 6, color = "#2c3e50")
+            )
           ),
           nav_panel(
             "Short Meal Details",
-            withSpinner(DTOutput("table_meal_6hr_short_details"), type = 6, color = "#2c3e50")
+            div(style = "padding: 10px;",
+              withSpinner(DTOutput("table_meal_6hr_short_details"), type = 6, color = "#2c3e50")
+            )
           ),
           nav_panel(
             "Late Meal Details",
-            withSpinner(DTOutput("table_meal_6hr_late_details"), type = 6, color = "#2c3e50")
+            div(style = "padding: 10px;",
+              withSpinner(DTOutput("table_meal_6hr_late_details"), type = 6, color = "#2c3e50")
+            )
           )
         )
       ),
@@ -1173,36 +1204,8 @@ ui <- function(data_list, metric_spec) {
       div(
         style = "height: calc(100vh - 150px); overflow-y: auto; padding: 10px;",
 
-        # Search bar at top
-        layout_columns(
-          col_widths = c(4, 8),
-
-          card(
-            card_header("Select Employee-Period"),
-            card_body(
-              style = "padding: 10px;",
-              selectizeInput(
-                "example_period_select",
-                NULL,
-                choices = NULL,
-                options = list(
-                  placeholder = "Type to search employee-period...",
-                  maxOptions = 100,
-                  closeAfterSelect = TRUE,
-                  openOnFocus = FALSE
-                )
-              )
-            )
-          ),
-
-          card(
-            card_header("Instructions"),
-            card_body(
-              style = "padding: 10px;",
-              p("Type employee ID or date to search. Select a period to view detailed breakdown of all data sources.")
-            )
-          )
-        ),
+        # Employee-Period selection has been moved to sidebar
+        # (Instructions removed as requested)
 
         # Punch Detail - time1
         card(
