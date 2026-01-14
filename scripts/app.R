@@ -16,15 +16,14 @@ library(shinyjs)
 # CONFIGURATION
 # =============================================================================
 
-DATA_DIR <- here("data/processed")
-OUTPUT_DIR <- here("output")  # For analysis tables
+DATA_DIR <- here("output")  # Analyzed data ready for dashboard
 SCRIPTS_DIR <- here("scripts")
 
-# Data file names
-SHIFT_DATA_FILE <- "shift_processed.rds"
-PAY_DATA_FILE <- "pay_processed.rds"
-TIME_DATA_FILE <- "time_processed.rds"
-CLASS_DATA_FILE <- "class_processed.rds"
+# Data file names (from Analysis.R output)
+SHIFT_DATA_FILE <- "shift_data1.rds"
+PAY_DATA_FILE <- "pay1.rds"
+TIME_DATA_FILE <- "time1.rds"
+CLASS_DATA_FILE <- "class1.rds"
 PP_DATA_FILE <- "pp_data1.rds"  # Pay period level aggregate
 EE_DATA_FILE <- "ee_data1.rds"  # Employee level aggregate
 METRIC_SPEC_FILE <- "metrics_spec.csv"
@@ -149,9 +148,9 @@ load_metric_spec <- function(path = NULL) {
   spec[, metric_order := .I]
   spec
 }
-# Load analysis tables
+# Load analysis tables (CSV files from Analysis.R)
 load_analysis_table <- function(filename) {
-  filepath <- file.path(OUTPUT_DIR, filename)
+  filepath <- file.path(DATA_DIR, filename)
   if (file.exists(filepath)) {
     dt <- fread(filepath)
     # Remove rows where first column is NA, empty, or "0"
