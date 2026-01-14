@@ -546,6 +546,7 @@ create_dt_table <- function(dt, metric_col = "Metric") {
       ),
       rowCallback = JS(
         "function(row, data) {",
+        "  // Handle section headers",
         "  if (data[0] && data[0].toString().startsWith('### ')) {",
         "    $(row).find('td:first').html(data[0].replace('### ', ''));",
         "    $(row).css({",
@@ -559,6 +560,24 @@ create_dt_table <- function(dt, metric_col = "Metric") {
         "      'background-color': '#3498db',",
         "      'color': '#fff'",
         "    });",
+        "  }",
+        "  // Bold dollar amounts (metrics with '$' in name)",
+        "  else if (data[0] && data[0].toString().includes('$')) {",
+        "    // Bold the entire row",
+        "    $(row).find('td').css({'font-weight': 'bold'});",
+        "    // Format numeric values with $ prefix and commas",
+        "    for (var i = 1; i < data.length; i++) {",
+        "      var val = data[i];",
+        "      if (val !== null && val !== undefined && val !== '' && val !== '-') {",
+        "        // Remove commas and parse as number",
+        "        var num = parseFloat(val.toString().replace(/,/g, ''));",
+        "        if (!isNaN(num)) {",
+        "          // Format with $ and commas",
+        "          var formatted = '$' + num.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});",
+        "          $(row).find('td:eq(' + i + ')').html(formatted);",
+        "        }",
+        "      }",
+        "    }",
         "  }",
         "}"
       )
@@ -720,7 +739,7 @@ ui <- function(data_list, metric_spec) {
         "))
       ),
 
-      div(id = "filter_banner", style = "display: none;", "⚠ FILTERS ACTIVE - Click 'Reset All Filters' to clear")
+      div(id = "filter_banner", style = "display: none;", uiOutput("filter_banner_text"))
     ),
 
     # =======================================================================
@@ -2445,6 +2464,51 @@ server <- function(data_list, metric_spec, analysis_tables) {
         return(as.character(sample_size))
       }
       return("Not specified")
+    })
+
+    # ===========================================================================
+    # Filter Banner
+    # ===========================================================================
+
+    output$filter_banner_text <- renderUI({
+      filters <- current_filters()
+
+      if (length(filters) == 0) {
+        return(NULL)
+      }
+
+      # Build filter description
+      filter_parts <- c()
+
+      # Date range
+      if (!is.null(filters$date_min) && !is.null(filters$date_max)) {
+        date_str <- paste0("Date: ", format(filters$date_min, "%m/%d/%Y"), " to ", format(filters$date_max, "%m/%d/%Y"))
+        filter_parts <- c(filter_parts, date_str)
+      }
+
+      # Employee filter
+      if (!is.null(filters$ID) && length(filters$ID) > 0) {
+        if (length(filters$ID) <= 3) {
+          emp_str <- paste0("Employees: ", paste(filters$ID, collapse = ", "))
+        } else {
+          emp_str <- paste0("Employees: ", length(filters$ID), " selected")
+        }
+        filter_parts <- c(filter_parts, emp_str)
+      }
+
+      # Sample filter
+      if (!is.null(filters$Sample)) {
+        sample_str <- paste0("Sample: ", ifelse(filters$Sample == 1, "Sample Only (1)", "Non-Sample (0)"))
+        filter_parts <- c(filter_parts, sample_str)
+      }
+
+      # Combine all filter descriptions
+      if (length(filter_parts) > 0) {
+        filter_text <- paste("⚠ ACTIVE FILTERS:", paste(filter_parts, collapse = " | "))
+        return(HTML(paste0(filter_text, " | <a href='#' onclick='Shiny.setInputValue(\"reset_filters\", Math.random()); return false;' style='color: white; text-decoration: underline;'>Reset All Filters</a>")))
+      }
+
+      return(NULL)
     })
 
     # ===========================================================================
