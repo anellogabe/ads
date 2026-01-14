@@ -685,12 +685,12 @@ filter_sidebar <- function(data_list) {
       selected = "all",
       multiple = FALSE
     ),
-    selectizeInput(
+    selectInput(
       "subclass_filter",
       "Subclass(es)",
-      choices = NULL,
-      multiple = TRUE,
-      options = list(placeholder = "All subclasses...")
+      choices = c("All Employees" = "all", "Drivers" = "driver", "Aides" = "aide"),
+      selected = "all",
+      multiple = FALSE
     ),
 
     hr(),
@@ -969,7 +969,7 @@ ui <- function(data_list, metric_spec) {
           "More Details",
 
           layout_columns(
-            col_widths = c(8, 4),
+            col_widths = c(12),
 
             card(
               card_header("Employee Overlap Visualization"),
@@ -983,35 +983,23 @@ ui <- function(data_list, metric_spec) {
                   selected = c("time", "pay", "class"),
                   inline = TRUE
                 ),
-                withSpinner(plotlyOutput("venn_diagram_plot", height = "500px"), type = 6, color = "#2c3e50")
+                withSpinner(plotlyOutput("venn_diagram_plot", height = "700px"), type = 6, color = "#2c3e50")
               )
-            ),
+            )
+          ),
+
+          layout_columns(
+            col_widths = c(6, 6),
 
             card(
               card_header("Coverage Statistics"),
               card_body(
                 withSpinner(uiOutput("coverage_statistics"), type = 6, color = "#2c3e50")
               )
-            )
-          ),
-
-          layout_columns(
-            col_widths = c(12),
+            ),
 
             card(
-              card_header("Data Source Overlap Matrix"),
-              card_body(
-                p("This matrix shows which employees appear in which data sources:"),
-                withSpinner(DTOutput("overlap_matrix_table"), type = 6, color = "#2c3e50")
-              )
-            )
-          ),
-
-          layout_columns(
-            col_widths = c(12),
-
-            card(
-              card_header("Employee-Period Comparison Detail"),
+              card_header("Employee-Period Summary"),
               card_body(
                 withSpinner(DTOutput("employee_period_table"), type = 6, color = "#2c3e50")
               )
@@ -1374,30 +1362,6 @@ server <- function(data_list, metric_spec, analysis_tables) {
       choices = all_employee_ids
     )
 
-    # Server-side selectize for subclass filter
-    all_subclasses <- c()
-    if ("Subclass" %in% names(data_list$shift_data1)) {
-      all_subclasses <- c(all_subclasses, unique(data_list$shift_data1$Subclass))
-    }
-    if ("Pay_Subclass" %in% names(data_list$pay1)) {
-      all_subclasses <- c(all_subclasses, unique(data_list$pay1$Pay_Subclass))
-    }
-    if ("Subclass" %in% names(data_list$pay1)) {
-      all_subclasses <- c(all_subclasses, unique(data_list$pay1$Subclass))
-    }
-    if (!is.null(data_list$class1) && "Subclass" %in% names(data_list$class1)) {
-      all_subclasses <- c(all_subclasses, unique(data_list$class1$Subclass))
-    }
-    all_subclasses <- sort(unique(all_subclasses[!is.na(all_subclasses) & all_subclasses != ""]))
-
-    if (length(all_subclasses) > 0) {
-      updateSelectizeInput(
-        session,
-        "subclass_filter",
-        choices = all_subclasses
-      )
-    }
-
     # Apply dynamic font styling
     observeEvent(input$font_size, {
       req(input$font_size)
@@ -1451,7 +1415,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
       }
 
       # Subclass filter
-      if (length(input$subclass_filter) > 0) {
+      if (!is.null(input$subclass_filter) && input$subclass_filter != "all") {
         filters$Subclass <- input$subclass_filter
         filters$Pay_Subclass <- input$subclass_filter
       }
@@ -1466,7 +1430,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
                            end = original_date_max)
       updateSelectizeInput(session, "employee_filter", selected = character(0))
       updateSelectizeInput(session, "sample_filter", selected = "all")
-      updateSelectizeInput(session, "subclass_filter", selected = character(0))
+      updateSelectInput(session, "subclass_filter", selected = "all")
       current_filters(list())
     })
 
@@ -1516,7 +1480,8 @@ server <- function(data_list, metric_spec, analysis_tables) {
         shift_filtered <- shift_filtered[Sample == filters$Sample]
       }
       if (!is.null(filters$Subclass) && "Subclass" %in% names(shift_filtered)) {
-        shift_filtered <- shift_filtered[Subclass %in% filters$Subclass]
+        # Use grepl for pattern matching (e.g., "driver" matches "Driver", "DRIVER", etc.)
+        shift_filtered <- shift_filtered[grepl(filters$Subclass, Subclass, ignore.case = TRUE)]
       }
 
       # Apply filters to pay data
@@ -1533,10 +1498,12 @@ server <- function(data_list, metric_spec, analysis_tables) {
         pay_filtered <- pay_filtered[Pay_Sample == filters$Sample]
       }
       if (!is.null(filters$Pay_Subclass) && "Pay_Subclass" %in% names(pay_filtered)) {
-        pay_filtered <- pay_filtered[Pay_Subclass %in% filters$Pay_Subclass]
+        # Use grepl for pattern matching
+        pay_filtered <- pay_filtered[grepl(filters$Pay_Subclass, Pay_Subclass, ignore.case = TRUE)]
       }
       if (!is.null(filters$Subclass) && "Subclass" %in% names(pay_filtered)) {
-        pay_filtered <- pay_filtered[Subclass %in% filters$Subclass]
+        # Use grepl for pattern matching
+        pay_filtered <- pay_filtered[grepl(filters$Subclass, Subclass, ignore.case = TRUE)]
       }
 
       # Filter pp_data1 (pay period aggregate) if it exists
@@ -1582,9 +1549,10 @@ server <- function(data_list, metric_spec, analysis_tables) {
           class_filtered <- class_filtered[Sample == filters$Sample]
         }
 
-        # Filter by Subclass
+        # Filter by Subclass (pattern matching)
         if (!is.null(filters$Subclass) && "Subclass" %in% names(class_filtered)) {
-          class_filtered <- class_filtered[Subclass %in% filters$Subclass]
+          # Use grepl for pattern matching (e.g., "driver" matches "Driver", "DRIVER", etc.)
+          class_filtered <- class_filtered[grepl(filters$Subclass, Subclass, ignore.case = TRUE)]
         }
       }
 
@@ -1798,41 +1766,40 @@ server <- function(data_list, metric_spec, analysis_tables) {
         colors <- c(colors, "#c0392b")
       }
 
-      # Create horizontal bar chart
+      # Create vertical bar chart
       plot_ly(
-        x = counts,
-        y = categories,
+        x = categories,
+        y = counts,
         type = "bar",
-        orientation = "h",
         marker = list(color = colors),
-        text = paste0(format(counts, big.mark = ","), " employees"),
-        textposition = "inside",
-        insidetextanchor = "middle",
-        insidetextfont = list(color = "white", size = 12, weight = "bold"),
+        text = paste0(format(counts, big.mark = ","), "<br>employees"),
+        textposition = "outside",
+        textfont = list(color = "#2c3e50", size = 14, weight = "bold"),
         hovertemplate = paste0(
-          "<b>%{y}</b><br>",
-          "Count: %{x:,} employees<br>",
+          "<b>%{x}</b><br>",
+          "Count: %{y:,} employees<br>",
           "<extra></extra>"
         )
       ) %>%
         layout(
           title = list(
             text = "Employee Data Overlap Analysis",
-            font = list(size = 16, weight = "bold")
+            font = list(size = 18, weight = "bold")
           ),
           xaxis = list(
+            title = "",
+            showgrid = FALSE,
+            tickangle = -45,
+            tickfont = list(size = 12)
+          ),
+          yaxis = list(
             title = "Number of Employees",
             showgrid = TRUE,
             gridcolor = "#ecf0f1"
           ),
-          yaxis = list(
-            title = "",
-            showgrid = FALSE,
-            categoryorder = "total ascending"
-          ),
           showlegend = FALSE,
           hovermode = "closest",
-          margin = list(l = 150, r = 50, t = 60, b = 50),
+          margin = list(l = 80, r = 50, t = 80, b = 120),
           plot_bgcolor = "#ffffff",
           paper_bgcolor = "#ffffff"
         )
