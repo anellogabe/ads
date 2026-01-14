@@ -444,18 +444,16 @@ combine_damages_with_headers <- function(data, spec, group_definitions, filters 
 
 # Determine if a metric group name indicates waiver-only variant
 is_waiver_only_group <- function(group_name) {
-  # Waiver-only groups have:
-  # - ">6 hrs" or ">6hrs" (with or without space)
-  # - "(w)" or "(waivers)" or "with waiver"
-  grepl(">6\\s*hrs|\\(w\\)|with waiver|\\(waivers\\)", group_name, ignore.case = TRUE)
+  # Waiver-only groups ONLY have ">6 hrs" or ">6hrs" (meal period waivers)
+  # Do NOT use "(waivers)" because groups without paired non-waiver versions should appear in BOTH tabs
+  grepl(">6\\s*hrs", group_name, ignore.case = TRUE)
 }
 
 # Determine if a metric group name indicates no-waiver-only variant
 is_no_waiver_only_group <- function(group_name) {
-  # No-waiver-only groups have:
-  # - ">5 hrs" or ">5hrs" (with or without space)
-  # - "(no waivers)"
-  grepl(">5\\s*hrs|\\(no waivers\\)", group_name, ignore.case = TRUE)
+  # No-waiver-only groups ONLY have ">5 hrs" or ">5hrs" (meal periods without waivers)
+  # Do NOT use "(no waivers)" because groups without paired waiver versions should appear in BOTH tabs
+  grepl(">5\\s*hrs", group_name, ignore.case = TRUE)
 }
 
 # Split metric groups into waiver, no-waiver, and both categories
@@ -1058,6 +1056,47 @@ ui <- function(data_list, metric_spec) {
               withSpinner(DTOutput("table_paga_waivers"), type = 6, color = "#2c3e50")
             )
           )
+        )
+      )
+    ),
+
+    # =======================================================================
+    # EMPLOYEE-PERIOD EXAMPLE TAB
+    # =======================================================================
+    nav_panel(
+      title = "Example",
+      icon = icon("user-clock"),
+
+      card(
+        card_header("Select Employee-Period"),
+        card_body(
+          selectizeInput(
+            "example_period_select",
+            "Select Period:",
+            choices = NULL,
+            options = list(placeholder = "Choose an employee-period...")
+          )
+        )
+      ),
+
+      card(
+        card_header("Shift Data"),
+        card_body(
+          withSpinner(DTOutput("table_example_shift"), type = 6, color = "#2c3e50")
+        )
+      ),
+
+      card(
+        card_header("Pay Data"),
+        card_body(
+          withSpinner(DTOutput("table_example_pay"), type = 6, color = "#2c3e50")
+        )
+      ),
+
+      card(
+        card_header("Aggregate Data"),
+        card_body(
+          withSpinner(DTOutput("table_example_aggregate"), type = 6, color = "#2c3e50")
         )
       )
     ),
@@ -2263,6 +2302,126 @@ server <- function(data_list, metric_spec, analysis_tables) {
 
       results <- combine_damages_with_headers(data, metric_spec, sections, current_filters(), factor)
       create_dt_table(results)
+    })
+
+    # ===========================================================================
+    # EMPLOYEE-PERIOD EXAMPLE TAB
+    # ===========================================================================
+
+    # Populate dropdown with combined unique employee-periods
+    observe({
+      data <- filtered_data()
+
+      # Get unique ID_Period_End from shift data
+      shift_periods <- if (!is.null(data$shift_data1) && "ID_Period_End" %in% names(data$shift_data1)) {
+        unique(data$shift_data1$ID_Period_End)
+      } else {
+        character(0)
+      }
+
+      # Get unique Pay_ID_Period_End from pay data
+      pay_periods <- if (!is.null(data$pay1) && "Pay_ID_Period_End" %in% names(data$pay1)) {
+        unique(data$pay1$Pay_ID_Period_End)
+      } else {
+        character(0)
+      }
+
+      # Combine and sort unique periods
+      all_periods <- sort(unique(c(shift_periods, pay_periods)))
+
+      updateSelectizeInput(session, "example_period_select", choices = all_periods)
+    })
+
+    # Helper function to transpose data for display
+    transpose_data_for_display <- function(dt, value_col_name = "Value") {
+      if (is.null(dt) || nrow(dt) == 0) {
+        return(data.table(Metric = "No data available", Value = "-"))
+      }
+
+      # Get numeric and important columns
+      cols_to_show <- names(dt)[!names(dt) %in% c("ID", "Pay_ID", "Class_ID")]
+
+      # Create transposed table
+      result <- data.table(
+        Metric = cols_to_show,
+        Value = sapply(cols_to_show, function(col) {
+          val <- dt[[col]]
+          if (length(val) == 0 || all(is.na(val))) return("-")
+          if (is.numeric(val)) return(format(round(val, 2), big.mark = ","))
+          if (inherits(val, "Date")) return(as.character(val))
+          return(as.character(val))
+        })
+      )
+
+      setnames(result, "Value", value_col_name)
+      return(result)
+    }
+
+    # Shift Data Table
+    output$table_example_shift <- renderDT({
+      req(input$example_period_select)
+      data <- filtered_data()
+
+      if (is.null(data$shift_data1) || !"ID_Period_End" %in% names(data$shift_data1)) {
+        return(datatable(data.table(Metric = "No shift data available")))
+      }
+
+      # Filter to selected period
+      filtered <- data$shift_data1[ID_Period_End == input$example_period_select]
+
+      if (nrow(filtered) == 0) {
+        return(datatable(data.table(Metric = "No data for this period")))
+      }
+
+      # Transpose and display
+      transposed <- transpose_data_for_display(filtered, "Shift Data")
+      create_dt_table(transposed)
+    })
+
+    # Pay Data Table
+    output$table_example_pay <- renderDT({
+      req(input$example_period_select)
+      data <- filtered_data()
+
+      if (is.null(data$pay1) || !"Pay_ID_Period_End" %in% names(data$pay1)) {
+        return(datatable(data.table(Metric = "No pay data available")))
+      }
+
+      # Filter to selected period
+      filtered <- data$pay1[Pay_ID_Period_End == input$example_period_select]
+
+      if (nrow(filtered) == 0) {
+        return(datatable(data.table(Metric = "No data for this period")))
+      }
+
+      # Transpose and display
+      transposed <- transpose_data_for_display(filtered, "Pay Data")
+      create_dt_table(transposed)
+    })
+
+    # Aggregate Data Table
+    output$table_example_aggregate <- renderDT({
+      req(input$example_period_select)
+      data <- filtered_data()
+
+      # Try to get from pp_data1 or ee_data1
+      aggregate_data <- NULL
+
+      if (!is.null(data$pp_data1) && "ID_Period_End" %in% names(data$pp_data1)) {
+        aggregate_data <- data$pp_data1[ID_Period_End == input$example_period_select]
+      } else if (!is.null(data$ee_data1) && "ID" %in% names(data$ee_data1)) {
+        # Extract ID from the period string
+        emp_id <- sub("_.*", "", input$example_period_select)
+        aggregate_data <- data$ee_data1[ID == emp_id]
+      }
+
+      if (is.null(aggregate_data) || nrow(aggregate_data) == 0) {
+        return(datatable(data.table(Metric = "No aggregate data available")))
+      }
+
+      # Transpose and display
+      transposed <- transpose_data_for_display(aggregate_data, "Aggregate Data")
+      create_dt_table(transposed)
     })
 
     # ===========================================================================
