@@ -627,6 +627,13 @@ filter_sidebar <- function(data_list) {
       multiple = TRUE,
       options = list(placeholder = "All locations... (coming soon)")
     ),
+    selectizeInput(
+      "sample_filter",
+      "Sample",
+      choices = c("All" = "all", "Sample Only (1)" = "1", "Non-Sample (0)" = "0"),
+      selected = "all",
+      multiple = FALSE
+    ),
 
     hr(),
 
@@ -1281,6 +1288,11 @@ server <- function(data_list, metric_spec, analysis_tables) {
         filters$Pay_ID <- input$employee_filter
       }
 
+      # Sample filter
+      if (!is.null(input$sample_filter) && input$sample_filter != "all") {
+        filters$Sample <- as.integer(input$sample_filter)
+      }
+
       current_filters(filters)
     })
 
@@ -1290,6 +1302,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
                            start = original_date_min,
                            end = original_date_max)
       updateSelectizeInput(session, "employee_filter", selected = character(0))
+      updateSelectizeInput(session, "sample_filter", selected = "all")
       current_filters(list())
     })
 
@@ -1344,6 +1357,9 @@ server <- function(data_list, metric_spec, analysis_tables) {
       if (!is.null(filters$ID)) {
         shift_filtered <- shift_filtered[ID %in% filters$ID]
       }
+      if (!is.null(filters$Sample) && "Sample" %in% names(shift_filtered)) {
+        shift_filtered <- shift_filtered[Sample == filters$Sample]
+      }
 
       # Apply filters to pay data
       if (!is.null(filters$date_min)) {
@@ -1354,6 +1370,9 @@ server <- function(data_list, metric_spec, analysis_tables) {
       }
       if (!is.null(filters$Pay_ID)) {
         pay_filtered <- pay_filtered[Pay_ID %in% filters$Pay_ID]
+      }
+      if (!is.null(filters$Sample) && "Pay_Sample" %in% names(pay_filtered)) {
+        pay_filtered <- pay_filtered[Pay_Sample == filters$Sample]
       }
 
       # Filter pp_data1 (pay period aggregate) if it exists
