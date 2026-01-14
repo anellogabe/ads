@@ -16,14 +16,15 @@ library(shinyjs)
 # CONFIGURATION
 # =============================================================================
 
-DATA_DIR <- here("output")
+DATA_DIR <- here("data/processed")
+OUTPUT_DIR <- here("output")  # For analysis tables
 SCRIPTS_DIR <- here("scripts")
 
 # Data file names
-SHIFT_DATA_FILE <- "shift_data1.rds"
-PAY_DATA_FILE <- "pay1.rds"
-TIME_DATA_FILE <- "time1.rds"
-CLASS_DATA_FILE <- "class1.rds"
+SHIFT_DATA_FILE <- "shift_processed.rds"
+PAY_DATA_FILE <- "pay_processed.rds"
+TIME_DATA_FILE <- "time_processed.rds"
+CLASS_DATA_FILE <- "class_processed.rds"
 PP_DATA_FILE <- "pp_data1.rds"  # Pay period level aggregate
 EE_DATA_FILE <- "ee_data1.rds"  # Employee level aggregate
 METRIC_SPEC_FILE <- "metrics_spec.csv"
@@ -150,7 +151,7 @@ load_metric_spec <- function(path = NULL) {
 }
 # Load analysis tables
 load_analysis_table <- function(filename) {
-  filepath <- file.path(DATA_DIR, filename)
+  filepath <- file.path(OUTPUT_DIR, filename)
   if (file.exists(filepath)) {
     dt <- fread(filepath)
     # Remove rows where first column is NA, empty, or "0"
@@ -871,15 +872,12 @@ ui <- function(data_list, metric_spec) {
                 "pdf_sections_col4",
                 NULL,
                 choices = c(
-                  "Damages - PAGA (Waiv.)" = "damages_paga_waivers",
-                  "Appendix - Shift Hours" = "appendix_shift",
-                  "Appendix - Non-Work Hrs" = "appendix_nonwork",
-                  "Appendix - Meal Period" = "appendix_meal",
-                  "Appendix - Meal Start" = "appendix_meal_start",
-                  "Appendix - Meal Quarter" = "appendix_meal_quarter"
+                  "Damages - PAGA (Waiv.)" = "damages_paga_waivers"
                 ),
                 selected = c()
-              )
+              ),
+              br(),
+              checkboxInput("pdf_include_appendix", "Appendix Tables (All)", value = FALSE)
             )
           ),
           hr(),
@@ -994,6 +992,18 @@ ui <- function(data_list, metric_spec) {
               card_header("Coverage Statistics"),
               card_body(
                 withSpinner(uiOutput("coverage_statistics"), type = 6, color = "#2c3e50")
+              )
+            )
+          ),
+
+          layout_columns(
+            col_widths = c(12),
+
+            card(
+              card_header("Data Source Overlap Matrix"),
+              card_body(
+                p("This matrix shows which employees appear in which data sources:"),
+                withSpinner(DTOutput("overlap_matrix_table"), type = 6, color = "#2c3e50")
               )
             )
           ),
@@ -1468,13 +1478,13 @@ server <- function(data_list, metric_spec, analysis_tables) {
       all_choices_col2 <- c("meal_5hr", "meal_6hr", "rest_periods", "pay_summary", "pay_regular_rate")
       all_choices_col3 <- c("pay_codes", "rate_type_analysis", "damages_class_no_waivers",
                            "damages_class_waivers", "damages_paga_no_waivers")
-      all_choices_col4 <- c("damages_paga_waivers", "appendix_shift", "appendix_nonwork",
-                           "appendix_meal", "appendix_meal_start", "appendix_meal_quarter")
+      all_choices_col4 <- c("damages_paga_waivers")
 
       updateCheckboxGroupInput(session, "pdf_sections_col1", selected = all_choices_col1)
       updateCheckboxGroupInput(session, "pdf_sections_col2", selected = all_choices_col2)
       updateCheckboxGroupInput(session, "pdf_sections_col3", selected = all_choices_col3)
       updateCheckboxGroupInput(session, "pdf_sections_col4", selected = all_choices_col4)
+      updateCheckboxInput(session, "pdf_include_appendix", value = TRUE)
     })
 
     # PDF Deselect All button
@@ -1483,6 +1493,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
       updateCheckboxGroupInput(session, "pdf_sections_col2", selected = character(0))
       updateCheckboxGroupInput(session, "pdf_sections_col3", selected = character(0))
       updateCheckboxGroupInput(session, "pdf_sections_col4", selected = character(0))
+      updateCheckboxInput(session, "pdf_include_appendix", value = FALSE)
     })
 
     # Filtered data with precomputed metadata
@@ -1628,6 +1639,25 @@ server <- function(data_list, metric_spec, analysis_tables) {
 
     output$total_employees_class <- renderText({
       data <- filtered_data()
+
+      # Debug: print class1 status
+      cat("\n=== DEBUG: class1 Status ===\n")
+      cat("data$class1 is null:", is.null(data$class1), "\n")
+      if (!is.null(data$class1)) {
+        cat("class1 nrow:", nrow(data$class1), "\n")
+        cat("class1 columns:", paste(names(data$class1), collapse = ", "), "\n")
+        cat("Has Class_ID column:", "Class_ID" %in% names(data$class1), "\n")
+        if ("Class_ID" %in% names(data$class1)) {
+          cat("Unique Class_IDs:", uniqueN(data$class1$Class_ID), "\n")
+        }
+      }
+      cat("data_list$class1 is null:", is.null(data_list$class1), "\n")
+      if (!is.null(data_list$class1)) {
+        cat("data_list$class1 nrow:", nrow(data_list$class1), "\n")
+        cat("data_list$class1 columns:", paste(names(data_list$class1), collapse = ", "), "\n")
+      }
+      cat("========================\n")
+
       if (!is.null(data$class1) && "Class_ID" %in% names(data$class1)) {
         format(uniqueN(data$class1$Class_ID), big.mark = ",")
       } else {
@@ -2783,6 +2813,83 @@ server <- function(data_list, metric_spec, analysis_tables) {
       create_dt_table(analysis_tables$meal_quarter_hr, metric_col = "Quarter Hour Type")
     })
 
+    # Overlap Matrix Table
+    output$overlap_matrix_table <- renderDT({
+      venn <- venn_data()
+
+      # Create matrix table
+      matrix_data <- data.table(
+        Category = c(
+          "In Time Data Only",
+          "In Pay Data Only",
+          if (venn$class_total > 0) "In Class Data Only",
+          "In Time & Pay Only",
+          if (venn$class_total > 0) "In Time & Class Only",
+          if (venn$class_total > 0) "In Pay & Class Only",
+          if (venn$class_total > 0) "In All Three Sources",
+          "TOTAL UNIQUE EMPLOYEES"
+        ),
+        Count = c(
+          venn$time_only,
+          venn$pay_only,
+          if (venn$class_total > 0) venn$class_only,
+          venn$time_pay,
+          if (venn$class_total > 0) venn$time_class,
+          if (venn$class_total > 0) venn$pay_class,
+          if (venn$class_total > 0) venn$all_three,
+          length(unique(c(
+            unique(filtered_data()$shift_data1$ID),
+            unique(filtered_data()$pay1$Pay_ID),
+            if (!is.null(filtered_data()$class1)) unique(filtered_data()$class1$Class_ID) else character(0)
+          )))
+        ),
+        `In Time` = c(
+          "✓", "", if (venn$class_total > 0) "",
+          "✓", if (venn$class_total > 0) "✓", if (venn$class_total > 0) "",
+          if (venn$class_total > 0) "✓", "-"
+        ),
+        `In Pay` = c(
+          "", "✓", if (venn$class_total > 0) "",
+          "✓", if (venn$class_total > 0) "", if (venn$class_total > 0) "✓",
+          if (venn$class_total > 0) "✓", "-"
+        ),
+        `In Class` = if (venn$class_total > 0) c(
+          "", "", "✓",
+          "", "✓", "✓",
+          "✓", "-"
+        ) else NULL
+      )
+
+      datatable(
+        matrix_data,
+        options = list(
+          paging = FALSE,
+          searching = FALSE,
+          info = FALSE,
+          dom = 't',
+          columnDefs = list(
+            list(className = 'dt-left', targets = 0),
+            list(className = 'dt-center', targets = 1:(ncol(matrix_data) - 1))
+          )
+        ),
+        rownames = FALSE,
+        class = 'cell-border stripe hover compact'
+      ) %>%
+        formatStyle(
+          'Category',
+          target = 'row',
+          fontWeight = styleEqual('TOTAL UNIQUE EMPLOYEES', 'bold')
+        ) %>%
+        formatStyle(
+          'Count',
+          target = 'row',
+          fontWeight = styleEqual(
+            matrix_data[Category == "TOTAL UNIQUE EMPLOYEES", Count],
+            'bold'
+          )
+        )
+    })
+
     output$employee_period_table <- renderDT({
       create_dt_table(analysis_tables$employee_comparison, metric_col = "ID")
     })
@@ -3246,30 +3353,32 @@ server <- function(data_list, metric_spec, analysis_tables) {
           html_content <- paste0(html_content, add_table(damages_table, "Damages - PAGA (Waivers)", "⚖️"))
         }
 
-        # Appendix Tables
-        if ("appendix_shift" %in% sections && !is.null(analysis_tables$shift_hrs)) {
-          html_content <- paste0(html_content, '<div class="page-break"></div>')
-          html_content <- paste0(html_content, add_table(analysis_tables$shift_hrs, "Appendix - Shift Hours", "📑"))
-        }
+        # Appendix Tables (All)
+        if (input$pdf_include_appendix) {
+          if (!is.null(analysis_tables$shift_hrs)) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            html_content <- paste0(html_content, add_table(analysis_tables$shift_hrs, "Appendix - Shift Hours", "📑"))
+          }
 
-        if ("appendix_nonwork" %in% sections && !is.null(analysis_tables$non_wrk_hrs)) {
-          html_content <- paste0(html_content, '<div class="page-break"></div>')
-          html_content <- paste0(html_content, add_table(analysis_tables$non_wrk_hrs, "Appendix - Non-Work Hours", "📑"))
-        }
+          if (!is.null(analysis_tables$non_wrk_hrs)) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            html_content <- paste0(html_content, add_table(analysis_tables$non_wrk_hrs, "Appendix - Non-Work Hours", "📑"))
+          }
 
-        if ("appendix_meal" %in% sections && !is.null(analysis_tables$meal_period)) {
-          html_content <- paste0(html_content, '<div class="page-break"></div>')
-          html_content <- paste0(html_content, add_table(analysis_tables$meal_period, "Appendix - Meal Period Distribution", "📑"))
-        }
+          if (!is.null(analysis_tables$meal_period)) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            html_content <- paste0(html_content, add_table(analysis_tables$meal_period, "Appendix - Meal Period Distribution", "📑"))
+          }
 
-        if ("appendix_meal_start" %in% sections && !is.null(analysis_tables$meal_start_time)) {
-          html_content <- paste0(html_content, '<div class="page-break"></div>')
-          html_content <- paste0(html_content, add_table(analysis_tables$meal_start_time, "Appendix - Meal Start Times", "📑"))
-        }
+          if (!is.null(analysis_tables$meal_start_time)) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            html_content <- paste0(html_content, add_table(analysis_tables$meal_start_time, "Appendix - Meal Start Times", "📑"))
+          }
 
-        if ("appendix_meal_quarter" %in% sections && !is.null(analysis_tables$meal_quarter_hr)) {
-          html_content <- paste0(html_content, '<div class="page-break"></div>')
-          html_content <- paste0(html_content, add_table(analysis_tables$meal_quarter_hr, "Appendix - Meal Quarter Hour", "📑"))
+          if (!is.null(analysis_tables$meal_quarter_hr)) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            html_content <- paste0(html_content, add_table(analysis_tables$meal_quarter_hr, "Appendix - Meal Quarter Hour", "📑"))
+          }
         }
 
         # Data Comparison Chart
