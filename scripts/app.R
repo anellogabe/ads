@@ -477,15 +477,26 @@ is_no_waiver_only_group <- function(group_name) {
 split_by_waiver <- function(all_groups) {
   waiver_only <- all_groups[sapply(all_groups, is_waiver_only_group)]
   no_waiver_only <- all_groups[sapply(all_groups, is_no_waiver_only_group)]
-
-  # Groups that don't match either pattern should be assigned based on context
-  # For now, put them in no_waiver by default (conservative approach)
   neither <- all_groups[!sapply(all_groups, is_waiver_only_group) & !sapply(all_groups, is_no_waiver_only_group)]
 
-  list(
-    no_waiver = c(no_waiver_only, neither),  # No-waiver groups + unclassified
-    waiver = waiver_only                      # Only explicitly waiver groups
-  )
+  # Check if there are BOTH waiver and no-waiver versions in this set
+  # If there are paired versions, "neither" groups should only go to no-waiver tab
+  # If there are NO paired versions, "neither" groups should go to BOTH tabs
+  has_paired_versions <- length(waiver_only) > 0 && length(no_waiver_only) > 0
+
+  if (has_paired_versions) {
+    # There are paired versions, so unclassified metrics belong only in no-waiver
+    list(
+      no_waiver = c(no_waiver_only, neither),
+      waiver = waiver_only
+    )
+  } else {
+    # No paired versions exist, so unclassified metrics (like unreimbursed expenses) go in BOTH
+    list(
+      no_waiver = c(no_waiver_only, neither),
+      waiver = c(waiver_only, neither)
+    )
+  }
 }
 
 
@@ -882,116 +893,120 @@ ui <- function(data_list, metric_spec) {
     ),
 
     # =======================================================================
-    # OVERVIEW TAB
-    # =======================================================================
-    nav_panel(
-      title = "Overview",
-      icon = icon("dashboard"),
-
-      layout_columns(
-        col_widths = c(4, 4, 4),
-
-        value_box(
-          title = "Employees (Time)",
-          value = textOutput("total_employees_time"),
-          showcase = icon("users"),
-          theme = "primary",
-          class = "time-data"
-        ),
-        value_box(
-          title = "Employees (Pay)",
-          value = textOutput("total_employees_pay"),
-          showcase = icon("users"),
-          theme = "success",
-          class = "pay-data"
-        ),
-        value_box(
-          title = "Employees (Class)",
-          value = textOutput("total_employees_class"),
-          showcase = icon("users"),
-          theme = "success"
-        )
-      ),
-
-      layout_columns(
-        col_widths = c(4, 4, 4),
-
-        value_box(
-          title = "Pay Periods (Time)",
-          value = textOutput("time_pay_periods"),
-          showcase = icon("calendar"),
-          theme = "secondary",
-          class = "time-data"
-        ),
-        value_box(
-          title = "Pay Periods (Pay)",
-          value = textOutput("pay_pay_periods"),
-          showcase = icon("calendar"),
-          theme = "secondary",
-          class = "pay-data"
-        ),
-        value_box(
-          title = "Weeks (Time)",
-          value = textOutput("total_weeks"),
-          showcase = icon("calendar-week"),
-          theme = "secondary",
-          class = "time-data"
-        )
-      ),
-
-      layout_columns(
-        col_widths = c(12),
-
-        card(
-          card_header("Employee Coverage Over Time"),
-          card_body(
-            withSpinner(plotlyOutput("employee_coverage_plot", height = "400px"), type = 6, color = "#2c3e50")
-          )
-        )
-      )
-    ),
-
-    # =======================================================================
-    # DATA COMPARISON TAB
+    # DATA COMPARISON TAB (with subtabs)
     # =======================================================================
     nav_panel(
       title = "Data Comparison",
       icon = icon("project-diagram"),
 
-      layout_columns(
-        col_widths = c(8, 4),
+      navset_card_underline(
+        # Overview subtab (formerly main Overview tab)
+        nav_panel(
+          "Overview",
 
-        card(
-          card_header("Employee Overlap Visualization"),
-          card_body(
-            checkboxGroupInput(
-              "venn_sources",
-              "Select Data Sources:",
-              choices = c("Time Data (shift_data1)" = "time",
-                         "Pay Data (pay1)" = "pay",
-                         "Class Data (class1)" = "class"),
-              selected = c("time", "pay", "class"),
-              inline = TRUE
+          layout_columns(
+            col_widths = c(4, 4, 4),
+
+            value_box(
+              title = "Employees (Time)",
+              value = textOutput("total_employees_time"),
+              showcase = icon("users"),
+              theme = "primary",
+              class = "time-data"
             ),
-            withSpinner(plotlyOutput("venn_diagram_plot", height = "500px"), type = 6, color = "#2c3e50")
+            value_box(
+              title = "Employees (Pay)",
+              value = textOutput("total_employees_pay"),
+              showcase = icon("users"),
+              theme = "success",
+              class = "pay-data"
+            ),
+            value_box(
+              title = "Employees (Class)",
+              value = textOutput("total_employees_class"),
+              showcase = icon("users"),
+              theme = "success"
+            )
+          ),
+
+          layout_columns(
+            col_widths = c(4, 4, 4),
+
+            value_box(
+              title = "Pay Periods (Time)",
+              value = textOutput("time_pay_periods"),
+              showcase = icon("calendar"),
+              theme = "secondary",
+              class = "time-data"
+            ),
+            value_box(
+              title = "Pay Periods (Pay)",
+              value = textOutput("pay_pay_periods"),
+              showcase = icon("calendar"),
+              theme = "secondary",
+              class = "pay-data"
+            ),
+            value_box(
+              title = "Weeks (Time)",
+              value = textOutput("total_weeks"),
+              showcase = icon("calendar-week"),
+              theme = "secondary",
+              class = "time-data"
+            )
+          ),
+
+          layout_columns(
+            col_widths = c(12),
+
+            card(
+              card_header("Employee Coverage Over Time"),
+              card_body(
+                withSpinner(plotlyOutput("employee_coverage_plot", height = "400px"), type = 6, color = "#2c3e50")
+              )
+            )
           )
         ),
 
-        card(
-          card_header("Coverage Statistics"),
-          card_body(
-            withSpinner(uiOutput("coverage_statistics"), type = 6, color = "#2c3e50")
-          )
-        )
-      ),
+        # More Details subtab (formerly main Data Comparison tab)
+        nav_panel(
+          "More Details",
 
-      layout_columns(
-        col_widths = c(12),
+          layout_columns(
+            col_widths = c(8, 4),
 
-        card(
-          card_header("Employee-Period Comparison Detail"),
-          card_body(
-            withSpinner(DTOutput("employee_period_table"), type = 6, color = "#2c3e50")
+            card(
+              card_header("Employee Overlap Visualization"),
+              card_body(
+                checkboxGroupInput(
+                  "venn_sources",
+                  "Select Data Sources:",
+                  choices = c("Time Data (shift_data1)" = "time",
+                             "Pay Data (pay1)" = "pay",
+                             "Class Data (class1)" = "class"),
+                  selected = c("time", "pay", "class"),
+                  inline = TRUE
+                ),
+                withSpinner(plotlyOutput("venn_diagram_plot", height = "500px"), type = 6, color = "#2c3e50")
+              )
+            ),
+
+            card(
+              card_header("Coverage Statistics"),
+              card_body(
+                withSpinner(uiOutput("coverage_statistics"), type = 6, color = "#2c3e50")
+              )
+            )
+          ),
+
+          layout_columns(
+            col_widths = c(12),
+
+            card(
+              card_header("Employee-Period Comparison Detail"),
+              card_body(
+                withSpinner(DTOutput("employee_period_table"), type = 6, color = "#2c3e50")
+              )
+            )
           )
         )
       )
