@@ -1106,8 +1106,7 @@ ui <- function(data_list, metric_spec) {
             options = list(
               placeholder = "Choose an employee-period...",
               maxOptions = 50  # Only show 50 at a time for performance
-            ),
-            server = TRUE  # Enable server-side selectize for better performance
+            )
           )
         )
       ),
