@@ -457,29 +457,34 @@ combine_damages_with_headers <- function(data, spec, group_definitions, filters 
 
 # Determine if a metric group name indicates waiver-only variant
 is_waiver_only_group <- function(group_name) {
-  # Waiver-only groups ONLY have ">6 hrs" or ">6hrs" (meal period waivers)
-  # Do NOT use "(waivers)" because groups without paired non-waiver versions should appear in BOTH tabs
-  grepl(">6\\s*hrs", group_name, ignore.case = TRUE)
+  # Waiver-only groups have:
+  # 1. ">6 hrs" or ">6hrs" (meal period waivers)
+  # 2. "(waivers)" in the name
+  # 3. "(waiver)" in the name
+  grepl(">6\\s*hrs|\\(waivers?\\)", group_name, ignore.case = TRUE)
 }
 
 # Determine if a metric group name indicates no-waiver-only variant
 is_no_waiver_only_group <- function(group_name) {
-  # No-waiver-only groups ONLY have ">5 hrs" or ">5hrs" (meal periods without waivers)
-  # Do NOT use "(no waivers)" because groups without paired waiver versions should appear in BOTH tabs
-  grepl(">5\\s*hrs", group_name, ignore.case = TRUE)
+  # No-waiver-only groups have:
+  # 1. ">5 hrs" or ">5hrs" (meal periods without waivers)
+  # 2. "(no waivers)" in the name
+  # 3. "(no waiver)" in the name
+  grepl(">5\\s*hrs|\\(no\\s+waivers?\\)", group_name, ignore.case = TRUE)
 }
 
-# Split metric groups into waiver, no-waiver, and both categories
+# Split metric groups into waiver and no-waiver categories
 split_by_waiver <- function(all_groups) {
   waiver_only <- all_groups[sapply(all_groups, is_waiver_only_group)]
   no_waiver_only <- all_groups[sapply(all_groups, is_no_waiver_only_group)]
 
-  # Groups that are neither waiver-only nor no-waiver-only should appear in both
-  both <- all_groups[!sapply(all_groups, is_waiver_only_group) & !sapply(all_groups, is_no_waiver_only_group)]
+  # Groups that don't match either pattern should be assigned based on context
+  # For now, put them in no_waiver by default (conservative approach)
+  neither <- all_groups[!sapply(all_groups, is_waiver_only_group) & !sapply(all_groups, is_no_waiver_only_group)]
 
   list(
-    no_waiver = c(no_waiver_only, both),  # No-waiver-only + groups without either label
-    waiver = c(waiver_only, both)          # Waiver-only + groups without either label
+    no_waiver = c(no_waiver_only, neither),  # No-waiver groups + unclassified
+    waiver = waiver_only                      # Only explicitly waiver groups
   )
 }
 
