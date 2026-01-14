@@ -454,6 +454,30 @@ combine_damages_with_headers <- function(data, spec, group_definitions, filters 
   return(result)
 }
 
+# Filter damage metrics by label content (for penalties that don't have waiver in group name)
+filter_metrics_by_label <- function(metrics_table, include_waivers = FALSE) {
+  if (is.null(metrics_table) || nrow(metrics_table) == 0) return(metrics_table)
+  if (!"Metric" %in% names(metrics_table)) return(metrics_table)
+
+  # Don't filter header rows
+  is_header <- grepl("^###", metrics_table$Metric)
+
+  # Filter data rows based on label content
+  if (include_waivers) {
+    # WAIVERS TAB: Include metrics with "(waivers)" in label, exclude "(no waivers)"
+    keep <- is_header |
+           (grepl("\\(waivers\\)", metrics_table$Metric, ignore.case = TRUE) &
+            !grepl("\\(no\\s+waivers\\)", metrics_table$Metric, ignore.case = TRUE))
+  } else {
+    # NO WAIVERS TAB: Include metrics with "(no waivers)" in label OR no waiver designation, exclude "(waivers)"
+    keep <- is_header |
+           grepl("\\(no\\s+waivers\\)", metrics_table$Metric, ignore.case = TRUE) |
+           (!grepl("\\(waivers\\)", metrics_table$Metric, ignore.case = TRUE) &
+            !grepl("\\(no\\s+waivers\\)", metrics_table$Metric, ignore.case = TRUE))
+  }
+
+  return(metrics_table[keep])
+}
 
 # Determine if a metric group name indicates waiver-only variant
 is_waiver_only_group <- function(group_name) {
@@ -2073,6 +2097,8 @@ server <- function(data_list, metric_spec, analysis_tables) {
       }
 
       results <- combine_damages_with_headers(data, metric_spec, sections, current_filters(), factor)
+      # Filter out waiver metrics from no-waiver tab based on metric labels
+      results <- filter_metrics_by_label(results, include_waivers = FALSE)
       create_dt_table(results)
     })
 
@@ -2167,6 +2193,8 @@ server <- function(data_list, metric_spec, analysis_tables) {
       }
 
       results <- combine_damages_with_headers(data, metric_spec, sections, current_filters(), factor)
+      # Filter out no-waiver metrics from waiver tab based on metric labels
+      results <- filter_metrics_by_label(results, include_waivers = TRUE)
       create_dt_table(results)
     })
 
@@ -2261,6 +2289,8 @@ server <- function(data_list, metric_spec, analysis_tables) {
       }
 
       results <- combine_damages_with_headers(data, metric_spec, sections, current_filters(), factor)
+      # Filter out waiver metrics from no-waiver tab based on metric labels
+      results <- filter_metrics_by_label(results, include_waivers = FALSE)
       create_dt_table(results)
     })
 
@@ -2355,6 +2385,8 @@ server <- function(data_list, metric_spec, analysis_tables) {
       }
 
       results <- combine_damages_with_headers(data, metric_spec, sections, current_filters(), factor)
+      # Filter out no-waiver metrics from waiver tab based on metric labels
+      results <- filter_metrics_by_label(results, include_waivers = TRUE)
       create_dt_table(results)
     })
 
