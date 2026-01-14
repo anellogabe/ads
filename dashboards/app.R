@@ -733,22 +733,15 @@ ui <- function(data_list, metric_spec) {
       card(
         card_header("Case Configuration"),
         card_body(
-          layout_columns(
-            col_widths = c(6, 6),
-
-            div(
-              h5("Case Information"),
-              p(strong("Case Name: "), textOutput("case_name", inline = TRUE)),
-              p(strong("Case Number: "), textOutput("case_number", inline = TRUE)),
-              p(strong("Date Filed: "), textOutput("date_filed", inline = TRUE))
-            ),
-
-            div(
-              h5("Analysis Parameters"),
-              p(strong("Relevant Period: "), textOutput("relevant_period", inline = TRUE)),
-              p(strong("Sample Size: "), textOutput("sample_size", inline = TRUE)),
-              p(strong("Sample Type: "), textOutput("sample_type", inline = TRUE))
-            )
+          style = "min-height: 200px;",
+          div(
+            style = "line-height: 1.6;",
+            p(strong("Case Name: "), textOutput("case_name", inline = TRUE)),
+            p(strong("Case Number: "), textOutput("case_number", inline = TRUE)),
+            p(strong("Date Filed: "), textOutput("date_filed", inline = TRUE)),
+            p(strong("Relevant Period: "), textOutput("relevant_period", inline = TRUE)),
+            p(strong("Mediation Date: "), textOutput("mediation_date", inline = TRUE)),
+            p(strong("Sample Size: "), textOutput("sample_size", inline = TRUE))
           )
         )
       ),
@@ -2394,6 +2387,69 @@ server <- function(data_list, metric_spec, analysis_tables) {
       setnames(result, "Value", value_col_name)
       return(result)
     }
+
+    # ===========================================================================
+    # Case Detail Outputs
+    # ===========================================================================
+
+    output$case_name <- renderText({
+      if (exists("case_name")) {
+        return(case_name)
+      }
+      return("Not specified")
+    })
+
+    output$case_number <- renderText({
+      if (exists("case_no")) {
+        return(case_no)
+      }
+      return("Not specified")
+    })
+
+    output$date_filed <- renderText({
+      if (exists("date_filed")) {
+        # Format as full written date (e.g., "July 30, 2020")
+        if (inherits(date_filed, "Date")) {
+          return(format(date_filed, "%B %d, %Y"))
+        }
+        return(as.character(date_filed))
+      }
+      return("Not specified")
+    })
+
+    output$relevant_period <- renderText({
+      if (exists("complaint_date")) {
+        # Format as "complaint_date to present"
+        if (inherits(complaint_date, "Date")) {
+          formatted_date <- format(complaint_date, "%B %d, %Y")
+          return(paste0(formatted_date, " to present"))
+        }
+        return(paste0(as.character(complaint_date), " to present"))
+      }
+      return("Not specified")
+    })
+
+    output$mediation_date <- renderText({
+      if (exists("mediation_date")) {
+        # Format as full written date
+        if (inherits(mediation_date, "Date")) {
+          return(format(mediation_date, "%B %d, %Y"))
+        }
+        return(as.character(mediation_date))
+      }
+      return("Not specified")
+    })
+
+    output$sample_size <- renderText({
+      if (exists("sample_size")) {
+        return(as.character(sample_size))
+      }
+      return("Not specified")
+    })
+
+    # ===========================================================================
+    # Example Tab Outputs
+    # ===========================================================================
 
     # Shift Data Table
     output$table_example_shift <- renderDT({
