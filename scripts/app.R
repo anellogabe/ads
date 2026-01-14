@@ -578,15 +578,18 @@ create_dt_table <- function(dt, metric_col = "Metric") {
         "  else if (data[0] && data[0].toString().includes('$')) {",
         "    // Bold the entire row",
         "    $(row).find('td').css({'font-weight': 'bold'});",
-        "    // Format numeric values with $ prefix and commas",
+        "    // Format numeric values with $ prefix, commas, and .00 cents",
         "    for (var i = 1; i < data.length; i++) {",
         "      var val = data[i];",
         "      if (val !== null && val !== undefined && val !== '' && val !== '-') {",
-        "        // Remove commas and parse as number",
-        "        var num = parseFloat(val.toString().replace(/,/g, ''));",
+        "        // Remove existing commas and $ signs, then parse as number",
+        "        var cleanVal = val.toString().replace(/[$,]/g, '');",
+        "        var num = parseFloat(cleanVal);",
         "        if (!isNaN(num)) {",
-        "          // Format with $ and commas with .00 cents",
-        "          var formatted = '$' + num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});",
+        "          // Format with $, thousand separators, and .00 cents",
+        "          var parts = num.toFixed(2).split('.');",
+        "          parts[0] = parts[0].replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',');",
+        "          var formatted = '$' + parts.join('.');",
         "          $(row).find('td:eq(' + i + ')').html(formatted);",
         "        }",
         "      }",
@@ -795,7 +798,7 @@ ui <- function(data_list, metric_spec) {
             )
           ),
           layout_columns(
-            col_widths = c(4, 4, 4),
+            col_widths = c(3, 3, 3, 3),
 
             # Column 1
             div(
@@ -804,15 +807,13 @@ ui <- function(data_list, metric_spec) {
                 NULL,
                 choices = c(
                   "Overview Statistics" = "overview",
-                  "Time Analysis - Summary" = "time_summary",
-                  "Time Analysis - Shift Hours Analysis" = "time_shift_hours",
-                  "Time Analysis - Punch Rounding" = "time_rounding",
-                  "Meal & Rest - Meal Analysis" = "meal_analysis",
-                  "Meal & Rest - Violations (>5 hrs)" = "meal_5hr",
-                  "Meal & Rest - Violations (>6 hrs)" = "meal_6hr"
+                  "Time - Summary" = "time_summary",
+                  "Time - Shift Hours" = "time_shift_hours",
+                  "Time - Punch Rounding" = "time_rounding",
+                  "Meal - Analysis" = "meal_analysis"
                 ),
                 selected = c("overview", "time_summary", "time_shift_hours", "time_rounding",
-                            "meal_analysis", "meal_5hr", "meal_6hr")
+                            "meal_analysis")
               )
             ),
 
@@ -822,16 +823,13 @@ ui <- function(data_list, metric_spec) {
                 "pdf_sections_col2",
                 NULL,
                 choices = c(
-                  "Meal & Rest - Rest Periods" = "rest_periods",
-                  "Pay Analysis - Summary" = "pay_summary",
-                  "Pay Analysis - Regular Rate" = "pay_regular_rate",
-                  "Pay Analysis - Pay Codes" = "pay_codes",
-                  "Pay Analysis - Rate Type" = "rate_type_analysis",
-                  "Damages - Class (No Waivers)" = "damages_class_no_waivers",
-                  "Damages - Class (Waivers)" = "damages_class_waivers"
+                  "Meal - Violations (>5 hrs)" = "meal_5hr",
+                  "Meal - Violations (>6 hrs)" = "meal_6hr",
+                  "Rest Periods" = "rest_periods",
+                  "Pay - Summary" = "pay_summary",
+                  "Pay - Regular Rate" = "pay_regular_rate"
                 ),
-                selected = c("rest_periods", "pay_summary", "pay_regular_rate",
-                            "pay_codes", "rate_type_analysis")
+                selected = c("meal_5hr", "meal_6hr", "rest_periods", "pay_summary", "pay_regular_rate")
               )
             ),
 
@@ -841,13 +839,28 @@ ui <- function(data_list, metric_spec) {
                 "pdf_sections_col3",
                 NULL,
                 choices = c(
-                  "Damages - PAGA (No Waivers)" = "damages_paga_no_waivers",
-                  "Damages - PAGA (Waivers)" = "damages_paga_waivers",
+                  "Pay - Codes" = "pay_codes",
+                  "Pay - Rate Type" = "rate_type_analysis",
+                  "Damages - Class (No Waiv.)" = "damages_class_no_waivers",
+                  "Damages - Class (Waiv.)" = "damages_class_waivers",
+                  "Damages - PAGA (No Waiv.)" = "damages_paga_no_waivers"
+                ),
+                selected = c("pay_codes", "rate_type_analysis")
+              )
+            ),
+
+            # Column 4
+            div(
+              checkboxGroupInput(
+                "pdf_sections_col4",
+                NULL,
+                choices = c(
+                  "Damages - PAGA (Waiv.)" = "damages_paga_waivers",
                   "Appendix - Shift Hours" = "appendix_shift",
-                  "Appendix - Non-Work Hours" = "appendix_nonwork",
-                  "Appendix - Meal Period Dist." = "appendix_meal",
-                  "Appendix - Meal Start Times" = "appendix_meal_start",
-                  "Appendix - Meal Quarter Hour" = "appendix_meal_quarter"
+                  "Appendix - Non-Work Hrs" = "appendix_nonwork",
+                  "Appendix - Meal Period" = "appendix_meal",
+                  "Appendix - Meal Start" = "appendix_meal_start",
+                  "Appendix - Meal Quarter" = "appendix_meal_quarter"
                 ),
                 selected = c()
               )
@@ -1321,7 +1334,11 @@ server <- function(data_list, metric_spec, analysis_tables) {
     )
 
     # Server-side selectize for employee filter
-    all_employee_ids <- sort(unique(c(data_list$shift_data1$ID, data_list$pay1$Pay_ID)))
+    all_employee_ids <- c(data_list$shift_data1$ID, data_list$pay1$Pay_ID)
+    if (!is.null(data_list$class1) && "Class_ID" %in% names(data_list$class1)) {
+      all_employee_ids <- c(all_employee_ids, data_list$class1$Class_ID)
+    }
+    all_employee_ids <- sort(unique(all_employee_ids))
     updateSelectizeInput(
       session,
       "employee_filter",
@@ -1338,6 +1355,9 @@ server <- function(data_list, metric_spec, analysis_tables) {
     }
     if ("Subclass" %in% names(data_list$pay1)) {
       all_subclasses <- c(all_subclasses, unique(data_list$pay1$Subclass))
+    }
+    if (!is.null(data_list$class1) && "Subclass" %in% names(data_list$class1)) {
+      all_subclasses <- c(all_subclasses, unique(data_list$class1$Subclass))
     }
     all_subclasses <- sort(unique(all_subclasses[!is.na(all_subclasses) & all_subclasses != ""]))
 
@@ -1423,17 +1443,18 @@ server <- function(data_list, metric_spec, analysis_tables) {
 
     # PDF Select All button
     observeEvent(input$pdf_select_all, {
-      # Get all choices from all three columns
-      all_choices_col1 <- c("overview", "time_summary", "time_shift_hours", "time_rounding",
-                           "meal_analysis", "meal_5hr", "meal_6hr")
-      all_choices_col2 <- c("rest_periods", "pay_summary", "pay_regular_rate", "pay_codes",
-                           "rate_type_analysis", "damages_class_no_waivers", "damages_class_waivers")
-      all_choices_col3 <- c("damages_paga_no_waivers", "damages_paga_waivers", "appendix_shift",
-                           "appendix_nonwork", "appendix_meal", "appendix_meal_start", "appendix_meal_quarter")
+      # Get all choices from all four columns
+      all_choices_col1 <- c("overview", "time_summary", "time_shift_hours", "time_rounding", "meal_analysis")
+      all_choices_col2 <- c("meal_5hr", "meal_6hr", "rest_periods", "pay_summary", "pay_regular_rate")
+      all_choices_col3 <- c("pay_codes", "rate_type_analysis", "damages_class_no_waivers",
+                           "damages_class_waivers", "damages_paga_no_waivers")
+      all_choices_col4 <- c("damages_paga_waivers", "appendix_shift", "appendix_nonwork",
+                           "appendix_meal", "appendix_meal_start", "appendix_meal_quarter")
 
       updateCheckboxGroupInput(session, "pdf_sections_col1", selected = all_choices_col1)
       updateCheckboxGroupInput(session, "pdf_sections_col2", selected = all_choices_col2)
       updateCheckboxGroupInput(session, "pdf_sections_col3", selected = all_choices_col3)
+      updateCheckboxGroupInput(session, "pdf_sections_col4", selected = all_choices_col4)
     })
 
     # PDF Deselect All button
@@ -1441,6 +1462,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
       updateCheckboxGroupInput(session, "pdf_sections_col1", selected = character(0))
       updateCheckboxGroupInput(session, "pdf_sections_col2", selected = character(0))
       updateCheckboxGroupInput(session, "pdf_sections_col3", selected = character(0))
+      updateCheckboxGroupInput(session, "pdf_sections_col4", selected = character(0))
     })
 
     # Filtered data with precomputed metadata
@@ -1512,6 +1534,30 @@ server <- function(data_list, metric_spec, analysis_tables) {
         # Note: ee_data1 may not have date ranges since it's employee-level aggregate
       }
 
+      # Filter class1 (class action list) if it exists
+      class_filtered <- NULL
+      if (!is.null(data_list$class1)) {
+        class_filtered <- copy(data_list$class1)
+
+        # Filter by Class_ID if employee filter is active
+        if (!is.null(filters$ID) && "Class_ID" %in% names(class_filtered)) {
+          class_filtered <- class_filtered[Class_ID %in% filters$ID]
+        }
+        if (!is.null(filters$Pay_ID) && "Class_ID" %in% names(class_filtered)) {
+          class_filtered <- class_filtered[Class_ID %in% filters$Pay_ID]
+        }
+
+        # Filter by Sample
+        if (!is.null(filters$Sample) && "Sample" %in% names(class_filtered)) {
+          class_filtered <- class_filtered[Sample == filters$Sample]
+        }
+
+        # Filter by Subclass
+        if (!is.null(filters$Subclass) && "Subclass" %in% names(class_filtered)) {
+          class_filtered <- class_filtered[Subclass %in% filters$Subclass]
+        }
+      }
+
       # Precompute years and key groups
       shift_years <- if (nrow(shift_filtered) > 0 && "Date" %in% names(shift_filtered)) {
         sort(unique(year(shift_filtered$Date)))
@@ -1538,6 +1584,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
         pay1 = pay_filtered,
         pp_data1 = pp_filtered,
         ee_data1 = ee_filtered,
+        class1 = class_filtered,
         shift_years = shift_years,
         pay_years = pay_years,
         shift_key_groups = shift_key_groups,
@@ -1560,8 +1607,9 @@ server <- function(data_list, metric_spec, analysis_tables) {
     })
 
     output$total_employees_class <- renderText({
-      if (!is.null(data_list$class1) && "Class_ID" %in% names(data_list$class1)) {
-        format(uniqueN(data_list$class1$Class_ID), big.mark = ",")
+      data <- filtered_data()
+      if (!is.null(data$class1) && "Class_ID" %in% names(data$class1)) {
+        format(uniqueN(data$class1$Class_ID), big.mark = ",")
       } else {
         "N/A"
       }
@@ -1617,8 +1665,8 @@ server <- function(data_list, metric_spec, analysis_tables) {
       # Get unique employee IDs from each source
       time_ids <- unique(data$shift_data1$ID)
       pay_ids <- unique(data$pay1$Pay_ID)
-      class_ids <- if (!is.null(data_list$class1) && "Class_ID" %in% names(data_list$class1)) {
-        unique(data_list$class1$Class_ID)
+      class_ids <- if (!is.null(data$class1) && "Class_ID" %in% names(data$class1)) {
+        unique(data$class1$Class_ID)
       } else {
         character(0)
       }
@@ -2753,8 +2801,8 @@ server <- function(data_list, metric_spec, analysis_tables) {
         withProgress(message = 'Generating PDF Report', value = 0, {
 
           # Calculate total steps for progress tracking
-          # Combine all three column selections
-          sections <- c(input$pdf_sections_col1, input$pdf_sections_col2, input$pdf_sections_col3)
+          # Combine all four column selections
+          sections <- c(input$pdf_sections_col1, input$pdf_sections_col2, input$pdf_sections_col3, input$pdf_sections_col4)
           total_sections <- length(sections) + 2  # +2 for setup and finalization
           current_step <- 0
 
@@ -3211,8 +3259,8 @@ server <- function(data_list, metric_spec, analysis_tables) {
           # Calculate overlap data (similar to venn_data reactive)
           time_ids <- unique(data$shift_data1$ID)
           pay_ids <- unique(data$pay1$Pay_ID)
-          class_ids <- if (!is.null(data_list$class1) && "Class_ID" %in% names(data_list$class1)) {
-            unique(data_list$class1$Class_ID)
+          class_ids <- if (!is.null(data$class1) && "Class_ID" %in% names(data$class1)) {
+            unique(data$class1$Class_ID)
           } else {
             character(0)
           }
@@ -3231,6 +3279,10 @@ server <- function(data_list, metric_spec, analysis_tables) {
           html_content <- paste0(html_content, '<div class="page-break"></div>')
           html_content <- paste0(html_content, '
   <h1>📊 Data Comparison - Employee Data Overlap Analysis</h1>
+
+  <div style="margin: 15px 0; padding: 12px; background-color: #e8f4f8; border-left: 4px solid #0066cc;">
+    <p style="margin: 0; font-size: 10pt;"><strong>💡 Interactive Chart:</strong> For a visual bar chart of employee overlap, please view the "Data Comparison" tab in the interactive dashboard. This PDF shows the summary statistics and detailed overlap counts.</p>
+  </div>
 
   <h2>Summary Statistics</h2>
   <div style="margin: 20px 0;">
