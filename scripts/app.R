@@ -666,6 +666,13 @@ filter_sidebar <- function(data_list) {
       selected = "all",
       multiple = FALSE
     ),
+    selectizeInput(
+      "subclass_filter",
+      "Subclass(es)",
+      choices = NULL,
+      multiple = TRUE,
+      options = list(placeholder = "All subclasses...")
+    ),
 
     hr(),
 
@@ -824,6 +831,8 @@ ui <- function(data_list, metric_spec) {
               )
             )
           ),
+          hr(),
+          checkboxInput("pdf_include_data_comparison", "Data Comparison (1-Page Landscape)", value = TRUE),
           hr(),
           downloadButton("download_pdf", "Generate PDF Report",
                         class = "btn-primary btn-lg",
@@ -1285,6 +1294,27 @@ server <- function(data_list, metric_spec, analysis_tables) {
       choices = all_employee_ids
     )
 
+    # Server-side selectize for subclass filter
+    all_subclasses <- c()
+    if ("Subclass" %in% names(data_list$shift_data1)) {
+      all_subclasses <- c(all_subclasses, unique(data_list$shift_data1$Subclass))
+    }
+    if ("Pay_Subclass" %in% names(data_list$pay1)) {
+      all_subclasses <- c(all_subclasses, unique(data_list$pay1$Pay_Subclass))
+    }
+    if ("Subclass" %in% names(data_list$pay1)) {
+      all_subclasses <- c(all_subclasses, unique(data_list$pay1$Subclass))
+    }
+    all_subclasses <- sort(unique(all_subclasses[!is.na(all_subclasses) & all_subclasses != ""]))
+
+    if (length(all_subclasses) > 0) {
+      updateSelectizeInput(
+        session,
+        "subclass_filter",
+        choices = all_subclasses
+      )
+    }
+
     # Apply dynamic font styling
     observeEvent(input$font_size, {
       req(input$font_size)
@@ -1337,6 +1367,12 @@ server <- function(data_list, metric_spec, analysis_tables) {
         filters$Sample <- as.integer(input$sample_filter)
       }
 
+      # Subclass filter
+      if (length(input$subclass_filter) > 0) {
+        filters$Subclass <- input$subclass_filter
+        filters$Pay_Subclass <- input$subclass_filter
+      }
+
       current_filters(filters)
     })
 
@@ -1347,6 +1383,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
                            end = original_date_max)
       updateSelectizeInput(session, "employee_filter", selected = character(0))
       updateSelectizeInput(session, "sample_filter", selected = "all")
+      updateSelectizeInput(session, "subclass_filter", selected = character(0))
       current_filters(list())
     })
 
@@ -1404,6 +1441,9 @@ server <- function(data_list, metric_spec, analysis_tables) {
       if (!is.null(filters$Sample) && "Sample" %in% names(shift_filtered)) {
         shift_filtered <- shift_filtered[Sample == filters$Sample]
       }
+      if (!is.null(filters$Subclass) && "Subclass" %in% names(shift_filtered)) {
+        shift_filtered <- shift_filtered[Subclass %in% filters$Subclass]
+      }
 
       # Apply filters to pay data
       if (!is.null(filters$date_min)) {
@@ -1417,6 +1457,12 @@ server <- function(data_list, metric_spec, analysis_tables) {
       }
       if (!is.null(filters$Sample) && "Pay_Sample" %in% names(pay_filtered)) {
         pay_filtered <- pay_filtered[Pay_Sample == filters$Sample]
+      }
+      if (!is.null(filters$Pay_Subclass) && "Pay_Subclass" %in% names(pay_filtered)) {
+        pay_filtered <- pay_filtered[Pay_Subclass %in% filters$Pay_Subclass]
+      }
+      if (!is.null(filters$Subclass) && "Subclass" %in% names(pay_filtered)) {
+        pay_filtered <- pay_filtered[Subclass %in% filters$Subclass]
       }
 
       # Filter pp_data1 (pay period aggregate) if it exists
@@ -2392,6 +2438,16 @@ server <- function(data_list, metric_spec, analysis_tables) {
         filter_parts <- c(filter_parts, sample_str)
       }
 
+      # Subclass filter
+      if (!is.null(filters$Subclass) && length(filters$Subclass) > 0) {
+        if (length(filters$Subclass) <= 3) {
+          subclass_str <- paste0("Subclass: ", paste(filters$Subclass, collapse = ", "))
+        } else {
+          subclass_str <- paste0("Subclass: ", length(filters$Subclass), " selected")
+        }
+        filter_parts <- c(filter_parts, subclass_str)
+      }
+
       # Combine all filter descriptions
       if (length(filter_parts) > 0) {
         filter_text <- paste("⚠ ACTIVE FILTERS:", paste(filter_parts, collapse = " | "))
@@ -3124,6 +3180,162 @@ server <- function(data_list, metric_spec, analysis_tables) {
         if ("appendix_meal_quarter" %in% sections && !is.null(analysis_tables$meal_quarter_hr)) {
           html_content <- paste0(html_content, '<div class="page-break"></div>')
           html_content <- paste0(html_content, add_table(analysis_tables$meal_quarter_hr, "Appendix - Meal Quarter Hour", "📑"))
+        }
+
+        # Data Comparison Chart
+        if (input$pdf_include_data_comparison) {
+          incProgress(1/total_sections, detail = "Data Comparison")
+
+          # Calculate overlap data (similar to venn_data reactive)
+          time_ids <- unique(data$shift_data1$ID)
+          pay_ids <- unique(data$pay1$Pay_ID)
+          class_ids <- if (!is.null(data_list$class1) && "Class_ID" %in% names(data_list$class1)) {
+            unique(data_list$class1$Class_ID)
+          } else {
+            character(0)
+          }
+
+          # Calculate overlaps
+          time_only <- setdiff(time_ids, union(pay_ids, class_ids))
+          pay_only <- setdiff(pay_ids, union(time_ids, class_ids))
+          class_only <- setdiff(class_ids, union(time_ids, pay_ids))
+
+          time_pay <- setdiff(intersect(time_ids, pay_ids), class_ids)
+          time_class <- setdiff(intersect(time_ids, class_ids), pay_ids)
+          pay_class <- setdiff(intersect(pay_ids, class_ids), time_ids)
+
+          all_three <- intersect(intersect(time_ids, pay_ids), class_ids)
+
+          html_content <- paste0(html_content, '<div class="page-break"></div>')
+          html_content <- paste0(html_content, '
+  <h1>📊 Data Comparison - Employee Data Overlap Analysis</h1>
+
+  <h2>Summary Statistics</h2>
+  <div style="margin: 20px 0;">
+    <div class="stat-box">
+      <div class="stat-label">Employees in Time Data</div>
+      <div class="stat-value">', format(length(time_ids), big.mark = ","), '</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Employees in Pay Data</div>
+      <div class="stat-value">', format(length(pay_ids), big.mark = ","), '</div>
+    </div>')
+
+          if (length(class_ids) > 0) {
+            html_content <- paste0(html_content, '
+    <div class="stat-box">
+      <div class="stat-label">Employees in Class Data</div>
+      <div class="stat-value">', format(length(class_ids), big.mark = ","), '</div>
+    </div>')
+          }
+
+          html_content <- paste0(html_content, '
+  </div>
+
+  <h2>Overlap Analysis</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Category</th>
+        <th class="value-col">Employee Count</th>
+        <th class="value-col">Percentage</th>
+      </tr>
+    </thead>
+    <tbody>')
+
+          # Total unique employees
+          all_unique_ids <- unique(c(time_ids, pay_ids, class_ids))
+          total_unique <- length(all_unique_ids)
+
+          # All three sources
+          if (length(all_three) > 0 && length(class_ids) > 0) {
+            pct <- sprintf("%.1f%%", (length(all_three) / total_unique) * 100)
+            html_content <- paste0(html_content, '
+      <tr style="background-color: #d4edda;">
+        <td class="metric-col"><strong>All Three Sources</strong></td>
+        <td class="value-col">', format(length(all_three), big.mark = ","), '</td>
+        <td class="value-col">', pct, '</td>
+      </tr>')
+          }
+
+          # Two-source overlaps
+          if (length(time_pay) > 0) {
+            pct <- sprintf("%.1f%%", (length(time_pay) / total_unique) * 100)
+            html_content <- paste0(html_content, '
+      <tr>
+        <td class="metric-col">Time & Pay Only</td>
+        <td class="value-col">', format(length(time_pay), big.mark = ","), '</td>
+        <td class="value-col">', pct, '</td>
+      </tr>')
+          }
+
+          if (length(time_class) > 0 && length(class_ids) > 0) {
+            pct <- sprintf("%.1f%%", (length(time_class) / total_unique) * 100)
+            html_content <- paste0(html_content, '
+      <tr>
+        <td class="metric-col">Time & Class Only</td>
+        <td class="value-col">', format(length(time_class), big.mark = ","), '</td>
+        <td class="value-col">', pct, '</td>
+      </tr>')
+          }
+
+          if (length(pay_class) > 0 && length(class_ids) > 0) {
+            pct <- sprintf("%.1f%%", (length(pay_class) / total_unique) * 100)
+            html_content <- paste0(html_content, '
+      <tr>
+        <td class="metric-col">Pay & Class Only</td>
+        <td class="value-col">', format(length(pay_class), big.mark = ","), '</td>
+        <td class="value-col">', pct, '</td>
+      </tr>')
+          }
+
+          # Single-source only
+          if (length(time_only) > 0) {
+            pct <- sprintf("%.1f%%", (length(time_only) / total_unique) * 100)
+            html_content <- paste0(html_content, '
+      <tr>
+        <td class="metric-col">Time Data Only</td>
+        <td class="value-col">', format(length(time_only), big.mark = ","), '</td>
+        <td class="value-col">', pct, '</td>
+      </tr>')
+          }
+
+          if (length(pay_only) > 0) {
+            pct <- sprintf("%.1f%%", (length(pay_only) / total_unique) * 100)
+            html_content <- paste0(html_content, '
+      <tr>
+        <td class="metric-col">Pay Data Only</td>
+        <td class="value-col">', format(length(pay_only), big.mark = ","), '</td>
+        <td class="value-col">', pct, '</td>
+      </tr>')
+          }
+
+          if (length(class_only) > 0 && length(class_ids) > 0) {
+            pct <- sprintf("%.1f%%", (length(class_only) / total_unique) * 100)
+            html_content <- paste0(html_content, '
+      <tr>
+        <td class="metric-col">Class Data Only</td>
+        <td class="value-col">', format(length(class_only), big.mark = ","), '</td>
+        <td class="value-col">', pct, '</td>
+      </tr>')
+          }
+
+          # Total row
+          html_content <- paste0(html_content, '
+      <tr style="background-color: #e9ecef; font-weight: bold;">
+        <td class="metric-col">Total Unique Employees</td>
+        <td class="value-col">', format(total_unique, big.mark = ","), '</td>
+        <td class="value-col">100.0%</td>
+      </tr>')
+
+          html_content <- paste0(html_content, '
+    </tbody>
+  </table>
+
+  <div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-left: 4px solid #0066cc;">
+    <p style="margin: 0;"><strong>Note:</strong> This analysis shows how employee data overlaps across different data sources (Time records, Pay records, and Class Action list). Employees appearing in multiple sources indicate good data matching, while single-source employees may require verification.</p>
+  </div>
+')
         }
 
           # Close HTML
