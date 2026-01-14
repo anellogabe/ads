@@ -1258,8 +1258,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
     updateSelectizeInput(
       session,
       "employee_filter",
-      choices = all_employee_ids,
-      server = TRUE
+      choices = all_employee_ids
     )
 
     # Apply dynamic font styling
