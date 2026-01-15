@@ -24,7 +24,8 @@ if (requireNamespace("shinycssloaders", quietly = TRUE)) {
 # CONFIGURATION - Using here() for project-relative paths
 # =============================================================================
 
-DATA_DIR <- here("output")
+CASE_DIR <- Sys.getenv("ADS_CASE_DIR", unset = "")
+DATA_DIR <- if (nzchar(CASE_DIR)) file.path(CASE_DIR, "output") else here("output")
 SCRIPTS_DIR <- here("scripts")
 
 # Data file names (from analysis.R output)
