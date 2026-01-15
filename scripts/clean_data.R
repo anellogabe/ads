@@ -904,7 +904,30 @@ cat("✓ Class List also saved as CSV:", csv_file, "\n")
 #   
 #   prod_fields_time = c("Anon_ID", "Date", "In", "Out", "Hours"),   # columns to include in time production file
 #   prod_fields_pay  = c("Pay_Anon_ID", "Pay_Date", "Pay_Code"),     # columns to include in pay production file
-#   
+#
 #   overwrite = FALSE                                 # TRUE = overwrite files if they exist
 # )
+
+
+# ==============================================================================
+# CASE METADATA - Used by Dashboard
+# ==============================================================================
+
+# Case information (update these for each case)
+case_name <- "Cardona v Durham D&M, LLC"
+case_no <- "CIVSB2309217"
+sample_size <- "100% or 25% sample (see filters)"  # Text description of sample
+
+# Important dates (update these with actual dates for your case)
+date_filed <- as.Date("2023-09-08")           # Date complaint was filed
+complaint_date <- as.Date("2020-07-30")       # Start of relevant period (complaint date)
+mediation_date <- as.Date("2024-03-15")       # Mediation date
+
+cat("\n=== Case Metadata Loaded ===\n")
+cat("Case Name:", case_name, "\n")
+cat("Case Number:", case_no, "\n")
+cat("Sample Size:", sample_size, "\n")
+cat("Date Filed:", format(date_filed, "%B %d, %Y"), "\n")
+cat("Complaint Date:", format(complaint_date, "%B %d, %Y"), "\n")
+cat("Mediation Date:", format(mediation_date, "%B %d, %Y"), "\n")
 
