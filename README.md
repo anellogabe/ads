@@ -1,6 +1,7 @@
 TEST PR MERGE WORKS
 
 # Wage & Hour Analysis Dashboard
+TEST DIRECT PUSH BLOCK
 
 A comprehensive R-based dashboard for analyzing wage and hour compliance, meal/rest periods, overtime, regular rate of pay, and damages calculations.
 
