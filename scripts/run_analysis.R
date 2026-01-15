@@ -1,72 +1,108 @@
-# run_analysis.R - Master Run Script
+# run_analysis.R - Master Orchestration Script
 # ============================================================================
-# MASTER RUN SCRIPT - Complete Wage & Hour Analysis Pipeline
+# WAGE & HOUR ANALYSIS PIPELINE
 # ============================================================================
+
+cat("
+╔══════════════════════════════════════════════════════════╗
+║        WAGE & HOUR ANALYSIS DASHBOARD PIPELINE          ║
+╚══════════════════════════════════════════════════════════╝
+\n")
 
 # Setup -----------------------------------------------------------------------
-cat("Starting Wage & Hour Analysis Pipeline\n")
-cat("=====================================\n\n")
+library(data.table)
+library(lubridate)
+library(here)
 
-# Load configuration
-source("config/config.R")
+# STEP 1: DATA CLEANING -------------------------------------------------------
+cat("\n[STEP 1] Data Cleaning & Processing\n")
+cat("═══════════════════════════════════════\n")
 
-# Check that data files exist
-if(length(list.files("data/raw/payroll/")) == 0) {
-  stop("No files found in data/raw/payroll/. Please add your payroll data files.")
+if(file.exists(here("scripts/clean_data.R"))) {
+  cat("Running clean_data.R...\n")
+  source(here("scripts/clean_data.R"))
+  cat("✓ Data cleaning complete\n")
+} else {
+  cat("✗ clean_data.R not found!\n")
+  cat("  Please ensure scripts/clean_data.R exists\n")
+  stop("Missing clean_data.R")
 }
 
-if(length(list.files("data/raw/timekeeping/")) == 0) {
-  warning("No files found in data/raw/timekeeping/. Time-based analyses will be skipped.")
+# STEP 2: ANALYSIS ------------------------------------------------------------
+cat("\n[STEP 2] Running Wage & Hour Analysis\n")
+cat("═══════════════════════════════════════\n")
+
+if(file.exists(here("scripts/analysis.R"))) {
+  cat("Running analysis.R...\n")
+  source(here("scripts/analysis.R"))
+  cat("✓ Analysis complete\n")
+} else {
+  cat("✗ analysis.R not found!\n")
+  cat("  Please ensure scripts/analysis.R exists\n")
+  stop("Missing analysis.R")
 }
 
-# STEP 1: IMPORT DATA ---------------------------------------------------------
-cat("\n[STEP 1] Importing Data\n")
-cat("-----------------------\n")
+# STEP 3: VERIFY OUTPUTS ------------------------------------------------------
+cat("\n[STEP 3] Verifying Outputs\n")
+cat("═══════════════════════════════════════\n")
 
-# Load payroll data
-source("R/01_data_import/load_payroll.R")
+required_files <- c(
+  "data/processed/time_processed.rds",
+  "data/processed/pay_processed.rds",
+  "output/Time Shift Data.csv",
+  "output/Analysis.csv"
+)
 
-# Load time card data (if available)
-if(file.exists("R/01_data_import/load_timecards.R")) {
-  source("R/01_data_import/load_timecards.R")
+missing_files <- c()
+for(file in required_files) {
+  if(file.exists(here(file))) {
+    cat("✓", file, "\n")
+  } else {
+    cat("✗", file, "(missing)\n")
+    missing_files <- c(missing_files, file)
+  }
 }
 
-cat("✓ Data import complete\n")
-
-# STEP 2: DATA CLEANING -------------------------------------------------------
-cat("\n[STEP 2] Cleaning Data\n")
-cat("----------------------\n")
-
-# Clean and standardize data
-if(file.exists("R/02_data_cleaning/clean_payroll.R")) {
-  source("R/02_data_cleaning/clean_payroll.R")
+if(length(missing_files) > 0) {
+  cat("\n⚠ Warning:", length(missing_files), "expected files are missing\n")
+  cat("  Dashboard may not function correctly\n")
+} else {
+  cat("\n✓ All required files present\n")
 }
 
-if(file.exists("R/02_data_cleaning/identify_shifts.R")) {
-  source("R/02_data_cleaning/identify_shifts.R")
+# STEP 4: SUMMARY -------------------------------------------------------------
+cat("\n[STEP 4] Analysis Summary\n")
+cat("═══════════════════════════════════════\n")
+
+if(exists("shift_data1") && exists("pay1")) {
+  cat("Employees analyzed:", uniqueN(shift_data1$ID), "\n")
+  cat("Shifts analyzed:", format(nrow(shift_data1), big.mark = ","), "\n")
+  cat("Pay periods analyzed:", uniqueN(pay1$Pay_ID_Period_End), "\n")
+
+  if(exists("shift_data1") && "mpv_shift" %in% names(shift_data1)) {
+    cat("\nViolations Summary:\n")
+    cat("  Meal period violations:", format(sum(shift_data1$mpv_shift, na.rm = TRUE), big.mark = ","), "\n")
+    cat("  Rest period violations:", format(sum(shift_data1$rpv_shift, na.rm = TRUE), big.mark = ","), "\n")
+  }
+
+  if(exists("shift_data1") && "mp_tot_dmgs" %in% names(shift_data1)) {
+    cat("\nDamages Summary:\n")
+    total_damages <- sum(shift_data1$mp_tot_dmgs, na.rm = TRUE) +
+                     sum(shift_data1$rp_tot_dmgs, na.rm = TRUE)
+    cat("  Total damages: $", format(round(total_damages, 0), big.mark = ","), "\n", sep = "")
+  }
 }
 
-cat("✓ Data cleaning complete\n")
+# STEP 5: LAUNCH DASHBOARD ----------------------------------------------------
+cat("\n[STEP 5] Dashboard Ready\n")
+cat("═══════════════════════════════════════\n")
+cat("\n✅ Analysis pipeline complete!\n\n")
 
-# STEP 3: ANALYSIS ------------------------------------------------------------
-cat("\n[STEP 3] Running Analyses\n")
-cat("-------------------------\n")
-
-# Run analysis
-cat("\nRunning Analysis...\n")
-source("R/03_analysis/analysis.R")
-
-# Save processed data for dashboard
-saveRDS(time_dt, "data/processed/time_data.rds")
-saveRDS(payroll_dt, "data/processed/payroll_data.rds")
-
-cat("\n✓ All analyses complete\n")
-cat("✓ Data saved for dashboard\n")
-
-# STEP 4: LAUNCH DASHBOARD (Optional) ----------------------------------------
-cat("\n[STEP 4] Dashboard Ready\n")
-cat("-------------------------\n")
 cat("To launch the dashboard, run:\n")
-cat("  shiny::runApp('dashboard/app.R')\n")
-cat("\nOr uncomment the line below to launch automatically:\n")
-shiny::runApp("dashboard/app.R")
+cat("  shiny::runApp('dashboard/app.R')\n\n")
+
+cat("Or uncomment the line below to launch automatically:\n")
+cat("# shiny::runApp(here('dashboard/app.R'))\n\n")
+
+# Uncomment to auto-launch dashboard:
+# shiny::runApp(here("dashboard/app.R"))
