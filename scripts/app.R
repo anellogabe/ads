@@ -1,6 +1,4 @@
-# =============================================================================
-# Wage & Hour Compliance Dashboard - COMPREHENSIVE VERSION
-# =============================================================================
+# ---- Wage & Hour Compliance Dashboard ----
 
 library(shiny)
 library(bslib)
@@ -8,71 +6,83 @@ library(data.table)
 library(lubridate)
 library(DT)
 library(plotly)
-library(here)
 library(shinycssloaders)
 library(shinyjs)
 
-# =============================================================================
-# CONFIGURATION
-# =============================================================================
+# ---- CONFIGURATION - engine repo + case paths ----
 
-DATA_DIR <- here("output")  # Analyzed data ready for dashboard
-SCRIPTS_DIR <- here("scripts")
+# ADS engine repo (required to source helpers)
+ADS_REPO <- Sys.getenv("ADS_REPO", unset = "")
+if (!nzchar(ADS_REPO)) stop("ADS_REPO env var not set (use setx ADS_REPO on Windows).")
+ADS_REPO <- normalizePath(ADS_REPO, winslash = "/", mustWork = TRUE)
 
-# Data file names (from Analysis.R output)
+FN_PATH <- file.path(ADS_REPO, "scripts", "functions.R")
+if (!file.exists(FN_PATH)) stop("functions.R not found at: ", FN_PATH)
+source(FN_PATH, local = FALSE)
+message("✓ functions.R loaded")
+
+# Case directory (recommended). If not set, fallback = getwd()
+# init_case_paths() already handles ADS_CASE_DIR + getwd().
+paths <- init_case_paths(set_globals = TRUE)
+
+# Canonical dirs (case folders)
+DATA_DIR    <- paths$OUT_DIR      # dashboard reads analysis outputs from /output
+SCRIPTS_DIR <- file.path(paths$CASE_DIR, "scripts")  # case scripts live here
+
+message("CASE_DIR   = ", normalizePath(paths$CASE_DIR, winslash = "/", mustWork = FALSE))
+message("DATA_DIR   = ", normalizePath(DATA_DIR, winslash = "/", mustWork = FALSE))
+message("SCRIPTS_DIR= ", normalizePath(SCRIPTS_DIR, winslash = "/", mustWork = FALSE))
+
+# ---- FILENAMES (match analysis.R outputs) ----
+
+# RDS outputs
 SHIFT_DATA_FILE <- "shift_data1.rds"
-PAY_DATA_FILE <- "pay1.rds"
-TIME_DATA_FILE <- "time1.rds"
+PAY_DATA_FILE   <- "pay1.rds"
+TIME_DATA_FILE  <- "time1.rds"
 CLASS_DATA_FILE <- "class1.rds"
-PP_DATA_FILE <- "pp_data1.rds"  # Pay period level aggregate
-EE_DATA_FILE <- "ee_data1.rds"  # Employee level aggregate
+PP_DATA_FILE    <- "pp_data1.rds"
+EE_DATA_FILE    <- "ee_data1.rds"
+
+# Metric spec (load only when needed)
 METRIC_SPEC_FILE <- "metrics_spec.csv"
 
-# Analysis table files
-SHIFT_HRS_FILE <- "Shift_Hrs_Table.csv"
-NON_WRK_HRS_FILE <- "Non_Work_Hrs_Table.csv"
-MEAL_PERIOD_FILE <- "Meal_Period_Table.csv"
-MEAL_START_TIME_FILE <- "Meal_Start_Time_Table.csv"
-MEAL_QUARTER_HR_FILE <- "Meal_Quarter_Hour_Table.csv"
-PAY_CODE_SUMMARY_FILE <- "Pay_Code_Summary.csv"
-RATE_TYPE_ANALYSIS_FILE <- "Rate_Type_Analysis.csv"
-DATA_COMPARISON_FILE <- "Data Comparison.csv"
-EMPLOYEE_COMPARISON_FILE <- "Employee Pay Period Comparison.csv"
+# Analysis tables (CSV outputs)
+SHIFT_HRS_FILE              <- "Shift_Hrs_Table.csv"
+NON_WRK_HRS_FILE            <- "Non_Work_Hrs_Table.csv"
+MEAL_PERIOD_FILE            <- "Meal_Period_Table.csv"
+MEAL_START_TIME_FILE        <- "Meal_Start_Time_Table.csv"
+MEAL_QUARTER_HR_FILE        <- "Meal_Quarter_Hour_Table.csv"
+PAY_CODE_SUMMARY_FILE       <- "Pay_Code_Summary.csv"
+RATE_TYPE_ANALYSIS_FILE     <- "Rate_Type_Analysis.csv"
+DATA_COMPARISON_FILE        <- "Data Comparison.csv"
+EMPLOYEE_COMPARISON_FILE    <- "Employee Pay Period Comparison.csv"
 
-# =============================================================================
-# CASE METADATA - Load from environment or set defaults
-# =============================================================================
+# ---- CASE METADATA (optional - safe defaults) ----
 
-# These variables should be defined in clean_data.R before running the app
-# If not defined, use placeholder values
-if (!exists("case_name")) case_name <- "Wage & Hour Analysis"
-if (!exists("case_no")) case_no <- "Not specified"
-if (!exists("sample_size")) sample_size <- "Not specified"
-if (!exists("date_filed")) date_filed <- Sys.Date()
-if (!exists("complaint_date")) complaint_date <- Sys.Date()
-if (!exists("mediation_date")) mediation_date <- Sys.Date()
+if (!exists("case_name"))       case_name <- "Wage & Hour Analysis"
+if (!exists("case_no"))         case_no <- "Not specified"
+if (!exists("sample_size"))     sample_size <- "Not specified"
+if (!exists("date_filed"))      date_filed <- Sys.Date()
+if (!exists("complaint_date"))  complaint_date <- Sys.Date()
+if (!exists("mediation_date"))  mediation_date <- Sys.Date()
 if (!exists("class_dmgs_start_date")) class_dmgs_start_date <- Sys.Date() %m-% years(4)
 
-# =============================================================================
-# UTILITY FUNCTIONS
-# =============================================================================
+# ---- UTILITY FUNCTIONS ----
 
-# Format column names: underscore to space, proper case
+# Format column names: underscore -> space; proper case
 format_col_name <- function(name) {
-  name %>%
-    gsub("_", " ", .) %>%
-    tools::toTitleCase()
+  name <- gsub("_", " ", name, fixed = TRUE)
+  tools::toTitleCase(name)
 }
 
-# Format all column names in a data.table
 format_all_cols <- function(dt) {
-  setnames(dt, names(dt), sapply(names(dt), format_col_name))
+  if (!is.null(dt) && ncol(dt) > 0) {
+    setnames(dt, names(dt), vapply(names(dt), format_col_name, character(1)))
+  }
   dt
 }
 
-# =============================================================================
-# DATA LOADING
-# =============================================================================
+# ---- DATA LOADING ----
 
 load_data <- function() {
   shift_path <- file.path(DATA_DIR, SHIFT_DATA_FILE)
@@ -164,9 +174,7 @@ load_analysis_table <- function(filename) {
   NULL
 }
 
-# =============================================================================
-# METRIC CALCULATION (OPTIMIZED)
-# =============================================================================
+# ---- METRIC CALCULATION (OPTIMIZED) ----
 
 get_denominator_value <- function(data, denom_name, source_type) {
   if (is.na(denom_name) || denom_name == "") return(NA_real_)
@@ -550,9 +558,7 @@ format_metric_value <- function(val, pct = NA) {
   as.character(val)
 }
 
-# =============================================================================
-# UI HELPER FUNCTIONS
-# =============================================================================
+# ---- UI HELPER FUNCTIONS ----
 
 under_construction_card <- function(title, description = NULL) {
   card(
@@ -645,9 +651,7 @@ create_dt_table <- function(dt, metric_col = "Metric") {
   )
 }
 
-# =============================================================================
-# FILTER SIDEBAR
-# =============================================================================
+# ---- FILTER SIDEBAR ----
 
 filter_sidebar <- function(data_list) {
   shift_data <- data_list$shift_data1
@@ -767,9 +771,7 @@ filter_sidebar <- function(data_list) {
   )
 }
 
-# =============================================================================
-# UI
-# =============================================================================
+# ---- UI ----
 
 ui <- function(data_list, metric_spec) {
   
@@ -1368,9 +1370,7 @@ ui <- function(data_list, metric_spec) {
   )
 }
 
-# =============================================================================
-# SERVER (Part 1 - will continue in next message due to length)
-# =============================================================================
+# ---- SERVER ----
 
 server <- function(data_list, metric_spec, analysis_tables) {
   function(input, output, session) {
@@ -3543,9 +3543,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
   }
 }
 
-# =============================================================================
-# RUN APP
-# =============================================================================
+# ---- RUN APP ----
 
 message("Loading data...")
 data_list <- load_data()
