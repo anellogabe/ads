@@ -51,6 +51,7 @@ if (!exists("sample_size")) sample_size <- "Not specified"
 if (!exists("date_filed")) date_filed <- Sys.Date()
 if (!exists("complaint_date")) complaint_date <- Sys.Date()
 if (!exists("mediation_date")) mediation_date <- Sys.Date()
+if (!exists("class_dmgs_start_date")) class_dmgs_start_date <- Sys.Date() %m-% years(4)
 
 # =============================================================================
 # UTILITY FUNCTIONS
@@ -716,6 +717,13 @@ filter_sidebar <- function(data_list) {
       selected = "all",
       multiple = FALSE
     ),
+    selectizeInput(
+      "key_groups_filter",
+      "Key Groups (Named Plaintiff(s), etc)",
+      choices = NULL,
+      multiple = TRUE,
+      options = list(placeholder = "All key groups...")
+    ),
 
     hr(),
 
@@ -781,6 +789,18 @@ ui <- function(data_list, metric_spec) {
       # Filter status banner and custom CSS
       tags$head(
         tags$style(HTML("
+          #confidential_header {
+            background-color: #8B0000;
+            color: white;
+            padding: 8px 15px;
+            text-align: left;
+            font-weight: bold;
+            font-size: 14px;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            border-bottom: 2px solid #660000;
+          }
           #filter_banner {
             display: none;
             background-color: #e74c3c;
@@ -812,10 +832,24 @@ ui <- function(data_list, metric_spec) {
           .value-box.pay-data .value-box-showcase {
             background-color: #27ae60 !important;
           }
+
+          /* Invisible watermark - bottom left */
+          .watermark {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            font-size: 10px;
+            color: #f8f9fa;
+            opacity: 0.3;
+            z-index: 1;
+            pointer-events: none;
+          }
         "))
       ),
 
-      div(id = "filter_banner", style = "display: none;", uiOutput("filter_banner_text"))
+      div(id = "confidential_header", "CONFIDENTIAL WORK PRODUCT"),
+      div(id = "filter_banner", style = "display: none;", uiOutput("filter_banner_text")),
+      div(class = "watermark", "Anello Data Solutions LLC")
     ),
 
     # =======================================================================
@@ -1270,6 +1304,36 @@ ui <- function(data_list, metric_spec) {
 
       navset_card_underline(
         nav_panel(
+          "Notes & Assumptions",
+          card(
+            card_header("Version & Assumptions"),
+            card_body(
+              div(
+                style = "line-height: 1.8;",
+                h4("Version Information"),
+                p(strong("Dashboard Version: "), textOutput("dashboard_version", inline = TRUE)),
+                p(strong("Last Updated: "), textOutput("last_updated", inline = TRUE)),
+                hr(),
+                h4("Key Assumptions"),
+                tags$ul(
+                  tags$li("Relevant period is based on class damages start date (4 years prior to complaint date)"),
+                  tags$li("Meal violations are categorized by waiver status: (no waivers) for >5 hour shifts, (waivers) for >6 hour shifts"),
+                  tags$li("PAGA damages are calculated separately from class/individual damages"),
+                  tags$li("Employee counts may differ across Time, Pay, and Class data due to data availability"),
+                  tags$li("All monetary values are displayed in USD with appropriate rounding")
+                ),
+                hr(),
+                h4("Data Sources"),
+                tags$ul(
+                  tags$li(strong("Time Data: "), "Shift-level records from timekeeping system"),
+                  tags$li(strong("Pay Data: "), "Payroll records from payment system"),
+                  tags$li(strong("Class Data: "), "Class member list for litigation")
+                )
+              )
+            )
+          )
+        ),
+        nav_panel(
           "Shift Hours",
           withSpinner(DTOutput("table_shift_hrs"), type = 6, color = "#2c3e50")
         ),
@@ -1442,6 +1506,13 @@ server <- function(data_list, metric_spec, analysis_tables) {
         filters$Pay_Subclass <- input$subclass_filter
       }
 
+      # Key Groups filter
+      if (length(input$key_groups_filter) > 0) {
+        filters$Key_Gps <- input$key_groups_filter
+        filters$Pay_Key_Gps <- input$key_groups_filter
+        filters$Class_Key_Gps <- input$key_groups_filter
+      }
+
       current_filters(filters)
     })
 
@@ -1453,6 +1524,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
       updateSelectizeInput(session, "employee_filter", selected = character(0))
       updateSelectizeInput(session, "sample_filter", selected = "all")
       updateSelectInput(session, "subclass_filter", selected = "all")
+      updateSelectizeInput(session, "key_groups_filter", selected = character(0))
       current_filters(list())
     })
 
@@ -1505,6 +1577,9 @@ server <- function(data_list, metric_spec, analysis_tables) {
         # Use grepl for pattern matching (e.g., "driver" matches "Driver", "DRIVER", etc.)
         shift_filtered <- shift_filtered[grepl(filters$Subclass, Subclass, ignore.case = TRUE)]
       }
+      if (!is.null(filters$Key_Gps) && "Key_Gps" %in% names(shift_filtered)) {
+        shift_filtered <- shift_filtered[Key_Gps %in% filters$Key_Gps]
+      }
 
       # Apply filters to pay data
       if (!is.null(filters$date_min)) {
@@ -1526,6 +1601,9 @@ server <- function(data_list, metric_spec, analysis_tables) {
       if (!is.null(filters$Subclass) && "Subclass" %in% names(pay_filtered)) {
         # Use grepl for pattern matching
         pay_filtered <- pay_filtered[grepl(filters$Subclass, Subclass, ignore.case = TRUE)]
+      }
+      if (!is.null(filters$Pay_Key_Gps) && "Pay_Key_Gps" %in% names(pay_filtered)) {
+        pay_filtered <- pay_filtered[Pay_Key_Gps %in% filters$Pay_Key_Gps]
       }
 
       # Filter pp_data1 (pay period aggregate) if it exists
@@ -1576,6 +1654,11 @@ server <- function(data_list, metric_spec, analysis_tables) {
           # Use grepl for pattern matching (e.g., "driver" matches "Driver", "DRIVER", etc.)
           class_filtered <- class_filtered[grepl(filters$Subclass, Subclass, ignore.case = TRUE)]
         }
+
+        # Filter by Class_Key_Gps
+        if (!is.null(filters$Class_Key_Gps) && "Class_Key_Gps" %in% names(class_filtered)) {
+          class_filtered <- class_filtered[Class_Key_Gps %in% filters$Class_Key_Gps]
+        }
       }
 
       # Precompute years and key groups
@@ -1611,6 +1694,28 @@ server <- function(data_list, metric_spec, analysis_tables) {
         pay_key_groups = pay_key_groups
       )
     }) %>% bindCache(current_filters())
+
+    # Populate Key Groups filter choices
+    observe({
+      # Get all unique key groups from unfiltered data (excluding "Everyone Else")
+      time_key_gps <- if (!is.null(data_list$shift_data1) && "Key_Gps" %in% names(data_list$shift_data1)) {
+        unique(data_list$shift_data1$Key_Gps)
+      } else character(0)
+
+      pay_key_gps <- if (!is.null(data_list$pay1) && "Pay_Key_Gps" %in% names(data_list$pay1)) {
+        unique(data_list$pay1$Pay_Key_Gps)
+      } else character(0)
+
+      class_key_gps <- if (!is.null(data_list$class1) && "Class_Key_Gps" %in% names(data_list$class1)) {
+        unique(data_list$class1$Class_Key_Gps)
+      } else character(0)
+
+      all_key_gps <- unique(c(time_key_gps, pay_key_gps, class_key_gps))
+      all_key_gps <- all_key_gps[!is.na(all_key_gps) & all_key_gps != "" & tolower(all_key_gps) != "everyone else"]
+      all_key_gps <- sort(all_key_gps)
+
+      updateSelectizeInput(session, "key_groups_filter", choices = all_key_gps, server = TRUE)
+    })
 
     # ===========================================================================
     # OVERVIEW OUTPUTS
@@ -2473,13 +2578,13 @@ server <- function(data_list, metric_spec, analysis_tables) {
     })
 
     output$relevant_period <- renderText({
-      if (exists("complaint_date")) {
-        # Format as "complaint_date to present"
-        if (inherits(complaint_date, "Date")) {
-          formatted_date <- format(complaint_date, "%B %d, %Y")
+      if (exists("class_dmgs_start_date")) {
+        # Format as "class_dmgs_start_date to present"
+        if (inherits(class_dmgs_start_date, "Date")) {
+          formatted_date <- format(class_dmgs_start_date, "%B %d, %Y")
           return(paste0(formatted_date, " to present"))
         }
-        return(paste0(as.character(complaint_date), " to present"))
+        return(paste0(as.character(class_dmgs_start_date), " to present"))
       }
       return("Not specified")
     })
@@ -2500,6 +2605,18 @@ server <- function(data_list, metric_spec, analysis_tables) {
         return(as.character(sample_size))
       }
       return("Not specified")
+    })
+
+    # ===========================================================================
+    # Version and Documentation Outputs
+    # ===========================================================================
+
+    output$dashboard_version <- renderText({
+      "1.0.0"
+    })
+
+    output$last_updated <- renderText({
+      format(Sys.Date(), "%B %d, %Y")
     })
 
     # ===========================================================================
@@ -2576,8 +2693,8 @@ server <- function(data_list, metric_spec, analysis_tables) {
         return(datatable(data.table(Message = "No punch records for this period"), rownames = FALSE, options = list(dom = 't')))
       }
 
-      # Select punch detail columns: ID, Name, Date, punch_time, punch_type
-      punch_cols <- c("ID", "Name", "Date", "punch_time", "punch_type")
+      # Select punch detail columns: ID, Name, Date, punch_time, punch_type, hrs_from_prev
+      punch_cols <- c("ID", "Name", "Date", "punch_time", "punch_type", "hrs_from_prev")
       available_cols <- punch_cols[punch_cols %in% names(filtered)]
 
       if (length(available_cols) == 0) {
@@ -2937,8 +3054,10 @@ server <- function(data_list, metric_spec, analysis_tables) {
     @media print {
       @page {
         @top-left {
-          content: "', case_name, '";
-          font-size: 10pt;
+          content: "CONFIDENTIAL WORK PRODUCT";
+          font-size: 11pt;
+          font-weight: bold;
+          color: #8B0000;
         }
         @top-right {
           content: "Report Date: ', format(Sys.Date(), "%B %d, %Y"), '";
@@ -3036,9 +3155,27 @@ server <- function(data_list, metric_spec, analysis_tables) {
       font-weight: bold;
       color: #2c3e50;
     }
+
+    .confidential-header {
+      background-color: #8B0000;
+      color: white;
+      padding: 10px 15px;
+      text-align: left;
+      font-weight: bold;
+      font-size: 14pt;
+      margin-bottom: 20px;
+      border-bottom: 3px solid #660000;
+    }
+
+    @media print {
+      .confidential-header {
+        display: none;
+      }
+    }
   </style>
 </head>
 <body>
+  <div class="confidential-header">CONFIDENTIAL WORK PRODUCT</div>
 ')
 
         # Page 1: Case Information
@@ -3385,35 +3522,108 @@ server <- function(data_list, metric_spec, analysis_tables) {
 
           all_three <- intersect(intersect(time_ids, pay_ids), class_ids)
 
+          # Calculate pay periods and weeks for summary statistics
+          time_pay_periods <- uniqueN(data$shift_data1$ID_Period_End)
+          pay_pay_periods <- uniqueN(data$pay1$Pay_ID_Period_End)
+          total_weeks <- uniqueN(data$shift_data1$ID_Week_End)
+
           html_content <- paste0(html_content, '<div class="page-break"></div>')
           html_content <- paste0(html_content, '
   <h1>📊 Data Comparison - Employee Data Overlap Analysis</h1>
 
-  <div style="margin: 15px 0; padding: 12px; background-color: #e8f4f8; border-left: 4px solid #0066cc;">
-    <p style="margin: 0; font-size: 10pt;"><strong>💡 Interactive Chart:</strong> For a visual bar chart of employee overlap, please view the "Data Comparison" tab in the interactive dashboard. This PDF shows the summary statistics and detailed overlap counts.</p>
-  </div>
-
   <h2>Summary Statistics</h2>
   <div style="margin: 20px 0;">
     <div class="stat-box">
-      <div class="stat-label">Employees in Time Data</div>
+      <div class="stat-label">Employees (Time)</div>
       <div class="stat-value">', format(length(time_ids), big.mark = ","), '</div>
     </div>
     <div class="stat-box">
-      <div class="stat-label">Employees in Pay Data</div>
+      <div class="stat-label">Employees (Pay)</div>
       <div class="stat-value">', format(length(pay_ids), big.mark = ","), '</div>
     </div>')
 
           if (length(class_ids) > 0) {
             html_content <- paste0(html_content, '
     <div class="stat-box">
-      <div class="stat-label">Employees in Class Data</div>
+      <div class="stat-label">Employees (Class)</div>
       <div class="stat-value">', format(length(class_ids), big.mark = ","), '</div>
     </div>')
           }
 
           html_content <- paste0(html_content, '
   </div>
+
+  <div style="margin: 20px 0;">
+    <div class="stat-box">
+      <div class="stat-label">Pay Periods (Time)</div>
+      <div class="stat-value">', format(time_pay_periods, big.mark = ","), '</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Pay Periods (Pay)</div>
+      <div class="stat-value">', format(pay_pay_periods, big.mark = ","), '</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Weeks (Time)</div>
+      <div class="stat-value">', format(total_weeks, big.mark = ","), '</div>
+    </div>
+  </div>
+
+  <h2>Employee Coverage Over Time</h2>')
+
+          # Generate time series data for line graph
+          time_emp <- data$shift_data1[, .(
+            Time_Employees = uniqueN(ID)
+          ), by = .(Period = Period_End)]
+
+          pay_emp <- data$pay1[, .(
+            Pay_Employees = uniqueN(Pay_ID)
+          ), by = .(Period = Pay_Period_End)]
+
+          # Merge the two datasets
+          time_series <- merge(time_emp, pay_emp, by = "Period", all = TRUE)
+          time_series <- time_series[order(Period)]
+          time_series[is.na(Time_Employees), Time_Employees := 0]
+          time_series[is.na(Pay_Employees), Pay_Employees := 0]
+
+          # Create a table showing the time series (first 10 and last 10 periods)
+          html_content <- paste0(html_content, '
+  <div style="margin: 15px 0; padding: 12px; background-color: #e8f4f8; border-left: 4px solid #0066cc;">
+    <p style="margin: 0; font-size: 10pt;"><strong>📈 Time Series Data:</strong> The table below shows employee counts by pay period. For an interactive line graph visualization, view the "Data Comparison" tab in the dashboard.</p>
+  </div>
+
+  <table style="font-size: 8pt;">
+    <thead>
+      <tr>
+        <th>Pay Period End</th>
+        <th class="value-col">Time Employees</th>
+        <th class="value-col">Pay Employees</th>
+      </tr>
+    </thead>
+    <tbody>')
+
+          # Show sample of data (first 15 rows)
+          sample_rows <- min(15, nrow(time_series))
+          for(i in 1:sample_rows) {
+            row <- time_series[i]
+            html_content <- paste0(html_content, '
+      <tr>
+        <td>', format(row$Period, "%Y-%m-%d"), '</td>
+        <td class="value-col">', format(row$Time_Employees, big.mark = ","), '</td>
+        <td class="value-col">', format(row$Pay_Employees, big.mark = ","), '</td>
+      </tr>')
+          }
+
+          if (nrow(time_series) > sample_rows) {
+            html_content <- paste0(html_content, '
+      <tr>
+        <td colspan="3" style="text-align: center; font-style: italic;">... (', nrow(time_series) - sample_rows, ' more periods) ...</td>
+      </tr>')
+          }
+
+          html_content <- paste0(html_content, '
+    </tbody>
+  </table>
+
 
   <h2>Overlap Analysis</h2>
   <table>
