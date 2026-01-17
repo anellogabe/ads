@@ -867,8 +867,12 @@ group_pay_data <- function(data, group_by = "Pay_ID_Period_End") {
       Meal_Amt = sum(Pay_Amount[Meal_Pay_Code == 1], na.rm = TRUE),
       Rest_Amt = sum(Pay_Amount[Rest_Pay_Code == 1], na.rm = TRUE),
       Sick_Amt = sum(Pay_Amount[Sick_Pay_Code == 1], na.rm = TRUE),
-      Oth_RROP_Amt = sum(Pay_Amount[Hrs_Wkd_Pay_Code == 0 & Meal_Pay_Code == 0 & Rest_Pay_Code == 0 & Sick_Pay_Code == 0 & Diff_Pay_Code == 0 & Diff_OT_Pay_Code == 0 & Diff_DT_Pay_Code == 0 & RROP_Pay_Code == 1], na.rm = TRUE),
-      Oth_Amt = sum(Pay_Amount[Hrs_Wkd_Pay_Code == 0 & Meal_Pay_Code == 0 & Rest_Pay_Code == 0 & Sick_Pay_Code == 0 & Diff_Pay_Code == 0 & Diff_OT_Pay_Code == 0 & Diff_DT_Pay_Code == 0 & RROP_Pay_Code == 0], na.rm = TRUE)
+      Oth_RROP_Amt = sum(Pay_Amount[Hrs_Wkd_Pay_Code == 0 & OT_Pay_Code == 0 & DT_Pay_Code == 0 & 
+                                      Meal_Pay_Code == 0 & Rest_Pay_Code == 0 & Sick_Pay_Code == 0 & 
+                                      Diff_Pay_Code == 0 & Diff_OT_Pay_Code == 0 & Diff_DT_Pay_Code == 0 & RROP_Pay_Code == 1], na.rm = TRUE),
+      Oth_Amt = sum(Pay_Amount[Hrs_Wkd_Pay_Code == 0 & OT_Pay_Code == 0 & DT_Pay_Code == 0 & 
+                                 Meal_Pay_Code == 0 & Rest_Pay_Code == 0 & Sick_Pay_Code == 0 & 
+                                 Diff_Pay_Code == 0 & Diff_OT_Pay_Code == 0 & Diff_DT_Pay_Code == 0 & RROP_Pay_Code == 0], na.rm = TRUE)
     ),
     by = group_by
   ]
@@ -1284,11 +1288,11 @@ aggregate_data <- function(dt,
                            median_fields = NULL) {
   setDT(dt)
   
-  first_fields <- if (is.null(first_fields)) if (exists("first_fields_default")) first_fields_default else character(0) else first_fields
-  sum_fields <- if (is.null(sum_fields)) if (exists("sum_fields_default")) sum_fields_default else character(0) else sum_fields
-  max_fields <- if (is.null(max_fields)) if (exists("max_fields_default")) max_fields_default else character(0) else max_fields
-  min_fields <- if (is.null(min_fields)) if (exists("min_fields_default")) min_fields_default else character(0) else min_fields
-  mean_fields <- if (is.null(mean_fields)) if (exists("mean_fields_default")) mean_fields_default else character(0) else mean_fields
+  first_fields  <- if (is.null(first_fields))  if (exists("first_fields_default"))  first_fields_default  else character(0) else first_fields
+  sum_fields    <- if (is.null(sum_fields))    if (exists("sum_fields_default"))    sum_fields_default    else character(0) else sum_fields
+  max_fields    <- if (is.null(max_fields))    if (exists("max_fields_default"))    max_fields_default    else character(0) else max_fields
+  min_fields    <- if (is.null(min_fields))    if (exists("min_fields_default"))    min_fields_default    else character(0) else min_fields
+  mean_fields   <- if (is.null(mean_fields))   if (exists("mean_fields_default"))   mean_fields_default   else character(0) else mean_fields
   median_fields <- if (is.null(median_fields)) if (exists("median_fields_default")) median_fields_default else character(0) else median_fields
   
   all_fields <- c(first_fields, sum_fields, max_fields, min_fields, mean_fields, median_fields)
@@ -1305,73 +1309,151 @@ aggregate_data <- function(dt,
   }
   
   missing_by <- setdiff(by, names(dt))
-  if (length(missing_by) > 0) {
-    stop(sprintf("The following grouping fields are missing in the data: %s", paste(missing_by, collapse = ", ")))
-  }
+  if (length(missing_by) > 0) stop(sprintf("Missing grouping fields: %s", paste(missing_by, collapse = ", ")))
   
   unaggregated_fields <- setdiff(names(dt), c(by, all_fields))
   if (length(unaggregated_fields) > 0) {
-    message(sprintf("Warning: The following fields are not aggregated and will be ignored: %s", paste(unaggregated_fields, collapse = ", ")))
+    message(sprintf("Warning: ignored fields not aggregated: %s", paste(unaggregated_fields, collapse = ", ")))
   }
+  
+  # --- Identify date-like fields present in dt ---
+  is_date_like <- function(x) inherits(x, "Date") || inherits(x, "POSIXct") || inherits(x, "POSIXt")
+  date_like_cols <- names(dt)[vapply(dt, is_date_like, logical(1))]
+  
+  max_date_fields <- intersect(max_fields, date_like_cols)
+  min_date_fields <- intersect(min_fields, date_like_cols)
+  
+  # For date-like columns, handle NA safely without changing class
+  max_num_fields <- setdiff(max_fields, max_date_fields)
+  min_num_fields <- setdiff(min_fields, min_date_fields)
   
   message("Starting aggregation...")
   start_time <- Sys.time()
   
   aggregation_expr <- list()
   
+  # first() fields (keep original type)
   if (length(first_fields) > 0) {
-    aggregation_expr <- c(aggregation_expr,
-                          setNames(lapply(first_fields, function(f) substitute(first(f), list(f = as.name(f)))), first_fields)
+    aggregation_expr <- c(
+      aggregation_expr,
+      setNames(lapply(first_fields, function(f)
+        substitute(first(x), list(x = as.name(f)))
+      ), first_fields)
     )
   }
+  
+  # sum() numeric -> double
   if (length(sum_fields) > 0) {
-    aggregation_expr <- c(aggregation_expr,
-                          setNames(lapply(sum_fields, function(f) substitute(if (all(is.na(f))) NA_real_ else sum(f, na.rm = TRUE), list(f = as.name(f)))), paste0(sum_fields, "_sum"))
+    aggregation_expr <- c(
+      aggregation_expr,
+      setNames(lapply(sum_fields, function(f)
+        substitute(
+          fifelse(all(is.na(x)), NA_real_, as.double(sum(x, na.rm = TRUE))),
+          list(x = as.name(f))
+        )
+      ), paste0(sum_fields, "_sum"))
     )
   }
-  if (length(max_fields) > 0) {
-    aggregation_expr <- c(aggregation_expr,
-                          setNames(lapply(max_fields, function(f) substitute(if (all(is.na(f))) NA_real_ else max(f, na.rm = TRUE), list(f = as.name(f)))), paste0(max_fields, "_max"))
+  
+  # max() date-like -> preserve class
+  if (length(max_date_fields) > 0) {
+    aggregation_expr <- c(
+      aggregation_expr,
+      setNames(lapply(max_date_fields, function(f)
+        substitute(
+          { y <- x[!is.na(x)]; if (length(y) == 0L) as.Date(NA) else max(y) },
+          list(x = as.name(f))
+        )
+      ), paste0(max_date_fields, "_max"))
     )
   }
-  if (length(min_fields) > 0) {
-    aggregation_expr <- c(aggregation_expr,
-                          setNames(lapply(min_fields, function(f) substitute(if (all(is.na(f))) NA_real_ else min(f, na.rm = TRUE), list(f = as.name(f)))), paste0(min_fields, "_min"))
+  
+  # max() numeric -> double
+  if (length(max_num_fields) > 0) {
+    aggregation_expr <- c(
+      aggregation_expr,
+      setNames(lapply(max_num_fields, function(f)
+        substitute(
+          fifelse(all(is.na(x)), NA_real_, as.double(suppressWarnings(max(x, na.rm = TRUE)))),
+          list(x = as.name(f))
+        )
+      ), paste0(max_num_fields, "_max"))
     )
   }
+  
+  # min() date-like -> preserve class
+  if (length(min_date_fields) > 0) {
+    aggregation_expr <- c(
+      aggregation_expr,
+      setNames(lapply(min_date_fields, function(f)
+        substitute(
+          { y <- x[!is.na(x)]; if (length(y) == 0L) as.Date(NA) else min(y) },
+          list(x = as.name(f))
+        )
+      ), paste0(min_date_fields, "_min"))
+    )
+  }
+  
+  # min() numeric -> double
+  if (length(min_num_fields) > 0) {
+    aggregation_expr <- c(
+      aggregation_expr,
+      setNames(lapply(min_num_fields, function(f)
+        substitute(
+          fifelse(all(is.na(x)), NA_real_, as.double(suppressWarnings(min(x, na.rm = TRUE)))),
+          list(x = as.name(f))
+        )
+      ), paste0(min_num_fields, "_min"))
+    )
+  }
+  
+  # mean() numeric -> double
   if (length(mean_fields) > 0) {
-    aggregation_expr <- c(aggregation_expr,
-                          setNames(lapply(mean_fields, function(f) substitute(if (all(is.na(f))) NA_real_ else mean(f, na.rm = TRUE), list(f = as.name(f)))), paste0(mean_fields, "_mean"))
+    aggregation_expr <- c(
+      aggregation_expr,
+      setNames(lapply(mean_fields, function(f)
+        substitute(
+          fifelse(all(is.na(x)), NA_real_, as.double(mean(x, na.rm = TRUE))),
+          list(x = as.name(f))
+        )
+      ), paste0(mean_fields, "_mean"))
     )
   }
+  
+  # median() numeric -> double
   if (length(median_fields) > 0) {
-    aggregation_expr <- c(aggregation_expr,
-                          setNames(lapply(median_fields, function(f) substitute(if (all(is.na(f))) NA_real_ else median(f, na.rm = TRUE), list(f = as.name(f)))), paste0(median_fields, "_median"))
+    aggregation_expr <- c(
+      aggregation_expr,
+      setNames(lapply(median_fields, function(f)
+        substitute(
+          fifelse(all(is.na(x)), NA_real_, as.double(median(x, na.rm = TRUE))),
+          list(x = as.name(f))
+        )
+      ), paste0(median_fields, "_median"))
     )
   }
   
   aggregation_call <- as.call(c(quote(list), aggregation_expr))
   result <- dt[, eval(aggregation_call), by = by]
   
-  end_time <- Sys.time()
-  duration <- end_time - start_time
-  message(sprintf("Aggregation completed in %.2f seconds.", as.numeric(duration, units = "secs")))
+  # Replace Inf/-Inf only in numeric cols (Date/POSIX won't be numeric here)
+  num_cols <- names(result)[vapply(result, is.numeric, logical(1))]
+  if (length(num_cols) > 0) {
+    result[, (num_cols) := lapply(.SD, function(x) fifelse(is.finite(x), x, NA_real_)), .SDcols = num_cols]
+  }
   
-  return(result)
+  end_time <- Sys.time()
+  message(sprintf("Aggregation completed in %.2f seconds.", as.numeric(end_time - start_time, units = "secs")))
+  
+  result
 }
 
 
-# Example usage:
-# shift_data <- aggregate_data(time1, by = "ID_Shift")
-# shift_data <- aggregate_data(time1, by = c("ID_Shift", "Period_End"))
-# shift_data <- aggregate_data(time1, by = "ID_Shift", sum_fields = c("mp"))
-
-# REMOVE COLUMN NAME SUFFIXES (after aggregate data step, if needed) ------------------------------------------------------------------------------
-
+# REMOVE COLUMN NAME SUFFIXES (after aggregate data step, if needed)
 remove_suffixes <- function(dt, suffixes) {
   setDT(dt)
   setnames(dt, old = names(dt), new = sub(paste0("(", paste0(suffixes, collapse = "|"), ")$"), "", names(dt)))
-  return(dt)
+  dt
 }
 
 # Example usage:
@@ -1697,7 +1779,7 @@ metric_spec[, metric_order := .I]
 # 2. Denominator definitions
 # -----------------------------------------------------------------------------
 
-# Time data denominators
+# Time data denominators (shift-level)
 denom_functions_time <- list(
   shifts_all              = function(dt) dt[, n_distinct(ID_Shift)],
   shifts_gt_3_5           = function(dt) dt[shift_hrs > 3.5, n_distinct(ID_Shift)],
@@ -1719,14 +1801,43 @@ denom_functions_time <- list(
   r_analyzed_shifts_round = function(dt) dt[, sum(r_shifts_analyzed == 1, na.rm = TRUE)]
 )
 
-# Pay data denominators
+# Pay data denominators (pay record-level)
 denom_functions_pay <- list(
   employees_pay           = function(dt) dt[, n_distinct(Pay_ID)],
   pay_periods_pay         = function(dt) dt[, n_distinct(Pay_ID_Period_End)]
 )
 
+# Pay period data denominators (merged time+pay, pay period-level)
+denom_functions_pp <- list(
+  pp_all                  = function(dt) dt[, .N],
+  pp_with_shift           = function(dt) dt[has_shift == 1, .N],
+  pp_with_pay             = function(dt) dt[has_pay == 1, .N],
+  pp_with_both            = function(dt) dt[has_shift == 1 & has_pay == 1, .N],
+  pp_employees            = function(dt) dt[, n_distinct(ID)],
+  pp_with_shifts_gt_5     = function(dt) dt[Shifts_gt_5 > 0, .N],
+  pp_with_shifts_gt_6     = function(dt) dt[Shifts_gt_6 > 0, .N],
+  pp_with_shifts_gt_3_5   = function(dt) dt[Shifts_gt_3_5 > 0, .N],
+  pp_with_mp_violations   = function(dt) dt[mpv_per_pp > 0, .N],
+  pp_with_rp_violations   = function(dt) dt[rpv_per_pp > 0, .N]
+)
+
+# Employee data denominators (merged time+pay, employee-level)
+denom_functions_ee <- list(
+  ee_all                  = function(dt) dt[, .N],
+  ee_with_shift           = function(dt) dt[has_shift == 1, .N],
+  ee_with_pay             = function(dt) dt[has_pay == 1, .N],
+  ee_with_both            = function(dt) dt[has_shift == 1 & has_pay == 1, .N],
+  ee_with_shifts_gt_5     = function(dt) dt[Shifts_gt_5 > 0, .N],
+  ee_with_shifts_gt_6     = function(dt) dt[Shifts_gt_6 > 0, .N],
+  ee_with_shifts_gt_3_5   = function(dt) dt[Shifts_gt_3_5 > 0, .N],
+  ee_with_mp_violations   = function(dt) dt[mpv_ee > 0, .N],
+  ee_with_rp_violations   = function(dt) dt[rpv_ee > 0, .N],
+  ee_with_mp_less_prems   = function(dt) dt[mpv_ee_less_prems > 0, .N],
+  ee_with_rp_less_prems   = function(dt) dt[rpv_ee_less_prems > 0, .N]
+)
+
 # Combined lookup
-denom_functions <- c(denom_functions_time, denom_functions_pay)
+denom_functions <- c(denom_functions_time, denom_functions_pay, denom_functions_pp, denom_functions_ee)
 
 # -----------------------------------------------------------------------------
 # 3. Core evaluation function
@@ -1767,7 +1878,7 @@ eval_metric <- function(dt, expr_str, digits = NA) {
 #' Evaluate a denominator function
 #' @param dt data.table to evaluate against
 #' @param denom_name name of the denominator
-#' @param source which data source (shift_data1 or pay1)
+#' @param source which data source
 #' @return numeric denominator value
 eval_denom <- function(dt, denom_name, source) {
   if (is.null(dt) || nrow(dt) == 0 || is.na(denom_name) || denom_name == "") {
@@ -1788,7 +1899,7 @@ eval_denom <- function(dt, denom_name, source) {
 # -----------------------------------------------------------------------------
 
 #' Calculate all metrics from spec for given data
-#' @param data_list list with 'shift_data1' and 'pay1' data.tables
+#' @param data_list list with 'shift_data1', 'pay1', 'pp_data1', 'ee_data1' data.tables
 #' @param spec data.table of metric specifications
 #' @return data.table with columns: metric_group, metric_label, metric_type, value, denom_value, pct
 calculate_metrics <- function(data_list, spec) {
@@ -1831,15 +1942,8 @@ calculate_metrics <- function(data_list, spec) {
 # 5. Filtering helpers
 # -----------------------------------------------------------------------------
 
-#' Filter time data by expression
-filter_time_data <- function(dt, filter_expr = NULL) {
-  if (is.null(dt)) return(NULL)
-  if (is.null(filter_expr)) return(dt)
-  dt[eval(filter_expr)]
-}
-
-#' Filter pay data by expression
-filter_pay_data <- function(dt, filter_expr = NULL) {
+#' Filter data by expression
+filter_data <- function(dt, filter_expr = NULL) {
   if (is.null(dt)) return(NULL)
   if (is.null(filter_expr)) return(dt)
   dt[eval(filter_expr)]
@@ -1847,10 +1951,14 @@ filter_pay_data <- function(dt, filter_expr = NULL) {
 
 #' Create filtered data list with consistent filtering
 #' CRITICAL: List elements MUST be named to match spec source column
-create_filtered_data <- function(time_dt, pay_dt, time_filter = NULL, pay_filter = NULL) {
+create_filtered_data <- function(time_dt, pay_dt, pp_dt = NULL, ee_dt = NULL,
+                                 time_filter = NULL, pay_filter = NULL, 
+                                 pp_filter = NULL, ee_filter = NULL) {
   list(
-    shift_data1 = filter_time_data(time_dt, time_filter),
-    pay1 = filter_pay_data(pay_dt, pay_filter)
+    shift_data1 = filter_data(time_dt, time_filter),
+    pay1        = filter_data(pay_dt, pay_filter),
+    pp_data1    = filter_data(pp_dt, pp_filter),
+    ee_data1    = filter_data(ee_dt, ee_filter)
   )
 }
 
@@ -1858,23 +1966,32 @@ create_filtered_data <- function(time_dt, pay_dt, time_filter = NULL, pay_filter
 # 6. Build filter configurations
 # -----------------------------------------------------------------------------
 
-#' Build standard filter configurations for time and pay data
-build_filter_configs <- function(time_dt, pay_dt, custom_filters = list()) {
+#' Build standard filter configurations for all data sources
+build_filter_configs <- function(time_dt, pay_dt, pp_dt = NULL, ee_dt = NULL, custom_filters = list()) {
   
   configs <- list()
   
   # All Data (no filter)
-  configs[["All Data"]] <- list(time_filter = NULL, pay_filter = NULL)
+  configs[["All Data"]] <- list(
+    time_filter = NULL, 
+    pay_filter  = NULL, 
+    pp_filter   = NULL, 
+    ee_filter   = NULL
+  )
   
   # Year filters
   time_years <- if (!is.null(time_dt)) sort(unique(year(time_dt$Period_End))) else integer(0)
   pay_years  <- if (!is.null(pay_dt)) sort(unique(year(pay_dt$Pay_Period_End))) else integer(0)
-  all_years  <- sort(unique(c(time_years, pay_years)))
+  pp_years   <- if (!is.null(pp_dt)) sort(unique(year(pp_dt$Period_End))) else integer(0)
+  # ee_data1 is employee-level (one row per employee), so no year filter
+  all_years  <- sort(unique(c(time_years, pay_years, pp_years)))
   
   for (yr in all_years) {
     configs[[as.character(yr)]] <- list(
       time_filter = bquote(year(Period_End) == .(yr)),
-      pay_filter  = bquote(year(Pay_Period_End) == .(yr))
+      pay_filter  = bquote(year(Pay_Period_End) == .(yr)),
+      pp_filter   = bquote(year(Period_End) == .(yr)),
+      ee_filter   = NULL
     )
   }
   
@@ -1891,22 +2008,33 @@ build_filter_configs <- function(time_dt, pay_dt, custom_filters = list()) {
 # -----------------------------------------------------------------------------
 
 #' Run full metrics calculation across all filters
-run_metrics_pipeline <- function(time_dt, pay_dt, spec, custom_filters = list()) {
+#' @param time_dt shift-level time data (shift_data1)
+#' @param pay_dt pay record-level pay data (pay1)
+#' @param spec metric specification data.table
+#' @param pp_dt pay period-level merged data (pp_data1), optional
+#' @param ee_dt employee-level merged data (ee_data1), optional
+#' @param custom_filters list of custom filter configurations, optional
+#' @return data.table of all metrics across all filters
+run_metrics_pipeline <- function(time_dt, pay_dt, spec, 
+                                 pp_dt = NULL, ee_dt = NULL, 
+                                 custom_filters = list()) {
   
   # Ensure data.table
   if (!is.null(time_dt)) setDT(time_dt)
   if (!is.null(pay_dt)) setDT(pay_dt)
+  if (!is.null(pp_dt)) setDT(pp_dt)
+  if (!is.null(ee_dt)) setDT(ee_dt)
   
   # Build filter configurations
-  filter_configs <- build_filter_configs(time_dt, pay_dt, custom_filters)
+  filter_configs <- build_filter_configs(time_dt, pay_dt, pp_dt, ee_dt, custom_filters)
   
   # Calculate metrics for each filter
   results_list <- lapply(names(filter_configs), function(filter_name) {
     cfg <- filter_configs[[filter_name]]
     
     filtered_data <- create_filtered_data(
-      time_dt, pay_dt,
-      cfg$time_filter, cfg$pay_filter
+      time_dt, pay_dt, pp_dt, ee_dt,
+      cfg$time_filter, cfg$pay_filter, cfg$pp_filter, cfg$ee_filter
     )
     
     metrics <- calculate_metrics(filtered_data, spec)
@@ -1989,6 +2117,8 @@ format_metrics_table <- function(results_dt) {
 # # Load your data
 # shift_data1 <- fread("data/time_data.csv")
 # pay1 <- fread("data/pay_data.csv")
+# pp_data1 <- ...  # pay period-level merged data
+# ee_data1 <- ...  # employee-level merged data
 # 
 # # Load spec
 # metric_spec <- fread("scripts/metrics_spec.csv")
@@ -2003,13 +2133,23 @@ format_metrics_table <- function(results_dt) {
 # custom_filters <- list(
 #   "Erik Brown" = list(
 #     time_filter = quote(ID == "21003"),
-#     pay_filter  = quote(Pay_ID == "21003")
+#     pay_filter  = quote(Pay_ID == "21003"),
+#     pp_filter   = quote(ID == "21003"),
+#     ee_filter   = quote(ID == "21003")
 #   )
 # )
 # 
 # # Run pipeline
-# raw_results <- run_metrics_pipeline(shift_data1, pay1, metric_spec, custom_filters)
+# raw_results <- run_metrics_pipeline(
+#   time_dt = shift_data1, 
+#   pay_dt  = pay1, 
+#   spec    = metric_spec, 
+#   pp_dt   = pp_data1, 
+#   ee_dt   = ee_data1, 
+#   custom_filters = custom_filters
+# )
 # 
 # # Format and export
 # final_table <- format_metrics_table(raw_results)
 # fwrite(final_table, "output/Analysis.csv")
+
