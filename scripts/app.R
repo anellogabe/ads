@@ -21,15 +21,24 @@ if (!file.exists(FN_PATH)) stop("functions.R not found at: ", FN_PATH)
 source(FN_PATH, local = FALSE)
 message("✓ functions.R loaded")
 
-# Case directory (recommended). If not set, fallback = getwd()
-# init_case_paths() already handles ADS_CASE_DIR + getwd().
-paths <- init_case_paths(set_globals = TRUE)
+# Case directory setup
+# When app.R is run from scripts folder (via runApp('path/to/scripts')),
+# we need to go up one level to get the true case directory
+case_dir <- Sys.getenv("ADS_CASE_DIR", unset = "")
+if (!nzchar(case_dir)) {
+  case_dir <- getwd()
+  # If we're in a 'scripts' folder, use parent as case directory
+  if (basename(case_dir) == "scripts") {
+    case_dir <- dirname(case_dir)
+  }
+}
+
+paths <- init_case_paths(case_dir = case_dir, set_globals = TRUE)
 
 # Canonical dirs (case folders)
-DATA_DIR    <- paths$OUT_DIR      # dashboard reads analysis outputs from /output
+DATA_DIR    <- paths$OUT_DIR           # dashboard reads analysis outputs from /output
 SCRIPTS_DIR <- file.path(paths$CASE_DIR, "scripts")  # case scripts live here
 
-message("CASE_DIR   = ", normalizePath(paths$CASE_DIR, winslash = "/", mustWork = FALSE))
 message("DATA_DIR   = ", normalizePath(DATA_DIR, winslash = "/", mustWork = FALSE))
 message("SCRIPTS_DIR= ", normalizePath(SCRIPTS_DIR, winslash = "/", mustWork = FALSE))
 
@@ -43,8 +52,7 @@ CLASS_DATA_FILE <- "class1.rds"
 PP_DATA_FILE    <- "pp_data1.rds"
 EE_DATA_FILE    <- "ee_data1.rds"
 
-# Metric spec (load only when needed)
-METRIC_SPEC_FILE <- "metrics_spec.csv"
+# Metric spec loaded from ADS engine repo (not case directory)
 
 # Analysis tables (CSV outputs)
 SHIFT_HRS_FILE              <- "Shift_Hrs_Table.csv"
@@ -145,17 +153,9 @@ load_data <- function() {
   result
 }
 
-load_metric_spec <- function(path = NULL) {
-  if (is.null(path)) {
-    path <- file.path(SCRIPTS_DIR, METRIC_SPEC_FILE)
-  }
-  
-  if (!file.exists(path)) {
-    stop("Cannot find metrics spec file: ", path)
-  }
-  
-  message("Loading metric spec...")
-  spec <- fread(path)
+load_metric_spec <- function() {
+  # Load from ADS engine repo (uses load_metrics_spec from functions.R)
+  spec <- load_metrics_spec()
   spec[, metric_order := .I]
   spec
 }
