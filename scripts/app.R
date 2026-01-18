@@ -8,6 +8,7 @@ library(DT)
 library(plotly)
 library(shinycssloaders)
 library(shinyjs)
+library(magrittr)  # for %>% pipe operator
 
 # ---- CONFIGURATION - engine repo + case paths ----
 
@@ -42,28 +43,27 @@ SCRIPTS_DIR <- file.path(paths$CASE_DIR, "scripts")  # case scripts live here
 message("DATA_DIR   = ", normalizePath(DATA_DIR, winslash = "/", mustWork = FALSE))
 message("SCRIPTS_DIR= ", normalizePath(SCRIPTS_DIR, winslash = "/", mustWork = FALSE))
 
-# ---- FILENAMES (match analysis.R outputs) ----
+# ---- DASHBOARD INPUT FILE NAMES ----
+# These must match what analysis.R actually writes to OUT_DIR
 
-# RDS outputs
-SHIFT_DATA_FILE <- "shift_data1.rds"
-PAY_DATA_FILE   <- "pay1.rds"
-TIME_DATA_FILE  <- "time1.rds"
-CLASS_DATA_FILE <- "class1.rds"
-PP_DATA_FILE    <- "pp_data1.rds"
-EE_DATA_FILE    <- "ee_data1.rds"
+SHIFT_DATA_FILE <- "Time Shift Data.rds"
+PAY_DATA_FILE   <- "Pay Data.rds"
+TIME_DATA_FILE  <- "Time Punch Data.rds"
+PP_DATA_FILE    <- "Pay Period Level Data.rds"
+EE_DATA_FILE    <- "Employee Level Data.rds"
 
-# Metric spec loaded from ADS engine repo (not case directory)
+# class1 is in PROCESSED_DIR (from clean_data.R), not OUT_DIR
+CLASS_DATA_FILE <- "class_processed.rds"
 
-# Analysis tables (CSV outputs)
-SHIFT_HRS_FILE              <- "Shift_Hrs_Table.csv"
-NON_WRK_HRS_FILE            <- "Non_Work_Hrs_Table.csv"
-MEAL_PERIOD_FILE            <- "Meal_Period_Table.csv"
-MEAL_START_TIME_FILE        <- "Meal_Start_Time_Table.csv"
-MEAL_QUARTER_HR_FILE        <- "Meal_Quarter_Hour_Table.csv"
-PAY_CODE_SUMMARY_FILE       <- "Pay_Code_Summary.csv"
-RATE_TYPE_ANALYSIS_FILE     <- "Rate_Type_Analysis.csv"
-DATA_COMPARISON_FILE        <- "Data Comparison.csv"
-EMPLOYEE_COMPARISON_FILE    <- "Employee Pay Period Comparison.csv"
+# Tables produced by analysis.R (RDS preferred)
+SHIFT_HRS_FILE          <- "Shift_Hrs_Table.rds"
+NON_WRK_HRS_FILE        <- "Non_Work_Hrs_Table.rds"
+MEAL_PERIOD_FILE        <- "Meal_Period_Table.rds"
+MEAL_START_TIME_FILE    <- "Meal_Start_Time_Table.rds"
+MEAL_QUARTER_HR_FILE    <- "Meal_Quarter_Hour_Table.rds"
+PAY_CODE_SUMMARY_FILE   <- "Pay_Code_Summary.rds"
+RATE_TYPE_ANALYSIS_FILE <- "Rate_Type_Analysis.rds"
+EMPLOYEE_COMPARISON_FILE <- "Employee Pay Period Comparison.rds"
 
 # ---- CASE METADATA (optional - safe defaults) ----
 
@@ -93,64 +93,26 @@ format_all_cols <- function(dt) {
 # ---- DATA LOADING ----
 
 load_data <- function() {
-  shift_path <- file.path(DATA_DIR, SHIFT_DATA_FILE)
-  pay_path <- file.path(DATA_DIR, PAY_DATA_FILE)
-  time_path <- file.path(DATA_DIR, TIME_DATA_FILE)
-  class_path <- file.path(DATA_DIR, CLASS_DATA_FILE)
-  pp_path <- file.path(DATA_DIR, PP_DATA_FILE)
-  ee_path <- file.path(DATA_DIR, EE_DATA_FILE)
-  
-  result <- list()
-  
-  # Load shift data (required)
-  if (file.exists(shift_path)) {
-    message("Loading shift data...")
-    result$shift_data1 <- readRDS(shift_path)
-  } else {
-    stop("Cannot find shift data file: ", shift_path)
+
+  read_if_exists <- function(dir, file) {
+    path <- file.path(dir, file)
+    if (file.exists(path)) {
+      message("Loading: ", file)
+      readRDS(path)
+    } else {
+      message("Not found (skipping): ", file)
+      NULL
+    }
   }
-  
-  # Load pay data (required)
-  if (file.exists(pay_path)) {
-    message("Loading pay data...")
-    result$pay1 <- readRDS(pay_path)
-  } else {
-    stop("Cannot find pay data file: ", pay_path)
-  }
-  
-  # Load time data (optional)
-  if (file.exists(time_path)) {
-    message("Loading time data...")
-    result$time1 <- readRDS(time_path)
-  } else {
-    result$time1 <- NULL
-  }
-  
-  # Load class data (optional)
-  if (file.exists(class_path)) {
-    message("Loading class data...")
-    result$class1 <- readRDS(class_path)
-  } else {
-    result$class1 <- NULL
-  }
-  
-  # Load pay period aggregate data (optional)
-  if (file.exists(pp_path)) {
-    message("Loading pay period aggregate data...")
-    result$pp_data1 <- readRDS(pp_path)
-  } else {
-    result$pp_data1 <- NULL
-  }
-  
-  # Load employee aggregate data (optional)
-  if (file.exists(ee_path)) {
-    message("Loading employee aggregate data...")
-    result$ee_data1 <- readRDS(ee_path)
-  } else {
-    result$ee_data1 <- NULL
-  }
-  
-  result
+
+  list(
+    shift_data1 = read_if_exists(DATA_DIR, SHIFT_DATA_FILE),   # required
+    pay1        = read_if_exists(DATA_DIR, PAY_DATA_FILE),     # required
+    time1       = read_if_exists(DATA_DIR, TIME_DATA_FILE),
+    class1      = read_if_exists(PROCESSED_DIR, CLASS_DATA_FILE),  # from clean_data.R
+    pp_data1    = read_if_exists(DATA_DIR, PP_DATA_FILE),
+    ee_data1    = read_if_exists(DATA_DIR, EE_DATA_FILE)
+  )
 }
 
 load_metric_spec <- function() {
@@ -159,19 +121,28 @@ load_metric_spec <- function() {
   spec[, metric_order := .I]
   spec
 }
-# Load analysis tables (CSV files from Analysis.R)
 load_analysis_table <- function(filename) {
-  filepath <- file.path(DATA_DIR, filename)
-  if (file.exists(filepath)) {
-    dt <- fread(filepath)
-    # Remove rows where first column is NA, empty, or "0"
-    if (nrow(dt) > 0 && ncol(dt) > 0) {
-      first_col <- names(dt)[1]
-      dt <- dt[!(is.na(get(first_col)) | get(first_col) == "" | get(first_col) == "0")]
-    }
-    return(format_all_cols(dt))
+
+  path <- file.path(DATA_DIR, filename)
+  if (!file.exists(path)) return(NULL)
+
+  # Use readRDS for .rds files, fread for .csv
+  dt <- if (grepl("\\.rds$", filename, ignore.case = TRUE)) {
+    readRDS(path)
+  } else {
+    fread(path)
   }
-  NULL
+
+  if (!is.data.table(dt)) setDT(dt)
+
+  if (nrow(dt) > 0) {
+    first_col <- names(dt)[1]
+    dt <- dt[!(is.na(get(first_col)) |
+                 get(first_col) == "" |
+                 get(first_col) == "0")]
+  }
+
+  dt
 }
 
 # ---- METRIC CALCULATION (OPTIMIZED) ----
