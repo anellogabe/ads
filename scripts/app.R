@@ -3522,7 +3522,6 @@ server <- function(data_list, metric_spec, analysis_tables) {
         })
       }
     )
-  }
 }
 
 # ---- RUN APP ----
