@@ -3290,7 +3290,9 @@ server <- function(data_list, metric_spec, analysis_tables) {
             html_content <- paste0(html_content, add_table(results, "Meal Violations (waivers)", "⚠️"))
           }
 
-          # Calculate overlaps
+          # Data Comparison Section
+          if ("data_comparison" %in% sections) {
+            # Calculate overlaps
           time_only <- setdiff(time_ids, union(pay_ids, class_ids))
           pay_only <- setdiff(pay_ids, union(time_ids, class_ids))
           class_only <- setdiff(class_ids, union(time_ids, pay_ids))
@@ -3509,7 +3511,8 @@ server <- function(data_list, metric_spec, analysis_tables) {
   </div>
 ')
           }
-          
+          }  # End data_comparison section
+
           # Close HTML
           html_content <- paste0(html_content, '\n</body>\n</html>')
           
