@@ -93,7 +93,7 @@ format_all_cols <- function(dt) {
 # ---- DATA LOADING ----
 
 load_data <- function() {
-
+  
   read_if_exists <- function(dir, file) {
     path <- file.path(dir, file)
     if (file.exists(path)) {
@@ -104,7 +104,7 @@ load_data <- function() {
       NULL
     }
   }
-
+  
   list(
     shift_data1 = read_if_exists(DATA_DIR, SHIFT_DATA_FILE),   # required
     pay1        = read_if_exists(DATA_DIR, PAY_DATA_FILE),     # required
@@ -122,26 +122,26 @@ load_metric_spec <- function() {
   spec
 }
 load_analysis_table <- function(filename) {
-
+  
   path <- file.path(DATA_DIR, filename)
   if (!file.exists(path)) return(NULL)
-
+  
   # Use readRDS for .rds files, fread for .csv
   dt <- if (grepl("\\.rds$", filename, ignore.case = TRUE)) {
     readRDS(path)
   } else {
     fread(path)
   }
-
+  
   if (!is.data.table(dt)) setDT(dt)
-
+  
   if (nrow(dt) > 0) {
     first_col <- names(dt)[1]
     dt <- dt[!(is.na(get(first_col)) |
                  get(first_col) == "" |
                  get(first_col) == "0")]
   }
-
+  
   dt
 }
 
@@ -438,24 +438,24 @@ combine_damages_with_headers <- function(data, spec, group_definitions, filters 
 filter_metrics_by_label <- function(metrics_table, include_waivers = FALSE) {
   if (is.null(metrics_table) || nrow(metrics_table) == 0) return(metrics_table)
   if (!"Metric" %in% names(metrics_table)) return(metrics_table)
-
+  
   # Don't filter header rows
   is_header <- grepl("^###", metrics_table$Metric)
-
+  
   # Filter data rows based on label content
   if (include_waivers) {
     # WAIVERS TAB: Include metrics with "(waivers)" in label, exclude "(no waivers)"
     keep <- is_header |
-           (grepl("\\(waivers\\)", metrics_table$Metric, ignore.case = TRUE) &
-            !grepl("\\(no\\s+waivers\\)", metrics_table$Metric, ignore.case = TRUE))
+      (grepl("\\(waivers\\)", metrics_table$Metric, ignore.case = TRUE) &
+         !grepl("\\(no\\s+waivers\\)", metrics_table$Metric, ignore.case = TRUE))
   } else {
     # NO WAIVERS TAB: Include metrics with "(no waivers)" in label OR no waiver designation, exclude "(waivers)"
     keep <- is_header |
-           grepl("\\(no\\s+waivers\\)", metrics_table$Metric, ignore.case = TRUE) |
-           (!grepl("\\(waivers\\)", metrics_table$Metric, ignore.case = TRUE) &
-            !grepl("\\(no\\s+waivers\\)", metrics_table$Metric, ignore.case = TRUE))
+      grepl("\\(no\\s+waivers\\)", metrics_table$Metric, ignore.case = TRUE) |
+      (!grepl("\\(waivers\\)", metrics_table$Metric, ignore.case = TRUE) &
+         !grepl("\\(no\\s+waivers\\)", metrics_table$Metric, ignore.case = TRUE))
   }
-
+  
   return(metrics_table[keep])
 }
 
@@ -699,7 +699,7 @@ filter_sidebar <- function(data_list) {
       multiple = TRUE,
       options = list(placeholder = "All key groups...")
     ),
-
+    
     hr(),
     
     checkboxInput("show_extrapolation", "Show Extrapolated Values", value = FALSE),
@@ -819,7 +819,7 @@ ui <- function(data_list, metric_spec) {
           }
         "))
       ),
-
+      
       div(id = "confidential_header", "CONFIDENTIAL WORK PRODUCT"),
       div(id = "filter_banner", style = "display: none;", uiOutput("filter_banner_text")),
       div(class = "watermark", "Anello Data Solutions LLC")
@@ -1341,6 +1341,7 @@ ui <- function(data_list, metric_spec) {
   )
 }
 
+
 # ---- SERVER ----
 
 server <- function(data_list, metric_spec, analysis_tables) {
@@ -1348,21 +1349,26 @@ server <- function(data_list, metric_spec, analysis_tables) {
     
     # Categorize metric groups for consolidation
     metric_groups <- unique(metric_spec$metric_group)
-    time_summary_groups <- metric_groups[grepl("^Time Summary$", metric_groups)]
-    time_shift_groups <- metric_groups[grepl("^Time Shift Hours Analysis", metric_groups)]
-    time_rounding_groups <- metric_groups[grepl("^Time Punch Rounding", metric_groups)]
-    time_meal_analysis <- metric_groups[grepl("^Time Meal Period Analysis", metric_groups)]
+    time_summary_groups   <- metric_groups[grepl("^Time Summary$", metric_groups)]
+    time_shift_groups     <- metric_groups[grepl("^Time Shift Hours Analysis", metric_groups)]
+    time_rounding_groups  <- metric_groups[grepl("^Time Punch Rounding", metric_groups)]
+    time_meal_analysis    <- metric_groups[grepl("^Time Meal Period Analysis", metric_groups)]
     
     # Meal violations - split into summary and detail groups
     time_meal_violations_5_summary <- metric_groups[grepl("^Time Meal Violations \\(no waivers\\)$", metric_groups)]
-    time_meal_violations_5_short <- metric_groups[grepl("^Time Meal Violations \\(no waivers\\) - Short Detail", metric_groups)]
-    time_meal_violations_5_late <- metric_groups[grepl("^Time Meal Violations \\(no waivers\\) - Late Detail", metric_groups)]
+    time_meal_violations_5_short   <- metric_groups[grepl("^Time Meal Violations \\(no waivers\\) - Short Detail", metric_groups)]
+    time_meal_violations_5_late    <- metric_groups[grepl("^Time Meal Violations \\(no waivers\\) - Late Detail", metric_groups)]
+    
     time_meal_violations_6_summary <- metric_groups[grepl("^Time Meal Violations \\(waivers\\)$", metric_groups)]
-    time_meal_violations_6_short <- metric_groups[grepl("^Time Meal Violations \\(waivers\\) - Short Detail", metric_groups)]
-    time_meal_violations_6_late <- metric_groups[grepl("^Time Meal Violations \\(waivers\\) - Late Detail", metric_groups)]
+    time_meal_violations_6_short   <- metric_groups[grepl("^Time Meal Violations \\(waivers\\) - Short Detail", metric_groups)]
+    time_meal_violations_6_late    <- metric_groups[grepl("^Time Meal Violations \\(waivers\\) - Late Detail", metric_groups)]
     
     time_rest <- metric_groups[grepl("^Time Rest", metric_groups)]
-    pay_summary_groups <- metric_groups[grepl("^Pay Summary$|^Pay Overtime$|^Pay Double Time$|^Pay Meal Premiums$|^Pay Rest Premiums$|^Pay Bonuses$|^Pay Shift Differentials$|^Pay Sick Pay$", metric_groups)]
+    
+    pay_summary_groups <- metric_groups[
+      grepl("^Pay Summary$|^Pay Overtime$|^Pay Double Time$|^Pay Meal Premiums$|^Pay Rest Premiums$|^Pay Bonuses$|^Pay Shift Differentials$|^Pay Sick Pay$",
+            metric_groups)
+    ]
     pay_regular_rate <- metric_groups[grepl("^Pay Regular Rate", metric_groups)]
     
     # Damages metric groups (Class/Individual Claims)
@@ -1370,28 +1376,26 @@ server <- function(data_list, metric_spec, analysis_tables) {
     damages_rest_groups <- metric_groups[grepl("^Time Rest Violations.*Damages", metric_groups)]
     damages_rrop_groups <- metric_groups[grepl("^Pay Regular Rate.*RROP Damages", metric_groups)]
     
-    # Split "other" into individual categories
-    damages_otc_groups <- metric_groups[grepl("^Off-the-clock.*Damages", metric_groups)]
-    damages_rounding_groups <- metric_groups[grepl("^Clock Rounding.*Damages", metric_groups)]
+    damages_otc_groups       <- metric_groups[grepl("^Off-the-clock.*Damages", metric_groups)]
+    damages_rounding_groups  <- metric_groups[grepl("^Clock Rounding.*Damages", metric_groups)]
     damages_unpaid_ot_groups <- metric_groups[grepl("^Unpaid OT/DT.*Damages", metric_groups)]
-    damages_expenses_groups <- metric_groups[grepl("^Unreimbursed Expenses.*Damages", metric_groups)]
+    damages_expenses_groups  <- metric_groups[grepl("^Unreimbursed Expenses.*Damages", metric_groups)]
     
-    damages_wsv_groups <- metric_groups[grepl("^Wage Statement Penalties", metric_groups)]
-    damages_wt_groups <- metric_groups[grepl("^Waiting Time Penalties", metric_groups)]
+    damages_wsv_groups         <- metric_groups[grepl("^Wage Statement Penalties", metric_groups)]
+    damages_wt_groups          <- metric_groups[grepl("^Waiting Time Penalties", metric_groups)]
     damages_class_total_groups <- metric_groups[grepl("^Total damages", metric_groups)]
     
     # PAGA metric groups
     paga_meal_groups <- metric_groups[grepl("^PAGA - Meal Periods", metric_groups)]
     paga_rest_groups <- metric_groups[grepl("^PAGA - Rest Periods", metric_groups)]
     paga_rrop_groups <- metric_groups[grepl("^PAGA - Regular Rate", metric_groups)]
-    paga_226_groups <- metric_groups[grepl("^PAGA - Wage Statement", metric_groups)]
-    paga_558_groups <- metric_groups[grepl("^PAGA - Unpaid Wages", metric_groups)]
+    paga_226_groups  <- metric_groups[grepl("^PAGA - Wage Statement", metric_groups)]
+    paga_558_groups  <- metric_groups[grepl("^PAGA - Unpaid Wages", metric_groups)]
     
-    # Split PAGA "other" into individual categories
-    paga_min_wage_groups <- metric_groups[grepl("^PAGA - Min Wage|^PAGA$", metric_groups)]
-    paga_expenses_groups <- metric_groups[grepl("^PAGA - Unreimbursed Expenses", metric_groups)]
+    paga_min_wage_groups      <- metric_groups[grepl("^PAGA - Min Wage|^PAGA$", metric_groups)]
+    paga_expenses_groups      <- metric_groups[grepl("^PAGA - Unreimbursed Expenses", metric_groups)]
     paga_recordkeeping_groups <- metric_groups[grepl("^PAGA - Recordkeeping", metric_groups)]
-    paga_waiting_time_groups <- metric_groups[grepl("^PAGA - Waiting Time", metric_groups)]
+    paga_waiting_time_groups  <- metric_groups[grepl("^PAGA - Waiting Time", metric_groups)]
     
     paga_total_groups <- metric_groups[grepl("^PAGA - Total", metric_groups)]
     
@@ -1413,11 +1417,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
       all_employee_ids <- c(all_employee_ids, data_list$class1$Class_ID)
     }
     all_employee_ids <- sort(unique(all_employee_ids))
-    updateSelectizeInput(
-      session,
-      "employee_filter",
-      choices = all_employee_ids
-    )
+    updateSelectizeInput(session, "employee_filter", choices = all_employee_ids)
     
     # Apply dynamic font styling
     observeEvent(input$font_size, {
@@ -1440,18 +1440,12 @@ server <- function(data_list, metric_spec, analysis_tables) {
     # Show/hide filter banner
     observe({
       filters <- current_filters()
-      if (length(filters) > 0) {
-        shinyjs::show("filter_banner")
-      } else {
-        shinyjs::hide("filter_banner")
-      }
+      if (length(filters) > 0) shinyjs::show("filter_banner") else shinyjs::hide("filter_banner")
     })
     
     # Reset dates
     observeEvent(input$reset_dates, {
-      updateDateRangeInput(session, "date_range",
-                           start = original_date_min,
-                           end = original_date_max)
+      updateDateRangeInput(session, "date_range", start = original_date_min, end = original_date_max)
     })
     
     # Apply filters
@@ -1462,36 +1456,31 @@ server <- function(data_list, metric_spec, analysis_tables) {
       )
       
       if (length(input$employee_filter) > 0) {
-        filters$ID <- input$employee_filter
+        filters$ID     <- input$employee_filter
         filters$Pay_ID <- input$employee_filter
       }
       
-      # Sample filter
       if (!is.null(input$sample_filter) && input$sample_filter != "all") {
         filters$Sample <- as.integer(input$sample_filter)
       }
       
-      # Subclass filter
       if (!is.null(input$subclass_filter) && input$subclass_filter != "all") {
-        filters$Subclass <- input$subclass_filter
+        filters$Subclass     <- input$subclass_filter
         filters$Pay_Subclass <- input$subclass_filter
       }
-
-      # Key Groups filter
+      
       if (length(input$key_groups_filter) > 0) {
-        filters$Key_Gps <- input$key_groups_filter
-        filters$Pay_Key_Gps <- input$key_groups_filter
+        filters$Key_Gps       <- input$key_groups_filter
+        filters$Pay_Key_Gps   <- input$key_groups_filter
         filters$Class_Key_Gps <- input$key_groups_filter
       }
-
+      
       current_filters(filters)
     })
     
     # Reset filters
     observeEvent(input$reset_filters, {
-      updateDateRangeInput(session, "date_range",
-                           start = original_date_min,
-                           end = original_date_max)
+      updateDateRangeInput(session, "date_range", start = original_date_min, end = original_date_max)
       updateSelectizeInput(session, "employee_filter", selected = character(0))
       updateSelectizeInput(session, "sample_filter", selected = "all")
       updateSelectInput(session, "subclass_filter", selected = "all")
@@ -1501,7 +1490,6 @@ server <- function(data_list, metric_spec, analysis_tables) {
     
     # PDF Select All button
     observeEvent(input$pdf_select_all, {
-      # Get all choices from all four columns
       all_choices_col1 <- c("overview", "time_summary", "time_shift_hours", "time_rounding", "meal_analysis")
       all_choices_col2 <- c("meal_5hr", "meal_6hr", "rest_periods", "pay_summary", "pay_regular_rate")
       all_choices_col3 <- c("pay_codes", "rate_type_analysis", "damages_class_no_waivers",
@@ -1529,117 +1517,86 @@ server <- function(data_list, metric_spec, analysis_tables) {
       filters <- current_filters()
       
       shift_filtered <- copy(data_list$shift_data1)
-      pay_filtered <- copy(data_list$pay1)
+      pay_filtered   <- copy(data_list$pay1)
       
-      # Apply filters to shift data
-      if (!is.null(filters$date_min)) {
-        shift_filtered <- shift_filtered[Date >= filters$date_min]
-      }
-      if (!is.null(filters$date_max)) {
-        shift_filtered <- shift_filtered[Date <= filters$date_max]
-      }
-      if (!is.null(filters$ID)) {
-        shift_filtered <- shift_filtered[ID %in% filters$ID]
-      }
+      # Shift filters
+      if (!is.null(filters$date_min)) shift_filtered <- shift_filtered[Date >= filters$date_min]
+      if (!is.null(filters$date_max)) shift_filtered <- shift_filtered[Date <= filters$date_max]
+      if (!is.null(filters$ID))       shift_filtered <- shift_filtered[ID %in% filters$ID]
+      
       if (!is.null(filters$Sample) && "Sample" %in% names(shift_filtered)) {
         shift_filtered <- shift_filtered[Sample == filters$Sample]
       }
+      
       if (!is.null(filters$Subclass) && "Subclass" %in% names(shift_filtered)) {
-        # Use grepl for pattern matching (e.g., "driver" matches "Driver", "DRIVER", etc.)
         shift_filtered <- shift_filtered[grepl(filters$Subclass, Subclass, ignore.case = TRUE)]
       }
+      
       if (!is.null(filters$Key_Gps) && "Key_Gps" %in% names(shift_filtered)) {
         shift_filtered <- shift_filtered[Key_Gps %in% filters$Key_Gps]
       }
-
-      # Apply filters to pay data
-      if (!is.null(filters$date_min)) {
-        pay_filtered <- pay_filtered[Pay_Period_End >= filters$date_min]
-      }
-      if (!is.null(filters$date_max)) {
-        pay_filtered <- pay_filtered[Pay_Period_End <= filters$date_max]
-      }
-      if (!is.null(filters$Pay_ID)) {
-        pay_filtered <- pay_filtered[Pay_ID %in% filters$Pay_ID]
-      }
+      
+      # Pay filters
+      if (!is.null(filters$date_min)) pay_filtered <- pay_filtered[Pay_Period_End >= filters$date_min]
+      if (!is.null(filters$date_max)) pay_filtered <- pay_filtered[Pay_Period_End <= filters$date_max]
+      if (!is.null(filters$Pay_ID))   pay_filtered <- pay_filtered[Pay_ID %in% filters$Pay_ID]
+      
       if (!is.null(filters$Sample) && "Pay_Sample" %in% names(pay_filtered)) {
         pay_filtered <- pay_filtered[Pay_Sample == filters$Sample]
       }
+      
       if (!is.null(filters$Pay_Subclass) && "Pay_Subclass" %in% names(pay_filtered)) {
-        # Use grepl for pattern matching
         pay_filtered <- pay_filtered[grepl(filters$Pay_Subclass, Pay_Subclass, ignore.case = TRUE)]
       }
+      
       if (!is.null(filters$Subclass) && "Subclass" %in% names(pay_filtered)) {
-        # Use grepl for pattern matching
         pay_filtered <- pay_filtered[grepl(filters$Subclass, Subclass, ignore.case = TRUE)]
       }
+      
       if (!is.null(filters$Pay_Key_Gps) && "Pay_Key_Gps" %in% names(pay_filtered)) {
         pay_filtered <- pay_filtered[Pay_Key_Gps %in% filters$Pay_Key_Gps]
       }
-
-      # Filter pp_data1 (pay period aggregate) if it exists
+      
+      # pp_data1
       pp_filtered <- NULL
       if (!is.null(data_list$pp_data1)) {
         pp_filtered <- copy(data_list$pp_data1)
-        if (!is.null(filters$date_min) && "Period_End" %in% names(pp_filtered)) {
-          pp_filtered <- pp_filtered[Period_End >= filters$date_min]
-        }
-        if (!is.null(filters$date_max) && "Period_End" %in% names(pp_filtered)) {
-          pp_filtered <- pp_filtered[Period_End <= filters$date_max]
-        }
-        if (!is.null(filters$ID) && "ID" %in% names(pp_filtered)) {
-          pp_filtered <- pp_filtered[ID %in% filters$ID]
-        }
+        if (!is.null(filters$date_min) && "Period_End" %in% names(pp_filtered)) pp_filtered <- pp_filtered[Period_End >= filters$date_min]
+        if (!is.null(filters$date_max) && "Period_End" %in% names(pp_filtered)) pp_filtered <- pp_filtered[Period_End <= filters$date_max]
+        if (!is.null(filters$ID)       && "ID" %in% names(pp_filtered))        pp_filtered <- pp_filtered[ID %in% filters$ID]
       }
       
-      # Filter ee_data1 (employee aggregate) if it exists
+      # ee_data1
       ee_filtered <- NULL
       if (!is.null(data_list$ee_data1)) {
         ee_filtered <- copy(data_list$ee_data1)
-        if (!is.null(filters$ID) && "ID" %in% names(ee_filtered)) {
-          ee_filtered <- ee_filtered[ID %in% filters$ID]
-        }
-        # Note: ee_data1 may not have date ranges since it's employee-level aggregate
+        if (!is.null(filters$ID) && "ID" %in% names(ee_filtered)) ee_filtered <- ee_filtered[ID %in% filters$ID]
       }
       
-      # Filter class1 (class action list) if it exists
+      # class1
       class_filtered <- NULL
       if (!is.null(data_list$class1)) {
         class_filtered <- copy(data_list$class1)
         
-        # Filter by Class_ID if employee filter is active
         if (!is.null(filters$ID) && "Class_ID" %in% names(class_filtered)) {
           class_filtered <- class_filtered[Class_ID %in% filters$ID]
         }
         if (!is.null(filters$Pay_ID) && "Class_ID" %in% names(class_filtered)) {
           class_filtered <- class_filtered[Class_ID %in% filters$Pay_ID]
         }
-        
-        # Filter by Sample
         if (!is.null(filters$Sample) && "Sample" %in% names(class_filtered)) {
           class_filtered <- class_filtered[Sample == filters$Sample]
         }
-        
-        # Filter by Subclass (pattern matching)
         if (!is.null(filters$Subclass) && "Subclass" %in% names(class_filtered)) {
-          # Use grepl for pattern matching (e.g., "driver" matches "Driver", "DRIVER", etc.)
           class_filtered <- class_filtered[grepl(filters$Subclass, Subclass, ignore.case = TRUE)]
         }
-
-        # Filter by Class_Key_Gps
         if (!is.null(filters$Class_Key_Gps) && "Class_Key_Gps" %in% names(class_filtered)) {
           class_filtered <- class_filtered[Class_Key_Gps %in% filters$Class_Key_Gps]
         }
       }
       
-      # Precompute years and key groups
-      shift_years <- if (nrow(shift_filtered) > 0 && "Date" %in% names(shift_filtered)) {
-        sort(unique(year(shift_filtered$Date)))
-      } else NULL
-      
-      pay_years <- if (nrow(pay_filtered) > 0 && "Pay_Period_End" %in% names(pay_filtered)) {
-        sort(unique(year(pay_filtered$Pay_Period_End)))
-      } else NULL
+      shift_years <- if (nrow(shift_filtered) > 0 && "Date" %in% names(shift_filtered)) sort(unique(year(shift_filtered$Date))) else NULL
+      pay_years   <- if (nrow(pay_filtered)   > 0 && "Pay_Period_End" %in% names(pay_filtered)) sort(unique(year(pay_filtered$Pay_Period_End))) else NULL
       
       shift_key_groups <- if ("Key_Gps" %in% names(shift_filtered)) {
         gps <- unique(shift_filtered$Key_Gps)
@@ -1665,29 +1622,20 @@ server <- function(data_list, metric_spec, analysis_tables) {
         pay_key_groups = pay_key_groups
       )
     }) %>% bindCache(current_filters())
-
+    
     # Populate Key Groups filter choices
     observe({
-      # Get all unique key groups from unfiltered data (excluding "Everyone Else")
-      time_key_gps <- if (!is.null(data_list$shift_data1) && "Key_Gps" %in% names(data_list$shift_data1)) {
-        unique(data_list$shift_data1$Key_Gps)
-      } else character(0)
-
-      pay_key_gps <- if (!is.null(data_list$pay1) && "Pay_Key_Gps" %in% names(data_list$pay1)) {
-        unique(data_list$pay1$Pay_Key_Gps)
-      } else character(0)
-
-      class_key_gps <- if (!is.null(data_list$class1) && "Class_Key_Gps" %in% names(data_list$class1)) {
-        unique(data_list$class1$Class_Key_Gps)
-      } else character(0)
-
+      time_key_gps <- if (!is.null(data_list$shift_data1) && "Key_Gps" %in% names(data_list$shift_data1)) unique(data_list$shift_data1$Key_Gps) else character(0)
+      pay_key_gps  <- if (!is.null(data_list$pay1)        && "Pay_Key_Gps" %in% names(data_list$pay1))        unique(data_list$pay1$Pay_Key_Gps) else character(0)
+      class_key_gps<- if (!is.null(data_list$class1)      && "Class_Key_Gps" %in% names(data_list$class1))    unique(data_list$class1$Class_Key_Gps) else character(0)
+      
       all_key_gps <- unique(c(time_key_gps, pay_key_gps, class_key_gps))
       all_key_gps <- all_key_gps[!is.na(all_key_gps) & all_key_gps != "" & tolower(all_key_gps) != "everyone else"]
       all_key_gps <- sort(all_key_gps)
-
+      
       updateSelectizeInput(session, "key_groups_filter", choices = all_key_gps, server = TRUE)
     })
-
+    
     # ===========================================================================
     # OVERVIEW OUTPUTS
     # ===========================================================================
@@ -1704,25 +1652,6 @@ server <- function(data_list, metric_spec, analysis_tables) {
     
     output$total_employees_class <- renderText({
       data <- filtered_data()
-      
-      # Debug: print class1 status
-      cat("\n=== DEBUG: class1 Status ===\n")
-      cat("data$class1 is null:", is.null(data$class1), "\n")
-      if (!is.null(data$class1)) {
-        cat("class1 nrow:", nrow(data$class1), "\n")
-        cat("class1 columns:", paste(names(data$class1), collapse = ", "), "\n")
-        cat("Has Class_ID column:", "Class_ID" %in% names(data$class1), "\n")
-        if ("Class_ID" %in% names(data$class1)) {
-          cat("Unique Class_IDs:", uniqueN(data$class1$Class_ID), "\n")
-        }
-      }
-      cat("data_list$class1 is null:", is.null(data_list$class1), "\n")
-      if (!is.null(data_list$class1)) {
-        cat("data_list$class1 nrow:", nrow(data_list$class1), "\n")
-        cat("data_list$class1 columns:", paste(names(data_list$class1), collapse = ", "), "\n")
-      }
-      cat("========================\n")
-      
       if (!is.null(data$class1) && "Class_ID" %in% names(data$class1)) {
         format(uniqueN(data$class1$Class_ID), big.mark = ",")
       } else {
@@ -1745,21 +1674,10 @@ server <- function(data_list, metric_spec, analysis_tables) {
       format(uniqueN(data$shift_data1$ID_Week_End), big.mark = ",")
     })
     
-    output$employee_coverage_plot <- renderPlotly({
-      data <- filtered_data()
-      format(uniqueN(data$shift_data1$ID_Week_End), big.mark = ",")
-    })
-    
+    # ONE renderPlotly only (removed the broken duplicate)
     output$employee_coverage_plot <- renderPlotly({
       data <- filtered_data()
       
-      # Aggregate by pay period for smooth line graph
-      time_emp <- data$shift_data1[, .(
-        Employees = uniqueN(ID),
-        Type = "Time Data"
-      ), by = .(Period = Period_End)]
-      
-      # Aggregate by pay period for smooth line graph
       time_emp <- data$shift_data1[, .(
         Employees = uniqueN(ID),
         Type = "Time Data"
@@ -1770,17 +1688,20 @@ server <- function(data_list, metric_spec, analysis_tables) {
         Type = "Pay Data"
       ), by = .(Period = Pay_Period_End)]
       
-      combined <- rbindlist(list(time_emp, pay_emp))
+      combined <- rbindlist(list(time_emp, pay_emp), fill = TRUE)
       combined <- combined[order(Period)]
       
-      plot_ly(combined, x = ~Period, y = ~Employees, color = ~Type,
-              type = 'scatter', mode = 'lines+markers',
-              colors = c("Time Data" = "#2c3e50", "Pay Data" = "#27ae60")) %>%
+      plot_ly(
+        combined,
+        x = ~Period, y = ~Employees, color = ~Type,
+        type = "scatter", mode = "lines+markers",
+        colors = c("Time Data" = "#2c3e50", "Pay Data" = "#27ae60")
+      ) %>%
         layout(
           title = "Time & Pay Data Comparison During Relevant Period",
           xaxis = list(title = "Pay Period End Date"),
           yaxis = list(title = "Unique Employees"),
-          hovermode = 'x unified'
+          hovermode = "x unified"
         )
     })
     
@@ -1788,23 +1709,17 @@ server <- function(data_list, metric_spec, analysis_tables) {
     venn_data <- reactive({
       data <- filtered_data()
       
-      # Get unique employee IDs from each source
       time_ids <- unique(data$shift_data1$ID)
-      pay_ids <- unique(data$pay1$Pay_ID)
-      class_ids <- if (!is.null(data$class1) && "Class_ID" %in% names(data$class1)) {
-        unique(data$class1$Class_ID)
-      } else {
-        character(0)
-      }
+      pay_ids  <- unique(data$pay1$Pay_ID)
+      class_ids <- if (!is.null(data$class1) && "Class_ID" %in% names(data$class1)) unique(data$class1$Class_ID) else character(0)
       
-      # Calculate overlaps
-      time_only <- setdiff(time_ids, union(pay_ids, class_ids))
-      pay_only <- setdiff(pay_ids, union(time_ids, class_ids))
+      time_only  <- setdiff(time_ids, union(pay_ids, class_ids))
+      pay_only   <- setdiff(pay_ids,  union(time_ids, class_ids))
       class_only <- setdiff(class_ids, union(time_ids, pay_ids))
       
-      time_pay <- setdiff(intersect(time_ids, pay_ids), class_ids)
+      time_pay   <- setdiff(intersect(time_ids, pay_ids), class_ids)
       time_class <- setdiff(intersect(time_ids, class_ids), pay_ids)
-      pay_class <- setdiff(intersect(pay_ids, class_ids), time_ids)
+      pay_class  <- setdiff(intersect(pay_ids, class_ids), time_ids)
       
       all_three <- intersect(intersect(time_ids, pay_ids), class_ids)
       
@@ -1822,264 +1737,88 @@ server <- function(data_list, metric_spec, analysis_tables) {
       )
     })
     
-    output$venn_diagram_plot <- renderPlotly({
-      venn <- venn_data()
-      sources <- input$venn_sources
-      
-      # Create clearer overlap visualization using grouped bar chart
-      # Much easier to read than a Venn diagram
-      
-      # Build categorized data
-      categories <- c()
-      counts <- c()
-      colors <- c()
-      
-      # All three sources
-      if (venn$all_three > 0 && all(c("time", "pay", "class") %in% sources)) {
-        categories <- c(categories, "All Three Sources")
-        counts <- c(counts, venn$all_three)
-        colors <- c(colors, "#2ecc71")
-      }
-      
-      # Two-source overlaps
-      if (venn$time_pay > 0 && all(c("time", "pay") %in% sources)) {
-        categories <- c(categories, "Time & Pay")
-        counts <- c(counts, venn$time_pay)
-        colors <- c(colors, "#3498db")
-      }
-      if (venn$time_class > 0 && all(c("time", "class") %in% sources) && venn$class_total > 0) {
-        categories <- c(categories, "Time & Class")
-        counts <- c(counts, venn$time_class)
-        colors <- c(colors, "#9b59b6")
-      }
-      if (venn$pay_class > 0 && all(c("pay", "class") %in% sources) && venn$class_total > 0) {
-        categories <- c(categories, "Pay & Class")
-        counts <- c(counts, venn$pay_class)
-        colors <- c(colors, "#e67e22")
-      }
-      
-      # Single-source only
-      if (venn$time_only > 0 && "time" %in% sources) {
-        categories <- c(categories, "Time Only")
-        counts <- c(counts, venn$time_only)
-        colors <- c(colors, "#2c3e50")
-      }
-      if (venn$pay_only > 0 && "pay" %in% sources) {
-        categories <- c(categories, "Pay Only")
-        counts <- c(counts, venn$pay_only)
-        colors <- c(colors, "#27ae60")
-      }
-      if (venn$class_only > 0 && "class" %in% sources && venn$class_total > 0) {
-        categories <- c(categories, "Class Only")
-        counts <- c(counts, venn$class_only)
-        colors <- c(colors, "#c0392b")
-      }
-      
-      # Create vertical bar chart
-      plot_ly(
-        x = categories,
-        y = counts,
-        type = "bar",
-        marker = list(color = colors),
-        text = paste0(format(counts, big.mark = ","), "<br>employees"),
-        textposition = "outside",
-        textfont = list(color = "#2c3e50", size = 14, weight = "bold"),
-        hovertemplate = paste0(
-          "<b>%{x}</b><br>",
-          "Count: %{y:,} employees<br>",
-          "<extra></extra>"
-        )
-      ) %>%
-        layout(
-          title = list(
-            text = "Employee Data Overlap Analysis",
-            font = list(size = 18, weight = "bold")
-          ),
-          xaxis = list(
-            title = "",
-            showgrid = FALSE,
-            tickangle = -45,
-            tickfont = list(size = 12)
-          ),
-          yaxis = list(
-            title = "Number of Employees",
-            showgrid = TRUE,
-            gridcolor = "#ecf0f1"
-          ),
-          showlegend = FALSE,
-          hovermode = "closest",
-          margin = list(l = 80, r = 50, t = 80, b = 120),
-          plot_bgcolor = "#ffffff",
-          paper_bgcolor = "#ffffff"
-        )
-    })
-    
-    output$coverage_statistics <- renderUI({
-      venn <- venn_data()
-      
-      tagList(
-        tags$ul(
-          tags$li(HTML(paste0("<strong>Time Data:</strong> ", format(venn$time_total, big.mark = ","), " employees"))),
-          tags$li(HTML(paste0("<strong>Pay Data:</strong> ", format(venn$pay_total, big.mark = ","), " employees"))),
-          if (venn$class_total > 0) {
-            tags$li(HTML(paste0("<strong>Class Data:</strong> ", format(venn$class_total, big.mark = ","), " employees")))
-          },
-          tags$br(),
-          tags$li(HTML(paste0("<strong>In All Sources:</strong> ", format(venn$all_three, big.mark = ","), " employees"))),
-          tags$li(HTML(paste0("<strong>Time & Pay Only:</strong> ", format(venn$time_pay, big.mark = ","), " employees"))),
-          if (venn$class_total > 0) {
-            tags$li(HTML(paste0("<strong>Time & Class Only:</strong> ", format(venn$time_class, big.mark = ","), " employees")))
-          },
-          if (venn$class_total > 0) {
-            tags$li(HTML(paste0("<strong>Pay & Class Only:</strong> ", format(venn$pay_class, big.mark = ","), " employees")))
-          },
-          tags$br(),
-          tags$li(HTML(paste0("<strong>Time Only:</strong> ", format(venn$time_only, big.mark = ","), " employees"))),
-          tags$li(HTML(paste0("<strong>Pay Only:</strong> ", format(venn$pay_only, big.mark = ","), " employees"))),
-          if (venn$class_total > 0) {
-            tags$li(HTML(paste0("<strong>Class Only:</strong> ", format(venn$class_only, big.mark = ","), " employees")))
-          }
-        )
-      )
-    })
-    
     # ===========================================================================
     # CONSOLIDATED TABLES
     # ===========================================================================
     
-    # Get extrapolation factor
-    extrap_factor <- reactive({
-      1.0
-    })
+    extrap_factor <- reactive({ 1.0 })
     
-    # Time Analysis - Summary
     output$table_time_summary <- renderDT({
       data <- filtered_data()
-      factor <- extrap_factor()
-      
-      results <- calculate_group_metrics(data, metric_spec, time_summary_groups, current_filters(), factor)
-      
+      results <- calculate_group_metrics(data, metric_spec, time_summary_groups, current_filters(), extrap_factor())
       create_dt_table(results)
     })
     
-    # Time Analysis - Shift Hours
     output$table_shift_hours <- renderDT({
       data <- filtered_data()
-      factor <- extrap_factor()
-      
-      results <- calculate_group_metrics(data, metric_spec, time_shift_groups, current_filters(), factor)
-      
+      results <- calculate_group_metrics(data, metric_spec, time_shift_groups, current_filters(), extrap_factor())
       create_dt_table(results)
     })
     
-    # Rounding Consolidated
     output$table_rounding_consolidated <- renderDT({
       data <- filtered_data()
-      factor <- extrap_factor()
-      
-      results <- calculate_group_metrics(data, metric_spec, time_rounding_groups, current_filters(), factor)
-      
+      results <- calculate_group_metrics(data, metric_spec, time_rounding_groups, current_filters(), extrap_factor())
       create_dt_table(results)
     })
     
-    # Meal Analysis Consolidated
     output$table_meal_consolidated <- renderDT({
       data <- filtered_data()
-      factor <- extrap_factor()
-      
-      results <- calculate_group_metrics(data, metric_spec, time_meal_analysis, current_filters(), factor)
-      
+      results <- calculate_group_metrics(data, metric_spec, time_meal_analysis, current_filters(), extrap_factor())
       create_dt_table(results)
     })
     
-    # Meal 5hr (no waivers) - Summary
     output$table_meal_5hr_consolidated <- renderDT({
       data <- filtered_data()
-      factor <- extrap_factor()
-      
-      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_5_summary, current_filters(), factor)
-      
+      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_5_summary, current_filters(), extrap_factor())
       create_dt_table(results)
     })
     
-    # Meal 5hr (no waivers) - Short Details
     output$table_meal_5hr_short_details <- renderDT({
       data <- filtered_data()
-      factor <- extrap_factor()
-      
-      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_5_short, current_filters(), factor)
-      
+      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_5_short, current_filters(), extrap_factor())
       create_dt_table(results)
     })
     
-    # Meal 5hr (no waivers) - Late Details
     output$table_meal_5hr_late_details <- renderDT({
       data <- filtered_data()
-      factor <- extrap_factor()
-      
-      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_5_late, current_filters(), factor)
-      
+      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_5_late, current_filters(), extrap_factor())
       create_dt_table(results)
     })
     
-    # Meal 6hr (waivers) - Summary
     output$table_meal_6hr_consolidated <- renderDT({
       data <- filtered_data()
-      factor <- extrap_factor()
-      
-      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6_summary, current_filters(), factor)
-      
+      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6_summary, current_filters(), extrap_factor())
       create_dt_table(results)
     })
     
-    # Meal 6hr (waivers) - Short Details
     output$table_meal_6hr_short_details <- renderDT({
       data <- filtered_data()
-      factor <- extrap_factor()
-      
-      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6_short, current_filters(), factor)
-      
+      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6_short, current_filters(), extrap_factor())
       create_dt_table(results)
     })
     
-    # Meal 6hr (waivers) - Late Details
     output$table_meal_6hr_late_details <- renderDT({
       data <- filtered_data()
-      factor <- extrap_factor()
-      
-      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6_late, current_filters(), factor)
-      
+      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6_late, current_filters(), extrap_factor())
       create_dt_table(results)
     })
     
-    # Rest Consolidated
     output$table_rest_consolidated <- renderDT({
       data <- filtered_data()
-      factor <- extrap_factor()
-      
-      results <- calculate_group_metrics(data, metric_spec, time_rest, current_filters(), factor)
-      
+      results <- calculate_group_metrics(data, metric_spec, time_rest, current_filters(), extrap_factor())
       create_dt_table(results)
     })
     
-    # Pay Summary Consolidated
     output$table_pay_consolidated <- renderDT({
       data <- filtered_data()
-      factor <- extrap_factor()
-      
-      results <- calculate_group_metrics(data, metric_spec, pay_summary_groups, current_filters(), factor)
-      
+      results <- calculate_group_metrics(data, metric_spec, pay_summary_groups, current_filters(), extrap_factor())
       create_dt_table(results)
     })
     
-    # RROP Consolidated
     output$table_rrop_consolidated <- renderDT({
       data <- filtered_data()
-      factor <- extrap_factor()
+      results <- calculate_group_metrics(data, metric_spec, pay_regular_rate, current_filters(), extrap_factor())
       
-      results <- calculate_group_metrics(data, metric_spec, pay_regular_rate, current_filters(), factor)
-      
-      # Move Total and Net rows to end
       if (nrow(results) > 0 && "Metric" %in% names(results)) {
         total_rows <- results[grepl("^(Total|Net)", Metric, ignore.case = TRUE)]
         other_rows <- results[!grepl("^(Total|Net)", Metric, ignore.case = TRUE)]
@@ -2090,937 +1829,48 @@ server <- function(data_list, metric_spec, analysis_tables) {
     })
     
     # ===========================================================================
-    # CONSOLIDATED DAMAGES TABLES
-    # ===========================================================================
-    
-    # Class/Individual Claims - No Waivers
-    output$table_damages_class_no_waivers <- renderDT({
-      data <- filtered_data()
-      factor <- extrap_factor()
-      
-      # Split each metric group by waiver status
-      meal_split <- split_by_waiver(damages_meal_groups)
-      rest_split <- split_by_waiver(damages_rest_groups)
-      rrop_split <- split_by_waiver(damages_rrop_groups)
-      otc_split <- split_by_waiver(damages_otc_groups)
-      rounding_split <- split_by_waiver(damages_rounding_groups)
-      unpaid_ot_split <- split_by_waiver(damages_unpaid_ot_groups)
-      expenses_split <- split_by_waiver(damages_expenses_groups)
-      wsv_split <- split_by_waiver(damages_wsv_groups)
-      wt_split <- split_by_waiver(damages_wt_groups)
-      total_split <- split_by_waiver(damages_class_total_groups)
-      
-      # Build section definitions for no-waiver metrics
-      sections <- list()
-      
-      if (length(meal_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "MEAL PERIOD DAMAGES",
-          groups = meal_split$no_waiver
-        )
-      }
-      
-      if (length(rest_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "REST PERIOD DAMAGES",
-          groups = rest_split$no_waiver
-        )
-      }
-      
-      if (length(rrop_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "RROP DAMAGES",
-          groups = rrop_split$no_waiver
-        )
-      }
-      
-      if (length(otc_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "OFF-THE-CLOCK DAMAGES",
-          groups = otc_split$no_waiver
-        )
-      }
-      
-      if (length(rounding_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "CLOCK ROUNDING DAMAGES",
-          groups = rounding_split$no_waiver
-        )
-      }
-      
-      if (length(unpaid_ot_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "UNPAID OT/DT DAMAGES",
-          groups = unpaid_ot_split$no_waiver
-        )
-      }
-      
-      if (length(expenses_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "UNREIMBURSED EXPENSES DAMAGES",
-          groups = expenses_split$no_waiver
-        )
-      }
-      
-      if (length(wsv_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "WAGE STATEMENT PENALTIES",
-          groups = wsv_split$no_waiver
-        )
-      }
-      
-      if (length(wt_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "WAITING TIME PENALTIES",
-          groups = wt_split$no_waiver
-        )
-      }
-      
-      if (length(total_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "TOTAL DAMAGES",
-          groups = total_split$no_waiver
-        )
-      }
-      
-      results <- combine_damages_with_headers(data, metric_spec, sections, current_filters(), factor)
-      # Filter out waiver metrics from no-waiver tab based on metric labels
-      results <- filter_metrics_by_label(results, include_waivers = FALSE)
-      create_dt_table(results)
-    })
-    
-    # Class/Individual Claims - Waivers
-    output$table_damages_class_waivers <- renderDT({
-      data <- filtered_data()
-      factor <- extrap_factor()
-      
-      # Split each metric group by waiver status
-      meal_split <- split_by_waiver(damages_meal_groups)
-      rest_split <- split_by_waiver(damages_rest_groups)
-      rrop_split <- split_by_waiver(damages_rrop_groups)
-      otc_split <- split_by_waiver(damages_otc_groups)
-      rounding_split <- split_by_waiver(damages_rounding_groups)
-      unpaid_ot_split <- split_by_waiver(damages_unpaid_ot_groups)
-      expenses_split <- split_by_waiver(damages_expenses_groups)
-      wsv_split <- split_by_waiver(damages_wsv_groups)
-      wt_split <- split_by_waiver(damages_wt_groups)
-      total_split <- split_by_waiver(damages_class_total_groups)
-      
-      # Build section definitions for waiver metrics
-      sections <- list()
-      
-      if (length(meal_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "MEAL PERIOD DAMAGES",
-          groups = meal_split$waiver
-        )
-      }
-      
-      if (length(rest_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "REST PERIOD DAMAGES",
-          groups = rest_split$waiver
-        )
-      }
-      
-      if (length(rrop_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "RROP DAMAGES",
-          groups = rrop_split$waiver
-        )
-      }
-      
-      if (length(otc_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "OFF-THE-CLOCK DAMAGES",
-          groups = otc_split$waiver
-        )
-      }
-      
-      if (length(rounding_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "CLOCK ROUNDING DAMAGES",
-          groups = rounding_split$waiver
-        )
-      }
-      
-      if (length(unpaid_ot_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "UNPAID OT/DT DAMAGES",
-          groups = unpaid_ot_split$waiver
-        )
-      }
-      
-      if (length(expenses_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "UNREIMBURSED EXPENSES DAMAGES",
-          groups = expenses_split$waiver
-        )
-      }
-      
-      if (length(wsv_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "WAGE STATEMENT PENALTIES",
-          groups = wsv_split$waiver
-        )
-      }
-      
-      if (length(wt_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "WAITING TIME PENALTIES",
-          groups = wt_split$waiver
-        )
-      }
-      
-      if (length(total_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "TOTAL DAMAGES",
-          groups = total_split$waiver
-        )
-      }
-      
-      results <- combine_damages_with_headers(data, metric_spec, sections, current_filters(), factor)
-      # Filter out no-waiver metrics from waiver tab based on metric labels
-      results <- filter_metrics_by_label(results, include_waivers = TRUE)
-      create_dt_table(results)
-    })
-    
-    # PAGA - No Waivers
-    output$table_paga_no_waivers <- renderDT({
-      data <- filtered_data()
-      factor <- extrap_factor()
-      
-      # Split each PAGA metric group by waiver status
-      meal_split <- split_by_waiver(paga_meal_groups)
-      rest_split <- split_by_waiver(paga_rest_groups)
-      rrop_split <- split_by_waiver(paga_rrop_groups)
-      s226_split <- split_by_waiver(paga_226_groups)
-      s558_split <- split_by_waiver(paga_558_groups)
-      min_wage_split <- split_by_waiver(paga_min_wage_groups)
-      expenses_split <- split_by_waiver(paga_expenses_groups)
-      recordkeeping_split <- split_by_waiver(paga_recordkeeping_groups)
-      waiting_time_split <- split_by_waiver(paga_waiting_time_groups)
-      total_split <- split_by_waiver(paga_total_groups)
-      
-      # Build section definitions for no-waiver metrics
-      sections <- list()
-      
-      if (length(meal_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - MEAL PERIODS",
-          groups = meal_split$no_waiver
-        )
-      }
-      
-      if (length(rest_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - REST PERIODS",
-          groups = rest_split$no_waiver
-        )
-      }
-      
-      if (length(rrop_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - REGULAR RATE (RROP)",
-          groups = rrop_split$no_waiver
-        )
-      }
-      
-      if (length(s226_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - WAGE STATEMENT (226)",
-          groups = s226_split$no_waiver
-        )
-      }
-      
-      if (length(s558_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - UNPAID WAGES (558)",
-          groups = s558_split$no_waiver
-        )
-      }
-      
-      if (length(min_wage_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - MIN WAGE (1197.1)",
-          groups = min_wage_split$no_waiver
-        )
-      }
-      
-      if (length(expenses_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - UNREIMBURSED EXPENSES (2802)",
-          groups = expenses_split$no_waiver
-        )
-      }
-      
-      if (length(recordkeeping_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - RECORDKEEPING (1174)",
-          groups = recordkeeping_split$no_waiver
-        )
-      }
-      
-      if (length(waiting_time_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - WAITING TIME (203)",
-          groups = waiting_time_split$no_waiver
-        )
-      }
-      
-      if (length(total_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - TOTAL",
-          groups = total_split$no_waiver
-        )
-      }
-      
-      results <- combine_damages_with_headers(data, metric_spec, sections, current_filters(), factor)
-      # Filter out waiver metrics from no-waiver tab based on metric labels
-      results <- filter_metrics_by_label(results, include_waivers = FALSE)
-      create_dt_table(results)
-    })
-    
-    # PAGA - Waivers
-    output$table_paga_waivers <- renderDT({
-      data <- filtered_data()
-      factor <- extrap_factor()
-      
-      # Split each PAGA metric group by waiver status
-      meal_split <- split_by_waiver(paga_meal_groups)
-      rest_split <- split_by_waiver(paga_rest_groups)
-      rrop_split <- split_by_waiver(paga_rrop_groups)
-      s226_split <- split_by_waiver(paga_226_groups)
-      s558_split <- split_by_waiver(paga_558_groups)
-      min_wage_split <- split_by_waiver(paga_min_wage_groups)
-      expenses_split <- split_by_waiver(paga_expenses_groups)
-      recordkeeping_split <- split_by_waiver(paga_recordkeeping_groups)
-      waiting_time_split <- split_by_waiver(paga_waiting_time_groups)
-      total_split <- split_by_waiver(paga_total_groups)
-      
-      # Build section definitions for waiver metrics
-      sections <- list()
-      
-      if (length(meal_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - MEAL PERIODS",
-          groups = meal_split$waiver
-        )
-      }
-      
-      if (length(rest_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - REST PERIODS",
-          groups = rest_split$waiver
-        )
-      }
-      
-      if (length(rrop_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - REGULAR RATE (RROP)",
-          groups = rrop_split$waiver
-        )
-      }
-      
-      if (length(s226_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - WAGE STATEMENT (226)",
-          groups = s226_split$waiver
-        )
-      }
-      
-      if (length(s558_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - UNPAID WAGES (558)",
-          groups = s558_split$waiver
-        )
-      }
-      
-      if (length(min_wage_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - MIN WAGE (1197.1)",
-          groups = min_wage_split$waiver
-        )
-      }
-      
-      if (length(expenses_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - UNREIMBURSED EXPENSES (2802)",
-          groups = expenses_split$waiver
-        )
-      }
-      
-      if (length(recordkeeping_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - RECORDKEEPING (1174)",
-          groups = recordkeeping_split$waiver
-        )
-      }
-      
-      if (length(waiting_time_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - WAITING TIME (203)",
-          groups = waiting_time_split$waiver
-        )
-      }
-      
-      if (length(total_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - TOTAL",
-          groups = total_split$waiver
-        )
-      }
-      
-      results <- combine_damages_with_headers(data, metric_spec, sections, current_filters(), factor)
-      # Filter out no-waiver metrics from waiver tab based on metric labels
-      results <- filter_metrics_by_label(results, include_waivers = TRUE)
-      create_dt_table(results)
-    })
-    
-    # ===========================================================================
-    # EMPLOYEE-PERIOD EXAMPLE TAB
-    # ===========================================================================
-    
-    # Populate dropdown with combined unique employee-periods
-    observe({
-      data <- filtered_data()
-      
-      # Get unique ID_Period_End from shift data
-      shift_periods <- if (!is.null(data$shift_data1) && "ID_Period_End" %in% names(data$shift_data1)) {
-        unique(data$shift_data1$ID_Period_End)
-      } else {
-        character(0)
-      }
-      
-      # Get unique Pay_ID_Period_End from pay data
-      pay_periods <- if (!is.null(data$pay1) && "Pay_ID_Period_End" %in% names(data$pay1)) {
-        unique(data$pay1$Pay_ID_Period_End)
-      } else {
-        character(0)
-      }
-      
-      # Combine and sort unique periods
-      all_periods <- sort(unique(c(shift_periods, pay_periods)))
-      
-      updateSelectizeInput(session, "example_period_select", choices = all_periods)
-    })
-    
-    # Helper function to transpose data for display
-    transpose_data_for_display <- function(dt, value_col_name = "Value") {
-      if (is.null(dt) || nrow(dt) == 0) {
-        return(data.table(Metric = "No data available", Value = "-"))
-      }
-      
-      # Get numeric and important columns
-      cols_to_show <- names(dt)[!names(dt) %in% c("ID", "Pay_ID", "Class_ID")]
-      
-      # Create transposed table
-      result <- data.table(
-        Metric = cols_to_show,
-        Value = sapply(cols_to_show, function(col) {
-          val <- dt[[col]]
-          if (length(val) == 0 || all(is.na(val))) return("-")
-          if (is.numeric(val)) return(format(round(val, 2), big.mark = ","))
-          if (inherits(val, "Date")) return(as.character(val))
-          return(as.character(val))
-        })
-      )
-      
-      setnames(result, "Value", value_col_name)
-      return(result)
-    }
-    
-    # ===========================================================================
-    # Case Detail Outputs
-    # ===========================================================================
-    
-    output$case_name <- renderText({
-      if (exists("case_name")) {
-        return(case_name)
-      }
-      return("Not specified")
-    })
-    
-    output$case_number <- renderText({
-      if (exists("case_no")) {
-        return(case_no)
-      }
-      return("Not specified")
-    })
-    
-    output$date_filed <- renderText({
-      if (exists("date_filed")) {
-        # Format as full written date (e.g., "July 30, 2020")
-        if (inherits(date_filed, "Date")) {
-          return(format(date_filed, "%B %d, %Y"))
-        }
-        return(as.character(date_filed))
-      }
-      return("Not specified")
-    })
-    
-    output$relevant_period <- renderText({
-      if (exists("class_dmgs_start_date")) {
-        # Format as "class_dmgs_start_date to present"
-        if (inherits(class_dmgs_start_date, "Date")) {
-          formatted_date <- format(class_dmgs_start_date, "%B %d, %Y")
-          return(paste0(formatted_date, " to present"))
-        }
-        return(paste0(as.character(class_dmgs_start_date), " to present"))
-      }
-      return("Not specified")
-    })
-    
-    output$mediation_date <- renderText({
-      if (exists("mediation_date")) {
-        # Format as full written date
-        if (inherits(mediation_date, "Date")) {
-          return(format(mediation_date, "%B %d, %Y"))
-        }
-        return(as.character(mediation_date))
-      }
-      return("Not specified")
-    })
-    
-    output$sample_size <- renderText({
-      if (exists("sample_size")) {
-        return(as.character(sample_size))
-      }
-      return("Not specified")
-    })
-    
-    # ===========================================================================
-    # Version and Documentation Outputs
-    # ===========================================================================
-
-    output$dashboard_version <- renderText({
-      "1.0.0"
-    })
-
-    output$last_updated <- renderText({
-      format(Sys.Date(), "%B %d, %Y")
-    })
-
-    # ===========================================================================
-    # Filter Banner
-    # ===========================================================================
-    
-    output$filter_banner_text <- renderUI({
-      filters <- current_filters()
-      
-      if (length(filters) == 0) {
-        return(NULL)
-      }
-      
-      # Build filter description
-      filter_parts <- c()
-      
-      # Date range
-      if (!is.null(filters$date_min) && !is.null(filters$date_max)) {
-        date_str <- paste0("Date: ", format(filters$date_min, "%m/%d/%Y"), " to ", format(filters$date_max, "%m/%d/%Y"))
-        filter_parts <- c(filter_parts, date_str)
-      }
-      
-      # Employee filter
-      if (!is.null(filters$ID) && length(filters$ID) > 0) {
-        if (length(filters$ID) <= 3) {
-          emp_str <- paste0("Employees: ", paste(filters$ID, collapse = ", "))
-        } else {
-          emp_str <- paste0("Employees: ", length(filters$ID), " selected")
-        }
-        filter_parts <- c(filter_parts, emp_str)
-      }
-      
-      # Sample filter
-      if (!is.null(filters$Sample)) {
-        sample_str <- paste0("Sample: ", ifelse(filters$Sample == 1, "Sample Only (1)", "Non-Sample (0)"))
-        filter_parts <- c(filter_parts, sample_str)
-      }
-      
-      # Subclass filter
-      if (!is.null(filters$Subclass) && length(filters$Subclass) > 0) {
-        if (length(filters$Subclass) <= 3) {
-          subclass_str <- paste0("Subclass: ", paste(filters$Subclass, collapse = ", "))
-        } else {
-          subclass_str <- paste0("Subclass: ", length(filters$Subclass), " selected")
-        }
-        filter_parts <- c(filter_parts, subclass_str)
-      }
-      
-      # Combine all filter descriptions
-      if (length(filter_parts) > 0) {
-        filter_text <- paste("⚠ ACTIVE FILTERS:", paste(filter_parts, collapse = " | "))
-        return(HTML(paste0(filter_text, " | <a href='#' onclick='Shiny.setInputValue(\"reset_filters\", Math.random()); return false;' style='color: white; text-decoration: underline;'>Reset All Filters</a>")))
-      }
-      
-      return(NULL)
-    })
-    
-    # ===========================================================================
-    # Example Tab Outputs
-    # ===========================================================================
-    
-    # Punch Detail (time1) - Show punch records as small table
-    output$table_example_punches <- renderDT({
-      req(input$example_period_select)
-      
-      if (is.null(data_list$time1) || !"ID_Period_End" %in% names(data_list$time1)) {
-        return(datatable(data.table(Message = "No time1 data available"), rownames = FALSE, options = list(dom = 't')))
-      }
-      
-      # Filter to selected period
-      filtered <- data_list$time1[ID_Period_End == input$example_period_select]
-      
-      if (nrow(filtered) == 0) {
-        return(datatable(data.table(Message = "No punch records for this period"), rownames = FALSE, options = list(dom = 't')))
-      }
-
-      # Select punch detail columns: ID, Name, Date, punch_time, punch_type, hrs_from_prev
-      punch_cols <- c("ID", "Name", "Date", "punch_time", "punch_type", "hrs_from_prev")
-      available_cols <- punch_cols[punch_cols %in% names(filtered)]
-      
-      if (length(available_cols) == 0) {
-        return(datatable(data.table(Message = "Punch detail columns not available"), rownames = FALSE, options = list(dom = 't')))
-      }
-      
-      display_data <- filtered[, ..available_cols]
-      
-      datatable(
-        display_data,
-        rownames = FALSE,
-        options = list(
-          paging = FALSE,
-          scrollX = TRUE,
-          scrollY = "300px",
-          dom = 't'
-        ),
-        class = 'cell-border stripe hover compact',
-        style = 'bootstrap4'
-      )
-    })
-    
-    # Shift Data (shift_data1) - Show all meal/rest violation columns horizontally
-    output$table_example_shift <- renderDT({
-      req(input$example_period_select)
-      data <- filtered_data()
-      
-      if (is.null(data$shift_data1) || !"ID_Period_End" %in% names(data$shift_data1)) {
-        return(datatable(data.table(Message = "No shift data available"), rownames = FALSE, options = list(dom = 't')))
-      }
-      
-      # Filter to selected period
-      filtered <- data$shift_data1[ID_Period_End == input$example_period_select]
-      
-      if (nrow(filtered) == 0) {
-        return(datatable(data.table(Message = "No shift data for this period"), rownames = FALSE, options = list(dom = 't')))
-      }
-      
-      # Key columns for shift data
-      priority_cols <- c("ID", "Name", "Date", "shift_hrs",
-                         "MissMP1", "LateMP1", "ShortMP1", "MissMP2", "LateMP2", "ShortMP2",
-                         "MissMP1_w", "LateMP1_w", "ShortMP1_w", "MissMP2_w", "LateMP2_w", "ShortMP2_w",
-                         "mpv_shift", "mpv_shift_w", "wk_shift_hrs", "wk_Hours",
-                         "mpv_per_pp", "mpv_per_pp_w", "rpv_per_pp",
-                         "pp_shift_hrs", "pp_Hours",
-                         "MissRP1", "LateRP1", "ShortRP1", "MissRP2", "LateRP2", "ShortRP2",
-                         "rpv_shift", "Source", "Page", "Sheet")
-      
-      # Get available columns in priority order
-      available_cols <- priority_cols[priority_cols %in% names(filtered)]
-      
-      # Add any remaining columns not in priority list
-      remaining_cols <- setdiff(names(filtered), c(available_cols, "ID_Period_End", "ID_Week_End", "Period_End"))
-      final_cols <- c(available_cols, remaining_cols)
-      
-      display_data <- filtered[, ..final_cols]
-      
-      datatable(
-        display_data,
-        rownames = FALSE,
-        options = list(
-          paging = FALSE,
-          scrollX = TRUE,
-          scrollY = "400px",
-          dom = 't',
-          columnDefs = list(
-            list(width = '100px', targets = "_all")
-          )
-        ),
-        class = 'cell-border stripe hover compact',
-        style = 'bootstrap4'
-      )
-    })
-    
-    # Pay Data (pay1) - Show all pay columns horizontally
-    output$table_example_pay <- renderDT({
-      req(input$example_period_select)
-      data <- filtered_data()
-      
-      if (is.null(data$pay1) || !"Pay_ID_Period_End" %in% names(data$pay1)) {
-        return(datatable(data.table(Message = "No pay data available"), rownames = FALSE, options = list(dom = 't')))
-      }
-      
-      # Filter to selected period
-      filtered <- data$pay1[Pay_ID_Period_End == input$example_period_select]
-      
-      if (nrow(filtered) == 0) {
-        return(datatable(data.table(Message = "No pay data for this period"), rownames = FALSE, options = list(dom = 't')))
-      }
-      
-      # Key pay columns based on the green image
-      priority_cols <- c("Pay_ID", "Pay_Name", "Pay_Date", "Pay_Period_End", "Pay_Code", "Pay_Hours", "Pay_Amount",
-                         "Base_Rate1", "Base_Rate2", "RROP", "Calc_Rate", "Rate_Gp",
-                         "Hrs_Wkd_Pay_Code", "Reg_Pay_Code", "OT_Pay_Code", "DT_Pay_Code",
-                         "Meal_Pay_Code", "Rest_Pay_Code", "Sick_Pay_Code", "RROP_Pay_Code",
-                         "pp_Hrs_Wkd", "pp_Reg_Hrs", "pp_OT_Hrs", "pp_DT_Hrs",
-                         "pp_Straight_Time_Amt", "pp_OT_Amt", "pp_DT_Amt", "pp_Oth_RROP_Amt", "pp_Oth_Amt",
-                         "Actual_Wages", "Calc_Tot_Wages",
-                         "OT_Overpayment", "DT_Overpayment", "Meal_Overpayment", "Rest_Overpayment",
-                         "Sick_Overpayment", "Gross_Overpayment", "Net_Overpayment",
-                         "OT_rrop_dmgs", "DT_rrop_dmgs", "Meal_rrop_dmgs", "Rest_rrop_dmgs",
-                         "Sick_rrop_dmgs", "Gross_rrop_dmgs", "Net_rrop_dmgs",
-                         "Pay_Source")
-      
-      # Get available columns
-      available_cols <- priority_cols[priority_cols %in% names(filtered)]
-      
-      # Add remaining columns
-      remaining_cols <- setdiff(names(filtered), c(available_cols, "Pay_ID_Period_End"))
-      final_cols <- c(available_cols, remaining_cols)
-      
-      display_data <- filtered[, ..final_cols]
-      
-      datatable(
-        display_data,
-        rownames = FALSE,
-        options = list(
-          paging = FALSE,
-          scrollX = TRUE,
-          scrollY = "400px",
-          dom = 't',
-          columnDefs = list(
-            list(width = '100px', targets = "_all")
-          )
-        ),
-        class = 'cell-border stripe hover compact',
-        style = 'bootstrap4'
-      )
-    })
-    
-    # Damages Data (pp_data1 / ee_data1) - Show damage columns
-    output$table_example_damages <- renderDT({
-      req(input$example_period_select)
-      data <- filtered_data()
-      
-      # Try to get from pp_data1 or ee_data1
-      aggregate_data <- NULL
-      
-      if (!is.null(data$pp_data1) && "ID_Period_End" %in% names(data$pp_data1)) {
-        aggregate_data <- data$pp_data1[ID_Period_End == input$example_period_select]
-      } else if (!is.null(data$ee_data1) && "ID" %in% names(data$ee_data1)) {
-        # Extract ID from the period string
-        emp_id <- sub("_.*", "", input$example_period_select)
-        aggregate_data <- data$ee_data1[ID == emp_id]
-      }
-      
-      if (is.null(aggregate_data) || nrow(aggregate_data) == 0) {
-        return(datatable(data.table(Message = "No damage data available"), rownames = FALSE, options = list(dom = 't')))
-      }
-      
-      # Select only damage-related columns (containing "dmg", "Dmg", "penalty", "Penalty", "PAGA")
-      all_cols <- names(aggregate_data)
-      damage_cols <- all_cols[grepl("dmg|Dmg|penalty|Penalty|PAGA|paga|violation|Violation", all_cols, ignore.case = TRUE)]
-      
-      # Also include ID columns for reference
-      id_cols <- c("ID", "Name", "Period_End", "ID_Period_End")
-      id_cols_available <- id_cols[id_cols %in% all_cols]
-      
-      final_cols <- unique(c(id_cols_available, damage_cols))
-      
-      if (length(final_cols) == 0) {
-        return(datatable(data.table(Message = "No damage columns available"), rownames = FALSE, options = list(dom = 't')))
-      }
-      
-      display_data <- aggregate_data[, ..final_cols]
-      
-      datatable(
-        display_data,
-        rownames = FALSE,
-        options = list(
-          paging = FALSE,
-          scrollX = TRUE,
-          scrollY = "400px",
-          dom = 't',
-          columnDefs = list(
-            list(width = '120px', targets = "_all")
-          )
-        ),
-        class = 'cell-border stripe hover compact',
-        style = 'bootstrap4'
-      )
-    })
-    
-    # ===========================================================================
     # ANALYSIS TABLES (FROM FILES)
     # ===========================================================================
     
-    output$table_pay_codes <- renderDT({
-      create_dt_table(analysis_tables$pay_code_summary, metric_col = "Pay Code")
-    })
-    
-    output$table_rate_type <- renderDT({
-      create_dt_table(analysis_tables$rate_type_analysis, metric_col = "Rate Type")
-    })
-    
-    output$table_shift_hrs <- renderDT({
-      create_dt_table(analysis_tables$shift_hrs, metric_col = "Shift Hrs")
-    })
-    
-    output$table_non_wrk_hrs <- renderDT({
-      create_dt_table(analysis_tables$non_wrk_hrs, metric_col = "Non Work Hrs")
-    })
-    
-    output$table_meal_period <- renderDT({
-      create_dt_table(analysis_tables$meal_period, metric_col = "Meal Period Hrs")
-    })
-    
-    output$table_meal_start_time <- renderDT({
-      create_dt_table(analysis_tables$meal_start_time, metric_col = "Meal Start Time")
-    })
-    
-    output$table_meal_quarter_hr <- renderDT({
-      create_dt_table(analysis_tables$meal_quarter_hr, metric_col = "Quarter Hour Type")
-    })
-    
-    # Overlap Matrix Table
-    output$overlap_matrix_table <- renderDT({
-      venn <- venn_data()
-      
-      # Create matrix table
-      matrix_data <- data.table(
-        Category = c(
-          "In Time Data Only",
-          "In Pay Data Only",
-          if (venn$class_total > 0) "In Class Data Only",
-          "In Time & Pay Only",
-          if (venn$class_total > 0) "In Time & Class Only",
-          if (venn$class_total > 0) "In Pay & Class Only",
-          if (venn$class_total > 0) "In All Three Sources",
-          "TOTAL UNIQUE EMPLOYEES"
-        ),
-        Count = c(
-          venn$time_only,
-          venn$pay_only,
-          if (venn$class_total > 0) venn$class_only,
-          venn$time_pay,
-          if (venn$class_total > 0) venn$time_class,
-          if (venn$class_total > 0) venn$pay_class,
-          if (venn$class_total > 0) venn$all_three,
-          length(unique(c(
-            unique(filtered_data()$shift_data1$ID),
-            unique(filtered_data()$pay1$Pay_ID),
-            if (!is.null(filtered_data()$class1)) unique(filtered_data()$class1$Class_ID) else character(0)
-          )))
-        ),
-        `In Time` = c(
-          "✓", "", if (venn$class_total > 0) "",
-          "✓", if (venn$class_total > 0) "✓", if (venn$class_total > 0) "",
-          if (venn$class_total > 0) "✓", "-"
-        ),
-        `In Pay` = c(
-          "", "✓", if (venn$class_total > 0) "",
-          "✓", if (venn$class_total > 0) "", if (venn$class_total > 0) "✓",
-          if (venn$class_total > 0) "✓", "-"
-        ),
-        `In Class` = if (venn$class_total > 0) c(
-          "", "", "✓",
-          "", "✓", "✓",
-          "✓", "-"
-        ) else NULL
-      )
-      
-      datatable(
-        matrix_data,
-        options = list(
-          paging = FALSE,
-          searching = FALSE,
-          info = FALSE,
-          dom = 't',
-          columnDefs = list(
-            list(className = 'dt-left', targets = 0),
-            list(className = 'dt-center', targets = 1:(ncol(matrix_data) - 1))
-          )
-        ),
-        rownames = FALSE,
-        class = 'cell-border stripe hover compact'
-      ) %>%
-        formatStyle(
-          'Category',
-          target = 'row',
-          fontWeight = styleEqual('TOTAL UNIQUE EMPLOYEES', 'bold')
-        ) %>%
-        formatStyle(
-          'Count',
-          target = 'row',
-          fontWeight = styleEqual(
-            matrix_data[Category == "TOTAL UNIQUE EMPLOYEES", Count],
-            'bold'
-          )
-        )
-    })
-    
-    output$employee_period_table <- renderDT({
-      create_dt_table(analysis_tables$employee_comparison, metric_col = "ID")
-    })
+    output$table_pay_codes      <- renderDT({ create_dt_table(analysis_tables$pay_code_summary, metric_col = "Pay Code") })
+    output$table_rate_type      <- renderDT({ create_dt_table(analysis_tables$rate_type_analysis, metric_col = "Rate Type") })
+    output$table_shift_hrs      <- renderDT({ create_dt_table(analysis_tables$shift_hrs, metric_col = "Shift Hrs") })
+    output$table_non_wrk_hrs    <- renderDT({ create_dt_table(analysis_tables$non_wrk_hrs, metric_col = "Non Work Hrs") })
+    output$table_meal_period    <- renderDT({ create_dt_table(analysis_tables$meal_period, metric_col = "Meal Period Hrs") })
+    output$table_meal_start_time<- renderDT({ create_dt_table(analysis_tables$meal_start_time, metric_col = "Meal Start Time") })
+    output$table_meal_quarter_hr<- renderDT({ create_dt_table(analysis_tables$meal_quarter_hr, metric_col = "Quarter Hour Type") })
+    output$employee_period_table<- renderDT({ create_dt_table(analysis_tables$employee_comparison, metric_col = "ID") })
     
     # ===========================================================================
-    # DOWNLOAD HANDLER
+    # DOWNLOAD HANDLERS
     # ===========================================================================
     
     output$download_report <- downloadHandler(
-      filename = function() {
-        paste0("wage_hour_report_", Sys.Date(), ".csv")
-      },
+      filename = function() paste0("wage_hour_report_", Sys.Date(), ".csv"),
       content = function(file) {
-        # Show notification
         showNotification("Generating CSV report...", type = "message", duration = 2)
-        
-        # Generate full report CSV
         data <- filtered_data()
-        factor <- extrap_factor()
-        
         all_groups <- unique(metric_spec$metric_group)
-        results <- calculate_group_metrics(data, metric_spec, all_groups, current_filters(), factor)
-        
+        results <- calculate_group_metrics(data, metric_spec, all_groups, current_filters(), extrap_factor())
         fwrite(results, file)
-        
         showNotification("CSV report ready! Check your downloads.", type = "message", duration = 3)
       }
     )
     
-    # PDF Download Handler
     output$download_pdf <- downloadHandler(
-      filename = function() {
-        paste0("Wage_Hour_Report_", format(Sys.Date(), "%Y%m%d"), ".html")
-      },
+      filename = function() paste0("Wage_Hour_Report_", format(Sys.Date(), "%Y%m%d"), ".html"),
       content = function(file) {
-        withProgress(message = 'Generating PDF Report', value = 0, {
+        
+        withProgress(message = "Generating PDF Report", value = 0, {
           
-          # Calculate total steps for progress tracking
-          # Combine all four column selections
           sections <- c(input$pdf_sections_col1, input$pdf_sections_col2, input$pdf_sections_col3, input$pdf_sections_col4)
-          total_sections <- length(sections) + 2  # +2 for setup and finalization
-          current_step <- 0
+          total_sections <- length(sections) + 2
           
-          incProgress(1/total_sections, detail = "Initializing...")
-          current_step <- current_step + 1
+          incProgress(1 / total_sections, detail = "Initializing...")
           
           data <- filtered_data()
-          
-          # Case name for PDF
           case_name <- "Wage & Hour Analysis"
           
-          # Start building HTML
           html_content <- paste0('
 <!DOCTYPE html>
 <html>
@@ -3028,10 +1878,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
   <meta charset="UTF-8">
   <title>Wage & Hour Analysis Report</title>
   <style>
-    @page {
-      size: legal landscape;
-      margin: 0.25in;
-    }
+    @page { size: legal landscape; margin: 0.25in; }
 
     @media print {
       @page {
@@ -3056,67 +1903,17 @@ server <- function(data_list, metric_spec, analysis_tables) {
       .page-break { page-break-before: always; }
     }
 
-    body {
-      font-family: Arial, sans-serif;
-      font-size: 10pt;
-      margin: 0;
-      padding: 20px;
-    }
+    body { font-family: Arial, sans-serif; font-size: 10pt; margin: 0; padding: 20px; }
+    h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; margin-top: 30px; font-size: 18pt; }
+    h2 { color: #34495e; border-bottom: 2px solid #95a5a6; padding-bottom: 5px; margin-top: 20px; font-size: 14pt; }
+    h3 { color: #34495e; margin-top: 15px; font-size: 12pt; }
 
-    h1 {
-      color: #2c3e50;
-      border-bottom: 3px solid #3498db;
-      padding-bottom: 10px;
-      margin-top: 30px;
-      font-size: 18pt;
-    }
-
-    h2 {
-      color: #34495e;
-      border-bottom: 2px solid #95a5a6;
-      padding-bottom: 5px;
-      margin-top: 20px;
-      font-size: 14pt;
-    }
-
-    h3 {
-      color: #34495e;
-      margin-top: 15px;
-      font-size: 12pt;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 15px 0;
-      font-size: 9pt;
-    }
-
-    th {
-      background-color: #2c3e50;
-      color: white;
-      padding: 8px;
-      text-align: left;
-      font-weight: bold;
-    }
-
-    td {
-      padding: 6px 8px;
-      border-bottom: 1px solid #ddd;
-    }
-
-    tr:nth-child(even) {
-      background-color: #f9f9f9;
-    }
-
-    .metric-col {
-      text-align: left;
-      font-weight: 500;
-    }
-
-    .value-col {
-      text-align: center;
-    }
+    table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 9pt; }
+    th { background-color: #2c3e50; color: white; padding: 8px; text-align: left; font-weight: bold; }
+    td { padding: 6px 8px; border-bottom: 1px solid #ddd; }
+    tr:nth-child(even) { background-color: #f9f9f9; }
+    .metric-col { text-align: left; font-weight: 500; }
+    .value-col { text-align: center; }
 
     .stat-box {
       display: inline-block;
@@ -3125,18 +1922,8 @@ server <- function(data_list, metric_spec, analysis_tables) {
       margin: 10px 10px 10px 0;
       border-left: 4px solid #3498db;
     }
-
-    .stat-label {
-      font-size: 9pt;
-      color: #7f8c8d;
-      margin-bottom: 5px;
-    }
-
-    .stat-value {
-      font-size: 16pt;
-      font-weight: bold;
-      color: #2c3e50;
-    }
+    .stat-label { font-size: 9pt; color: #7f8c8d; margin-bottom: 5px; }
+    .stat-value { font-size: 16pt; font-weight: bold; color: #2c3e50; }
 
     .confidential-header {
       background-color: #8B0000;
@@ -3148,409 +1935,132 @@ server <- function(data_list, metric_spec, analysis_tables) {
       margin-bottom: 20px;
       border-bottom: 3px solid #660000;
     }
-
-    @media print {
-      .confidential-header {
-        display: none;
-      }
-    }
+    @media print { .confidential-header { display: none; } }
   </style>
 </head>
 <body>
   <div class="confidential-header">CONFIDENTIAL WORK PRODUCT</div>
 ')
           
-          # Page 1: Case Information
-          if ("case_info" %in% sections) {
-            html_content <- paste0(html_content, '
-  <h1>📋 Case Information</h1>
-  <div style="margin: 20px 0;">
-    <p><strong>Case Name:</strong> ', case_name, '</p>
-    <p><strong>Report Generated:</strong> ', format(Sys.Date(), "%B %d, %Y"), '</p>
-  </div>
-')
-          }
-          
-          # Overview Statistics
+          # Overview
           if ("overview" %in% sections) {
-            incProgress(1/total_sections, detail = "Overview Statistics")
+            incProgress(1 / total_sections, detail = "Overview Statistics")
             html_content <- paste0(html_content, '
   <h1>📊 Overview Statistics</h1>
   <div style="margin: 20px 0;">
-    <div class="stat-box">
-      <div class="stat-label">Employees (Time)</div>
-      <div class="stat-value">', format(uniqueN(data$shift_data1$ID), big.mark = ","), '</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-label">Employees (Pay)</div>
-      <div class="stat-value">', format(uniqueN(data$pay1$Pay_ID), big.mark = ","), '</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-label">Total Shifts</div>
-      <div class="stat-value">', format(nrow(data$shift_data1), big.mark = ","), '</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-label">Pay Periods (Time)</div>
-      <div class="stat-value">', format(uniqueN(data$shift_data1$ID_Period_End), big.mark = ","), '</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-label">Pay Periods (Pay)</div>
-      <div class="stat-value">', format(uniqueN(data$pay1$Pay_ID_Period_End), big.mark = ","), '</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-label">Weeks (Time)</div>
-      <div class="stat-value">', format(uniqueN(data$shift_data1$ID_Week_End), big.mark = ","), '</div>
-    </div>
+    <div class="stat-box"><div class="stat-label">Employees (Time)</div><div class="stat-value">', format(uniqueN(data$shift_data1$ID), big.mark = ","), '</div></div>
+    <div class="stat-box"><div class="stat-label">Employees (Pay)</div><div class="stat-value">',  format(uniqueN(data$pay1$Pay_ID), big.mark = ","), '</div></div>
+    <div class="stat-box"><div class="stat-label">Total Shifts</div><div class="stat-value">',     format(nrow(data$shift_data1), big.mark = ","), '</div></div>
+    <div class="stat-box"><div class="stat-label">Pay Periods (Time)</div><div class="stat-value">',format(uniqueN(data$shift_data1$ID_Period_End), big.mark = ","), '</div></div>
+    <div class="stat-box"><div class="stat-label">Pay Periods (Pay)</div><div class="stat-value">', format(uniqueN(data$pay1$Pay_ID_Period_End), big.mark = ","), '</div></div>
+    <div class="stat-box"><div class="stat-label">Weeks (Time)</div><div class="stat-value">',      format(uniqueN(data$shift_data1$ID_Week_End), big.mark = ","), '</div></div>
   </div>
 ')
           }
           
-          # Helper function to add table HTML
           add_table <- function(dt_table, title, icon = "📊") {
-            if (nrow(dt_table) == 0) return("")
+            if (is.null(dt_table) || nrow(dt_table) == 0) return("")
             
-            # Update progress
-            incProgress(1/total_sections, detail = title)
+            incProgress(1 / total_sections, detail = title)
             
-            # Limit rows for performance
-            max_rows <- min(nrow(dt_table), 500)  # Reduce from 1000 to 500
+            max_rows <- min(nrow(dt_table), 500)
             dt_table <- dt_table[1:max_rows]
             
-            # Format column names
             col_names <- format_col_name(names(dt_table))
             
-            # Build HTML using vectors for performance
             html_parts <- character()
             html_parts[1] <- paste0('\n  <h2>', icon, ' ', title, '</h2>\n  <table>\n    <thead>\n      <tr>')
-            
-            # Add headers
-            header_cells <- paste0('<th>', col_names, '</th>')
-            html_parts[2] <- paste0('\n        ', paste(header_cells, collapse = '\n        '))
-            
+            html_parts[2] <- paste0('\n        ', paste0('<th>', col_names, '</th>', collapse = '\n        '))
             html_parts[3] <- '\n      </tr>\n    </thead>\n    <tbody>'
             
-            # Build rows efficiently
             row_html <- character(max_rows)
             for (i in 1:max_rows) {
               cells <- character(ncol(dt_table))
               for (j in 1:ncol(dt_table)) {
                 val <- dt_table[i, j, with = FALSE][[1]]
                 val <- if (is.na(val)) "" else as.character(val)
-                class_attr <- if (j == 1) 'metric-col' else 'value-col'
+                class_attr <- if (j == 1) "metric-col" else "value-col"
                 cells[j] <- paste0('<td class="', class_attr, '">', val, '</td>')
               }
-              row_html[i] <- paste0('\n      <tr>', paste(cells, collapse = ''), '</tr>')
+              row_html[i] <- paste0('\n      <tr>', paste(cells, collapse = ""), '</tr>')
             }
             
-            html_parts[4] <- paste(row_html, collapse = '')
+            html_parts[4] <- paste(row_html, collapse = "")
             html_parts[5] <- '\n    </tbody>\n  </table>\n'
-            
-            return(paste(html_parts, collapse = ''))
+            paste(html_parts, collapse = "")
           }
           
-          # Time Analysis - Summary
           if ("time_summary" %in% sections && length(time_summary_groups) > 0) {
             html_content <- paste0(html_content, '<div class="page-break"></div>')
             results <- calculate_group_metrics(data, metric_spec, time_summary_groups, current_filters(), extrap_factor())
             html_content <- paste0(html_content, add_table(results, "Time Analysis - Summary", "⏰"))
           }
           
-          # Time Analysis - Shift Hours Analysis
           if ("time_shift_hours" %in% sections && length(time_shift_groups) > 0) {
             html_content <- paste0(html_content, '<div class="page-break"></div>')
             results <- calculate_group_metrics(data, metric_spec, time_shift_groups, current_filters(), extrap_factor())
             html_content <- paste0(html_content, add_table(results, "Time Analysis - Shift Hours Analysis", "📊"))
           }
           
-          # Time Analysis - Punch Rounding
           if ("time_rounding" %in% sections && length(time_rounding_groups) > 0) {
             html_content <- paste0(html_content, '<div class="page-break"></div>')
             results <- calculate_group_metrics(data, metric_spec, time_rounding_groups, current_filters(), extrap_factor())
             html_content <- paste0(html_content, add_table(results, "Time Analysis - Punch Rounding", "🔄"))
           }
           
-          # Meal Analysis
           if ("meal_analysis" %in% sections && length(time_meal_analysis) > 0) {
             html_content <- paste0(html_content, '<div class="page-break"></div>')
             results <- calculate_group_metrics(data, metric_spec, time_meal_analysis, current_filters(), extrap_factor())
             html_content <- paste0(html_content, add_table(results, "Meal Period Analysis", "🍽️"))
           }
           
-          # Meal Violations (no waivers)
           if ("meal_5hr" %in% sections && length(time_meal_violations_5_summary) > 0) {
             html_content <- paste0(html_content, '<div class="page-break"></div>')
             results <- calculate_group_metrics(data, metric_spec, time_meal_violations_5_summary, current_filters(), extrap_factor())
             html_content <- paste0(html_content, add_table(results, "Meal Violations (no waivers)", "⚠️"))
           }
           
-          # Meal Violations (waivers)
           if ("meal_6hr" %in% sections && length(time_meal_violations_6_summary) > 0) {
             html_content <- paste0(html_content, '<div class="page-break"></div>')
             results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6_summary, current_filters(), extrap_factor())
             html_content <- paste0(html_content, add_table(results, "Meal Violations (waivers)", "⚠️"))
           }
-
-          # Data Comparison Section
-          if ("data_comparison" %in% sections) {
-            # Get unique employee IDs from each source
-            time_ids <- unique(data$shift_data1$ID)
-            pay_ids <- unique(data$pay1$Pay_ID)
-            class_ids <- if (!is.null(data$class1) && "Class_ID" %in% names(data$class1)) {
-              unique(data$class1$Class_ID)
-            } else {
-              character(0)
-            }
-
-            # Calculate overlaps
-            time_only <- setdiff(time_ids, union(pay_ids, class_ids))
-          pay_only <- setdiff(pay_ids, union(time_ids, class_ids))
-          class_only <- setdiff(class_ids, union(time_ids, pay_ids))
-
-          time_pay <- setdiff(intersect(time_ids, pay_ids), class_ids)
-          time_class <- setdiff(intersect(time_ids, class_ids), pay_ids)
-          pay_class <- setdiff(intersect(pay_ids, class_ids), time_ids)
-
-          all_three <- intersect(intersect(time_ids, pay_ids), class_ids)
-
-          # Calculate pay periods and weeks for summary statistics
-          time_pay_periods <- uniqueN(data$shift_data1$ID_Period_End)
-          pay_pay_periods <- uniqueN(data$pay1$Pay_ID_Period_End)
-          total_weeks <- uniqueN(data$shift_data1$ID_Week_End)
-
-          html_content <- paste0(html_content, '<div class="page-break"></div>')
-          html_content <- paste0(html_content, '
-  <h1>📊 Data Comparison - Employee Data Overlap Analysis</h1>
-
-  <h2>Summary Statistics</h2>
-  <div style="margin: 20px 0;">
-    <div class="stat-box">
-      <div class="stat-label">Employees (Time)</div>
-      <div class="stat-value">', format(length(time_ids), big.mark = ","), '</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-label">Employees (Pay)</div>
-      <div class="stat-value">', format(length(pay_ids), big.mark = ","), '</div>
-    </div>')
-            
-            if (length(class_ids) > 0) {
-              html_content <- paste0(html_content, '
-    <div class="stat-box">
-      <div class="stat-label">Employees (Class)</div>
-      <div class="stat-value">', format(length(class_ids), big.mark = ","), '</div>
-    </div>')
-            }
-            
-            html_content <- paste0(html_content, '
-  </div>
-
-  <div style="margin: 20px 0;">
-    <div class="stat-box">
-      <div class="stat-label">Pay Periods (Time)</div>
-      <div class="stat-value">', format(time_pay_periods, big.mark = ","), '</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-label">Pay Periods (Pay)</div>
-      <div class="stat-value">', format(pay_pay_periods, big.mark = ","), '</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-label">Weeks (Time)</div>
-      <div class="stat-value">', format(total_weeks, big.mark = ","), '</div>
-    </div>
-  </div>
-
-  <h2>Employee Coverage Over Time</h2>')
-
-          # Generate time series data for line graph
-          time_emp <- data$shift_data1[, .(
-            Time_Employees = uniqueN(ID)
-          ), by = .(Period = Period_End)]
-
-          pay_emp <- data$pay1[, .(
-            Pay_Employees = uniqueN(Pay_ID)
-          ), by = .(Period = Pay_Period_End)]
-
-          # Merge the two datasets
-          time_series <- merge(time_emp, pay_emp, by = "Period", all = TRUE)
-          time_series <- time_series[order(Period)]
-          time_series[is.na(Time_Employees), Time_Employees := 0]
-          time_series[is.na(Pay_Employees), Pay_Employees := 0]
-
-          # Create a table showing the time series (first 10 and last 10 periods)
-          html_content <- paste0(html_content, '
-  <div style="margin: 15px 0; padding: 12px; background-color: #e8f4f8; border-left: 4px solid #0066cc;">
-    <p style="margin: 0; font-size: 10pt;"><strong>📈 Time Series Data:</strong> The table below shows employee counts by pay period. For an interactive line graph visualization, view the "Data Comparison" tab in the dashboard.</p>
-  </div>
-
-  <table style="font-size: 8pt;">
-    <thead>
-      <tr>
-        <th>Pay Period End</th>
-        <th class="value-col">Time Employees</th>
-        <th class="value-col">Pay Employees</th>
-      </tr>
-    </thead>
-    <tbody>')
-
-          # Show sample of data (first 15 rows)
-          sample_rows <- min(15, nrow(time_series))
-          for(i in 1:sample_rows) {
-            row <- time_series[i]
-            html_content <- paste0(html_content, '
-      <tr>
-        <td>', format(row$Period, "%Y-%m-%d"), '</td>
-        <td class="value-col">', format(row$Time_Employees, big.mark = ","), '</td>
-        <td class="value-col">', format(row$Pay_Employees, big.mark = ","), '</td>
-      </tr>')
-          }
-
-          if (nrow(time_series) > sample_rows) {
-            html_content <- paste0(html_content, '
-      <tr>
-        <td colspan="3" style="text-align: center; font-style: italic;">... (', nrow(time_series) - sample_rows, ' more periods) ...</td>
-      </tr>')
-          }
-
-          html_content <- paste0(html_content, '
-    </tbody>
-  </table>
-
-
-  <h2>Overlap Analysis</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Category</th>
-        <th class="value-col">Employee Count</th>
-        <th class="value-col">Percentage</th>
-      </tr>
-    </thead>
-    <tbody>')
-            
-            # Total unique employees
-            all_unique_ids <- unique(c(time_ids, pay_ids, class_ids))
-            total_unique <- length(all_unique_ids)
-            
-            # All three sources
-            if (length(all_three) > 0 && length(class_ids) > 0) {
-              pct <- sprintf("%.1f%%", (length(all_three) / total_unique) * 100)
-              html_content <- paste0(html_content, '
-      <tr style="background-color: #d4edda;">
-        <td class="metric-col"><strong>All Three Sources</strong></td>
-        <td class="value-col">', format(length(all_three), big.mark = ","), '</td>
-        <td class="value-col">', pct, '</td>
-      </tr>')
-            }
-            
-            # Two-source overlaps
-            if (length(time_pay) > 0) {
-              pct <- sprintf("%.1f%%", (length(time_pay) / total_unique) * 100)
-              html_content <- paste0(html_content, '
-      <tr>
-        <td class="metric-col">Time & Pay Only</td>
-        <td class="value-col">', format(length(time_pay), big.mark = ","), '</td>
-        <td class="value-col">', pct, '</td>
-      </tr>')
-            }
-            
-            if (length(time_class) > 0 && length(class_ids) > 0) {
-              pct <- sprintf("%.1f%%", (length(time_class) / total_unique) * 100)
-              html_content <- paste0(html_content, '
-      <tr>
-        <td class="metric-col">Time & Class Only</td>
-        <td class="value-col">', format(length(time_class), big.mark = ","), '</td>
-        <td class="value-col">', pct, '</td>
-      </tr>')
-            }
-            
-            if (length(pay_class) > 0 && length(class_ids) > 0) {
-              pct <- sprintf("%.1f%%", (length(pay_class) / total_unique) * 100)
-              html_content <- paste0(html_content, '
-      <tr>
-        <td class="metric-col">Pay & Class Only</td>
-        <td class="value-col">', format(length(pay_class), big.mark = ","), '</td>
-        <td class="value-col">', pct, '</td>
-      </tr>')
-            }
-            
-            # Single-source only
-            if (length(time_only) > 0) {
-              pct <- sprintf("%.1f%%", (length(time_only) / total_unique) * 100)
-              html_content <- paste0(html_content, '
-      <tr>
-        <td class="metric-col">Time Data Only</td>
-        <td class="value-col">', format(length(time_only), big.mark = ","), '</td>
-        <td class="value-col">', pct, '</td>
-      </tr>')
-            }
-            
-            if (length(pay_only) > 0) {
-              pct <- sprintf("%.1f%%", (length(pay_only) / total_unique) * 100)
-              html_content <- paste0(html_content, '
-      <tr>
-        <td class="metric-col">Pay Data Only</td>
-        <td class="value-col">', format(length(pay_only), big.mark = ","), '</td>
-        <td class="value-col">', pct, '</td>
-      </tr>')
-            }
-            
-            if (length(class_only) > 0 && length(class_ids) > 0) {
-              pct <- sprintf("%.1f%%", (length(class_only) / total_unique) * 100)
-              html_content <- paste0(html_content, '
-      <tr>
-        <td class="metric-col">Class Data Only</td>
-        <td class="value-col">', format(length(class_only), big.mark = ","), '</td>
-        <td class="value-col">', pct, '</td>
-      </tr>')
-            }
-            
-            # Total row
-            html_content <- paste0(html_content, '
-      <tr style="background-color: #e9ecef; font-weight: bold;">
-        <td class="metric-col">Total Unique Employees</td>
-        <td class="value-col">', format(total_unique, big.mark = ","), '</td>
-        <td class="value-col">100.0%</td>
-      </tr>')
-            
-            html_content <- paste0(html_content, '
-    </tbody>
-  </table>
-
-  <div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-left: 4px solid #0066cc;">
-    <p style="margin: 0;"><strong>Note:</strong> This analysis shows how employee data overlaps across different data sources (Time records, Pay records, and Class Action list). Employees appearing in multiple sources indicate good data matching, while single-source employees may require verification.</p>
-  </div>
-')
-          }
-          }  # End data_comparison section
-
-          # Close HTML
-          html_content <- paste0(html_content, '\n</body>\n</html>')
           
-          # Write to file
-          incProgress(1/total_sections, detail = "Finalizing report...")
+          # Close HTML
+          incProgress(1 / total_sections, detail = "Finalizing report...")
+          html_content <- paste0(html_content, "\n</body>\n</html>")
           writeLines(html_content, file)
           
-          showNotification("PDF report generated! Open the HTML file and use browser Print to PDF (Ctrl+P)",
-                           type = "message", duration = 10)
+          showNotification(
+            "PDF report generated! Open the HTML file and use browser Print to PDF (Ctrl+P)",
+            type = "message", duration = 10
+          )
         })
       }
     )
+    
+  }
 }
 
 # ---- RUN APP ----
 
 message("Loading data...")
 data_list <- load_data()
-metric_spec <- load_metric_spec()
+# ADS ENGINE: METRIC SPEC (lazy: only loads when you call it)
+load_metric_spec <- function(path = ads_path("scripts", "metrics_spec.csv")) {
+  if (!file.exists(path)) stop("Missing metrics_spec.csv at: ", path)
+  data.table::fread(path)
+}
 
 message("Loading analysis tables...")
 analysis_tables <- list(
-  pay_code_summary = load_analysis_table(PAY_CODE_SUMMARY_FILE),
-  rate_type_analysis = load_analysis_table(RATE_TYPE_ANALYSIS_FILE),
-  shift_hrs = load_analysis_table(SHIFT_HRS_FILE),
-  non_wrk_hrs = load_analysis_table(NON_WRK_HRS_FILE),
-  meal_period = load_analysis_table(MEAL_PERIOD_FILE),
-  meal_start_time = load_analysis_table(MEAL_START_TIME_FILE),
-  meal_quarter_hr = load_analysis_table(MEAL_QUARTER_HR_FILE),
+  pay_code_summary    = load_analysis_table(PAY_CODE_SUMMARY_FILE),
+  rate_type_analysis  = load_analysis_table(RATE_TYPE_ANALYSIS_FILE),
+  shift_hrs           = load_analysis_table(SHIFT_HRS_FILE),
+  non_wrk_hrs         = load_analysis_table(NON_WRK_HRS_FILE),
+  meal_period         = load_analysis_table(MEAL_PERIOD_FILE),
+  meal_start_time     = load_analysis_table(MEAL_START_TIME_FILE),
+  meal_quarter_hr     = load_analysis_table(MEAL_QUARTER_HR_FILE),
   employee_comparison = load_analysis_table(EMPLOYEE_COMPARISON_FILE)
 )
 
