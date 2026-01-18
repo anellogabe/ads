@@ -2097,7 +2097,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
     output$table_damages_class_no_waivers <- renderDT({
       data <- filtered_data()
       factor <- extrap_factor()
-      
+
       # Split each metric group by waiver status
       meal_split <- split_by_waiver(damages_meal_groups)
       rest_split <- split_by_waiver(damages_rest_groups)
@@ -2109,85 +2109,85 @@ server <- function(data_list, metric_spec, analysis_tables) {
       wsv_split <- split_by_waiver(damages_wsv_groups)
       wt_split <- split_by_waiver(damages_wt_groups)
       total_split <- split_by_waiver(damages_class_total_groups)
-      
+
       # Build section definitions for no-waiver metrics
       sections <- list()
-      
+
       if (length(meal_split$no_waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "MEAL PERIOD DAMAGES",
           groups = meal_split$no_waiver
         )
       }
-      
+
       if (length(rest_split$no_waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "REST PERIOD DAMAGES",
           groups = rest_split$no_waiver
         )
       }
-      
+
       if (length(rrop_split$no_waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "RROP DAMAGES",
           groups = rrop_split$no_waiver
         )
       }
-      
+
       if (length(otc_split$no_waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "OFF-THE-CLOCK DAMAGES",
           groups = otc_split$no_waiver
         )
       }
-      
+
       if (length(rounding_split$no_waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "CLOCK ROUNDING DAMAGES",
           groups = rounding_split$no_waiver
         )
       }
-      
+
       if (length(unpaid_ot_split$no_waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "UNPAID OT/DT DAMAGES",
           groups = unpaid_ot_split$no_waiver
         )
       }
-      
+
       if (length(expenses_split$no_waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "UNREIMBURSED EXPENSES DAMAGES",
           groups = expenses_split$no_waiver
         )
       }
-      
+
       if (length(wsv_split$no_waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "WAGE STATEMENT PENALTIES",
           groups = wsv_split$no_waiver
         )
       }
-      
+
       if (length(wt_split$no_waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "WAITING TIME PENALTIES",
           groups = wt_split$no_waiver
         )
       }
-      
+
       if (length(total_split$no_waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "TOTAL DAMAGES",
           groups = total_split$no_waiver
         )
       }
-      
+
       results <- combine_damages_with_headers(data, metric_spec, sections, current_filters(), factor)
       # Filter out waiver metrics from no-waiver tab based on metric labels
       results <- filter_metrics_by_label(results, include_waivers = FALSE)
       create_dt_table(results)
-    })
+    }) %>% bindCache(current_filters(), extrap_factor())
     
     # Class/Individual Claims - Waivers
     output$table_damages_class_waivers <- renderDT({
@@ -2283,8 +2283,8 @@ server <- function(data_list, metric_spec, analysis_tables) {
       # Filter out no-waiver metrics from waiver tab based on metric labels
       results <- filter_metrics_by_label(results, include_waivers = TRUE)
       create_dt_table(results)
-    })
-    
+    }) %>% bindCache(current_filters(), extrap_factor())
+
     # PAGA - No Waivers
     output$table_paga_no_waivers <- renderDT({
       data <- filtered_data()
@@ -2379,8 +2379,8 @@ server <- function(data_list, metric_spec, analysis_tables) {
       # Filter out waiver metrics from no-waiver tab based on metric labels
       results <- filter_metrics_by_label(results, include_waivers = FALSE)
       create_dt_table(results)
-    })
-    
+    }) %>% bindCache(current_filters(), extrap_factor())
+
     # PAGA - Waivers
     output$table_paga_waivers <- renderDT({
       data <- filtered_data()
@@ -2475,8 +2475,8 @@ server <- function(data_list, metric_spec, analysis_tables) {
       # Filter out no-waiver metrics from waiver tab based on metric labels
       results <- filter_metrics_by_label(results, include_waivers = TRUE)
       create_dt_table(results)
-    })
-    
+    }) %>% bindCache(current_filters(), extrap_factor())
+
     # ===========================================================================
     # EMPLOYEE-PERIOD EXAMPLE TAB
     # ===========================================================================
@@ -2697,8 +2697,8 @@ server <- function(data_list, metric_spec, analysis_tables) {
         class = 'cell-border stripe hover compact',
         style = 'bootstrap4'
       )
-    })
-    
+    }) %>% bindCache(input$example_period_select)
+
     # Shift Data (shift_data1) - Show all meal/rest violation columns horizontally
     output$table_example_shift <- renderDT({
       req(input$example_period_select)
@@ -2749,8 +2749,8 @@ server <- function(data_list, metric_spec, analysis_tables) {
         class = 'cell-border stripe hover compact',
         style = 'bootstrap4'
       )
-    })
-    
+    }) %>% bindCache(input$example_period_select, current_filters())
+
     # Pay Data (pay1) - Show all pay columns horizontally
     output$table_example_pay <- renderDT({
       req(input$example_period_select)
@@ -2805,8 +2805,8 @@ server <- function(data_list, metric_spec, analysis_tables) {
         class = 'cell-border stripe hover compact',
         style = 'bootstrap4'
       )
-    })
-    
+    }) %>% bindCache(input$example_period_select, current_filters())
+
     # Damages Data (pp_data1 / ee_data1) - Show damage columns
     output$table_example_damages <- renderDT({
       req(input$example_period_select)
@@ -2858,8 +2858,8 @@ server <- function(data_list, metric_spec, analysis_tables) {
         class = 'cell-border stripe hover compact',
         style = 'bootstrap4'
       )
-    })
-    
+    }) %>% bindCache(input$example_period_select, current_filters())
+
     # ===========================================================================
     # ANALYSIS TABLES (FROM FILES)
     # ===========================================================================
