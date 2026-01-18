@@ -3155,11 +3155,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
 
 message("Loading data...")
 data_list <- load_data()
-# ADS ENGINE: METRIC SPEC (lazy: only loads when you call it)
-load_metric_spec <- function(path = ads_path("scripts", "metrics_spec.csv")) {
-  if (!file.exists(path)) stop("Missing metrics_spec.csv at: ", path)
-  data.table::fread(path)
-}
+metric_spec <- load_metric_spec()
 
 message("Loading analysis tables...")
 analysis_tables <- list(
