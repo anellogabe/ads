@@ -3134,7 +3134,6 @@ server <- function(data_list, metric_spec, analysis_tables) {
     <p style="margin: 0;"><strong>Note:</strong> This analysis shows how employee data overlaps across different data sources (Time records, Pay records, and Class Action list). Employees appearing in multiple sources indicate good data matching, while single-source employees may require verification.</p>
   </div>
 ')
-          }
           }  # End data_comparison section
 
           # Close HTML
