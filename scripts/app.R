@@ -3292,8 +3292,17 @@ server <- function(data_list, metric_spec, analysis_tables) {
 
           # Data Comparison Section
           if ("data_comparison" %in% sections) {
+            # Get unique employee IDs from each source
+            time_ids <- unique(data$shift_data1$ID)
+            pay_ids <- unique(data$pay1$Pay_ID)
+            class_ids <- if (!is.null(data$class1) && "Class_ID" %in% names(data$class1)) {
+              unique(data$class1$Class_ID)
+            } else {
+              character(0)
+            }
+
             # Calculate overlaps
-          time_only <- setdiff(time_ids, union(pay_ids, class_ids))
+            time_only <- setdiff(time_ids, union(pay_ids, class_ids))
           pay_only <- setdiff(pay_ids, union(time_ids, class_ids))
           class_only <- setdiff(class_ids, union(time_ids, pay_ids))
 
