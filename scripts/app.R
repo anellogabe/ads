@@ -1672,27 +1672,16 @@ server <- function(data_list, metric_spec, analysis_tables) {
       data <- filtered_data()
       format(uniqueN(data$shift_data1$ID_Week_End), big.mark = ",")
     })
-    
-    # ONE renderPlotly only (removed the broken duplicate)
+
     output$employee_coverage_plot <- renderPlotly({
       data <- filtered_data()
-      format(uniqueN(data$shift_data1$ID_Week_End), big.mark = ",")
-    })
-    
-    output$employee_coverage_plot <- renderPlotly({
-      data <- filtered_data()
-      
+
       # Aggregate by pay period for smooth line graph
       time_emp <- data$shift_data1[, .(
         Employees = uniqueN(ID),
         Type = "Time Data"
       ), by = .(Period = Period_End)]
-      
-      time_emp <- data$shift_data1[, .(
-        Employees = uniqueN(ID),
-        Type = "Time Data"
-      ), by = .(Period = Period_End)]
-      
+
       pay_emp <- data$pay1[, .(
         Employees = uniqueN(Pay_ID),
         Type = "Pay Data"
