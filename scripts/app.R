@@ -1620,7 +1620,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
         shift_key_groups = shift_key_groups,
         pay_key_groups = pay_key_groups
       )
-    }) %>% bindCache(current_filters())
+    }) |> shiny::bindCache(current_filters())
     
     # Populate Key Groups filter choices
     observe({
@@ -1925,7 +1925,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
       # Filter out waiver metrics from no-waiver tab based on metric labels
       results <- filter_metrics_by_label(results, include_waivers = FALSE)
       create_dt_table(results)
-    }) %>% bindCache(current_filters(), extrap_factor())
+    }) |> shiny::bindCache(current_filters(), extrap_factor())
     
     # Class/Individual Claims - Waivers
     output$table_damages_class_waivers <- renderDT({
@@ -2021,7 +2021,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
       # Filter out no-waiver metrics from waiver tab based on metric labels
       results <- filter_metrics_by_label(results, include_waivers = TRUE)
       create_dt_table(results)
-    }) %>% bindCache(current_filters(), extrap_factor())
+    }) |> shiny::bindCache(current_filters(), extrap_factor())
 
     # PAGA - No Waivers
     output$table_paga_no_waivers <- renderDT({
@@ -2117,7 +2117,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
       # Filter out waiver metrics from no-waiver tab based on metric labels
       results <- filter_metrics_by_label(results, include_waivers = FALSE)
       create_dt_table(results)
-    }) %>% bindCache(current_filters(), extrap_factor())
+    }) |> shiny::bindCache(current_filters(), extrap_factor())
 
     # PAGA - Waivers
     output$table_paga_waivers <- renderDT({
@@ -2213,7 +2213,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
       # Filter out no-waiver metrics from waiver tab based on metric labels
       results <- filter_metrics_by_label(results, include_waivers = TRUE)
       create_dt_table(results)
-    }) %>% bindCache(current_filters(), extrap_factor())
+    }) |> shiny::bindCache(current_filters(), extrap_factor())
 
     # ===========================================================================
     # EMPLOYEE-PERIOD EXAMPLE TAB
@@ -2435,7 +2435,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
         class = 'cell-border stripe hover compact',
         style = 'bootstrap4'
       )
-    }) %>% bindCache(input$example_period_select)
+    }) |> shiny::bindCache(input$example_period_select)
 
     # Shift Data (shift_data1) - Show all meal/rest violation columns horizontally
     output$table_example_shift <- renderDT({
@@ -2487,7 +2487,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
         class = 'cell-border stripe hover compact',
         style = 'bootstrap4'
       )
-    }) %>% bindCache(input$example_period_select, current_filters())
+    }) |> shiny::bindCache(input$example_period_select, current_filters())
 
     # Pay Data (pay1) - Show all pay columns horizontally
     output$table_example_pay <- renderDT({
@@ -2543,7 +2543,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
         class = 'cell-border stripe hover compact',
         style = 'bootstrap4'
       )
-    }) %>% bindCache(input$example_period_select, current_filters())
+    }) |> shiny::bindCache(input$example_period_select, current_filters())
 
     # Damages Data (pp_data1 / ee_data1) - Show damage columns
     output$table_example_damages <- renderDT({
@@ -2596,7 +2596,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
         class = 'cell-border stripe hover compact',
         style = 'bootstrap4'
       )
-    }) %>% bindCache(input$example_period_select, current_filters())
+    }) |> shiny::bindCache(input$example_period_select, current_filters())
 
     # ===========================================================================
     # ANALYSIS TABLES (FROM FILES)
@@ -3134,7 +3134,6 @@ server <- function(data_list, metric_spec, analysis_tables) {
     <p style="margin: 0;"><strong>Note:</strong> This analysis shows how employee data overlaps across different data sources (Time records, Pay records, and Class Action list). Employees appearing in multiple sources indicate good data matching, while single-source employees may require verification.</p>
   </div>
 ')
-          }
           }  # End data_comparison section
 
           # Close HTML
