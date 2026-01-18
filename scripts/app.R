@@ -1,6 +1,4 @@
-# =============================================================================
-# Wage & Hour Compliance Dashboard - COMPREHENSIVE VERSION
-# =============================================================================
+# ---- Wage & Hour Compliance Dashboard ----
 
 library(shiny)
 library(bslib)
@@ -8,165 +6,146 @@ library(data.table)
 library(lubridate)
 library(DT)
 library(plotly)
-library(here)
 library(shinycssloaders)
 library(shinyjs)
+library(magrittr)  # for %>% pipe operator
 
-# =============================================================================
-# CONFIGURATION
-# =============================================================================
+# ---- CONFIGURATION - engine repo + case paths ----
 
-DATA_DIR <- here("output")  # Analyzed data ready for dashboard
-SCRIPTS_DIR <- here("scripts")
+# ADS engine repo (required to source helpers)
+ADS_REPO <- Sys.getenv("ADS_REPO", unset = "")
+if (!nzchar(ADS_REPO)) stop("ADS_REPO env var not set (use setx ADS_REPO on Windows).")
+ADS_REPO <- normalizePath(ADS_REPO, winslash = "/", mustWork = TRUE)
 
-# Data file names (from Analysis.R output)
-SHIFT_DATA_FILE <- "shift_data1.rds"
-PAY_DATA_FILE <- "pay1.rds"
-TIME_DATA_FILE <- "time1.rds"
-CLASS_DATA_FILE <- "class1.rds"
-PP_DATA_FILE <- "pp_data1.rds"  # Pay period level aggregate
-EE_DATA_FILE <- "ee_data1.rds"  # Employee level aggregate
-METRIC_SPEC_FILE <- "metrics_spec.csv"
+FN_PATH <- file.path(ADS_REPO, "scripts", "functions.R")
+if (!file.exists(FN_PATH)) stop("functions.R not found at: ", FN_PATH)
+source(FN_PATH, local = FALSE)
+message("✓ functions.R loaded")
 
-# Analysis table files
-SHIFT_HRS_FILE <- "Shift_Hrs_Table.csv"
-NON_WRK_HRS_FILE <- "Non_Work_Hrs_Table.csv"
-MEAL_PERIOD_FILE <- "Meal_Period_Table.csv"
-MEAL_START_TIME_FILE <- "Meal_Start_Time_Table.csv"
-MEAL_QUARTER_HR_FILE <- "Meal_Quarter_Hour_Table.csv"
-PAY_CODE_SUMMARY_FILE <- "Pay_Code_Summary.csv"
-RATE_TYPE_ANALYSIS_FILE <- "Rate_Type_Analysis.csv"
-DATA_COMPARISON_FILE <- "Data Comparison.csv"
-EMPLOYEE_COMPARISON_FILE <- "Employee Pay Period Comparison.csv"
-
-# =============================================================================
-# CASE METADATA - Load from environment or set defaults
-# =============================================================================
-
-# These variables should be defined in clean_data.R before running the app
-# If not defined, use placeholder values
-if (!exists("case_name")) case_name <- "Wage & Hour Analysis"
-if (!exists("case_no")) case_no <- "Not specified"
-if (!exists("sample_size")) sample_size <- "Not specified"
-if (!exists("date_filed")) date_filed <- Sys.Date()
-if (!exists("complaint_date")) complaint_date <- Sys.Date()
-if (!exists("mediation_date")) mediation_date <- Sys.Date()
-if (!exists("class_dmgs_start_date")) class_dmgs_start_date <- Sys.Date() %m-% years(4)
-
-# =============================================================================
-# UTILITY FUNCTIONS
-# =============================================================================
-
-# Format column names: underscore to space, proper case
-format_col_name <- function(name) {
-  name %>%
-    gsub("_", " ", .) %>%
-    tools::toTitleCase()
+# Case directory setup
+# When app.R is run from scripts folder (via runApp('path/to/scripts')),
+# we need to go up one level to get the true case directory
+case_dir <- Sys.getenv("ADS_CASE_DIR", unset = "")
+if (!nzchar(case_dir)) {
+  case_dir <- getwd()
+  # If we're in a 'scripts' folder, use parent as case directory
+  if (basename(case_dir) == "scripts") {
+    case_dir <- dirname(case_dir)
+  }
 }
 
-# Format all column names in a data.table
+paths <- init_case_paths(case_dir = case_dir, set_globals = TRUE)
+
+# Canonical dirs (case folders)
+DATA_DIR    <- paths$OUT_DIR           # dashboard reads analysis outputs from /output
+SCRIPTS_DIR <- file.path(paths$CASE_DIR, "scripts")  # case scripts live here
+
+message("DATA_DIR   = ", normalizePath(DATA_DIR, winslash = "/", mustWork = FALSE))
+message("SCRIPTS_DIR= ", normalizePath(SCRIPTS_DIR, winslash = "/", mustWork = FALSE))
+
+# ---- DASHBOARD INPUT FILE NAMES ----
+# These must match what analysis.R actually writes to OUT_DIR
+
+SHIFT_DATA_FILE <- "Time Shift Data.rds"
+PAY_DATA_FILE   <- "Pay Data.rds"
+TIME_DATA_FILE  <- "Time Punch Data.rds"
+PP_DATA_FILE    <- "Pay Period Level Data.rds"
+EE_DATA_FILE    <- "Employee Level Data.rds"
+
+# class1 is in PROCESSED_DIR (from clean_data.R), not OUT_DIR
+CLASS_DATA_FILE <- "class_processed.rds"
+
+# Tables produced by analysis.R (RDS preferred)
+SHIFT_HRS_FILE          <- "Shift_Hrs_Table.rds"
+NON_WRK_HRS_FILE        <- "Non_Work_Hrs_Table.rds"
+MEAL_PERIOD_FILE        <- "Meal_Period_Table.rds"
+MEAL_START_TIME_FILE    <- "Meal_Start_Time_Table.rds"
+MEAL_QUARTER_HR_FILE    <- "Meal_Quarter_Hour_Table.rds"
+PAY_CODE_SUMMARY_FILE   <- "Pay_Code_Summary.rds"
+RATE_TYPE_ANALYSIS_FILE <- "Rate_Type_Analysis.rds"
+EMPLOYEE_COMPARISON_FILE <- "Employee Pay Period Comparison.rds"
+
+# ---- CASE METADATA (optional - safe defaults) ----
+
+if (!exists("case_name"))       case_name <- "Wage & Hour Analysis"
+if (!exists("case_no"))         case_no <- "Not specified"
+if (!exists("sample_size"))     sample_size <- "Not specified"
+if (!exists("date_filed"))      date_filed <- Sys.Date()
+if (!exists("complaint_date"))  complaint_date <- Sys.Date()
+if (!exists("mediation_date"))  mediation_date <- Sys.Date()
+if (!exists("class_dmgs_start_date")) class_dmgs_start_date <- Sys.Date() %m-% years(4)
+
+# ---- UTILITY FUNCTIONS ----
+
+# Format column names: underscore -> space; proper case
+format_col_name <- function(name) {
+  name <- gsub("_", " ", name, fixed = TRUE)
+  tools::toTitleCase(name)
+}
+
 format_all_cols <- function(dt) {
-  setnames(dt, names(dt), sapply(names(dt), format_col_name))
+  if (!is.null(dt) && ncol(dt) > 0) {
+    setnames(dt, names(dt), vapply(names(dt), format_col_name, character(1)))
+  }
   dt
 }
 
-# =============================================================================
-# DATA LOADING
-# =============================================================================
+# ---- DATA LOADING ----
 
 load_data <- function() {
-  shift_path <- file.path(DATA_DIR, SHIFT_DATA_FILE)
-  pay_path <- file.path(DATA_DIR, PAY_DATA_FILE)
-  time_path <- file.path(DATA_DIR, TIME_DATA_FILE)
-  class_path <- file.path(DATA_DIR, CLASS_DATA_FILE)
-  pp_path <- file.path(DATA_DIR, PP_DATA_FILE)
-  ee_path <- file.path(DATA_DIR, EE_DATA_FILE)
-  
-  result <- list()
-  
-  # Load shift data (required)
-  if (file.exists(shift_path)) {
-    message("Loading shift data...")
-    result$shift_data1 <- readRDS(shift_path)
-  } else {
-    stop("Cannot find shift data file: ", shift_path)
+
+  read_if_exists <- function(dir, file) {
+    path <- file.path(dir, file)
+    if (file.exists(path)) {
+      message("Loading: ", file)
+      readRDS(path)
+    } else {
+      message("Not found (skipping): ", file)
+      NULL
+    }
   }
-  
-  # Load pay data (required)
-  if (file.exists(pay_path)) {
-    message("Loading pay data...")
-    result$pay1 <- readRDS(pay_path)
-  } else {
-    stop("Cannot find pay data file: ", pay_path)
-  }
-  
-  # Load time data (optional)
-  if (file.exists(time_path)) {
-    message("Loading time data...")
-    result$time1 <- readRDS(time_path)
-  } else {
-    result$time1 <- NULL
-  }
-  
-  # Load class data (optional)
-  if (file.exists(class_path)) {
-    message("Loading class data...")
-    result$class1 <- readRDS(class_path)
-  } else {
-    result$class1 <- NULL
-  }
-  
-  # Load pay period aggregate data (optional)
-  if (file.exists(pp_path)) {
-    message("Loading pay period aggregate data...")
-    result$pp_data1 <- readRDS(pp_path)
-  } else {
-    result$pp_data1 <- NULL
-  }
-  
-  # Load employee aggregate data (optional)
-  if (file.exists(ee_path)) {
-    message("Loading employee aggregate data...")
-    result$ee_data1 <- readRDS(ee_path)
-  } else {
-    result$ee_data1 <- NULL
-  }
-  
-  result
+
+  list(
+    shift_data1 = read_if_exists(DATA_DIR, SHIFT_DATA_FILE),   # required
+    pay1        = read_if_exists(DATA_DIR, PAY_DATA_FILE),     # required
+    time1       = read_if_exists(DATA_DIR, TIME_DATA_FILE),
+    class1      = read_if_exists(PROCESSED_DIR, CLASS_DATA_FILE),  # from clean_data.R
+    pp_data1    = read_if_exists(DATA_DIR, PP_DATA_FILE),
+    ee_data1    = read_if_exists(DATA_DIR, EE_DATA_FILE)
+  )
 }
 
-load_metric_spec <- function(path = NULL) {
-  if (is.null(path)) {
-    path <- file.path(SCRIPTS_DIR, METRIC_SPEC_FILE)
-  }
-  
-  if (!file.exists(path)) {
-    stop("Cannot find metrics spec file: ", path)
-  }
-  
-  message("Loading metric spec...")
-  spec <- fread(path)
+load_metric_spec <- function() {
+  # Load from ADS engine repo (uses load_metrics_spec from functions.R)
+  spec <- load_metrics_spec()
   spec[, metric_order := .I]
   spec
 }
-# Load analysis tables (CSV files from Analysis.R)
 load_analysis_table <- function(filename) {
-  filepath <- file.path(DATA_DIR, filename)
-  if (file.exists(filepath)) {
-    dt <- fread(filepath)
-    # Remove rows where first column is NA, empty, or "0"
-    if (nrow(dt) > 0 && ncol(dt) > 0) {
-      first_col <- names(dt)[1]
-      dt <- dt[!(is.na(get(first_col)) | get(first_col) == "" | get(first_col) == "0")]
-    }
-    return(format_all_cols(dt))
+
+  path <- file.path(DATA_DIR, filename)
+  if (!file.exists(path)) return(NULL)
+
+  # Use readRDS for .rds files, fread for .csv
+  dt <- if (grepl("\\.rds$", filename, ignore.case = TRUE)) {
+    readRDS(path)
+  } else {
+    fread(path)
   }
-  NULL
+
+  if (!is.data.table(dt)) setDT(dt)
+
+  if (nrow(dt) > 0) {
+    first_col <- names(dt)[1]
+    dt <- dt[!(is.na(get(first_col)) |
+                 get(first_col) == "" |
+                 get(first_col) == "0")]
+  }
+
+  dt
 }
 
-# =============================================================================
-# METRIC CALCULATION (OPTIMIZED)
-# =============================================================================
+# ---- METRIC CALCULATION (OPTIMIZED) ----
 
 get_denominator_value <- function(data, denom_name, source_type) {
   if (is.na(denom_name) || denom_name == "") return(NA_real_)
@@ -550,9 +529,7 @@ format_metric_value <- function(val, pct = NA) {
   as.character(val)
 }
 
-# =============================================================================
-# UI HELPER FUNCTIONS
-# =============================================================================
+# ---- UI HELPER FUNCTIONS ----
 
 under_construction_card <- function(title, description = NULL) {
   card(
@@ -645,9 +622,7 @@ create_dt_table <- function(dt, metric_col = "Metric") {
   )
 }
 
-# =============================================================================
-# FILTER SIDEBAR
-# =============================================================================
+# ---- FILTER SIDEBAR ----
 
 filter_sidebar <- function(data_list) {
   shift_data <- data_list$shift_data1
@@ -767,9 +742,7 @@ filter_sidebar <- function(data_list) {
   )
 }
 
-# =============================================================================
-# UI
-# =============================================================================
+# ---- UI ----
 
 ui <- function(data_list, metric_spec) {
   
@@ -1368,9 +1341,7 @@ ui <- function(data_list, metric_spec) {
   )
 }
 
-# =============================================================================
-# SERVER (Part 1 - will continue in next message due to length)
-# =============================================================================
+# ---- SERVER ----
 
 server <- function(data_list, metric_spec, analysis_tables) {
   function(input, output, session) {
@@ -1776,6 +1747,17 @@ server <- function(data_list, metric_spec, analysis_tables) {
     
     output$employee_coverage_plot <- renderPlotly({
       data <- filtered_data()
+      format(uniqueN(data$shift_data1$ID_Week_End), big.mark = ",")
+    })
+    
+    output$employee_coverage_plot <- renderPlotly({
+      data <- filtered_data()
+      
+      # Aggregate by pay period for smooth line graph
+      time_emp <- data$shift_data1[, .(
+        Employees = uniqueN(ID),
+        Type = "Time Data"
+      ), by = .(Period = Period_End)]
       
       # Aggregate by pay period for smooth line graph
       time_emp <- data$shift_data1[, .(
@@ -3543,9 +3525,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
   }
 }
 
-# =============================================================================
-# RUN APP
-# =============================================================================
+# ---- RUN APP ----
 
 message("Loading data...")
 data_list <- load_data()
