@@ -628,14 +628,26 @@ filter_sidebar <- function(data_list) {
   shift_data <- data_list$shift_data1
   pay_data <- data_list$pay1
   
+  pay_dates <- if (!is.null(pay_data)) {
+    if ("Pay_Period_End" %in% names(pay_data)) {
+      pay_data$Pay_Period_End
+    } else if ("Pay_Date" %in% names(pay_data)) {
+      pay_data$Pay_Date
+    } else {
+      as.Date(NA)
+    }
+  } else {
+    as.Date(NA)
+  }
+
   date_min <- min(
     min(shift_data$Date, na.rm = TRUE),
-    min(pay_data$Pay_Date, na.rm = TRUE),
+    min(pay_dates, na.rm = TRUE),
     na.rm = TRUE
   )
   date_max <- max(
     max(shift_data$Date, na.rm = TRUE),
-    max(pay_data$Pay_Date, na.rm = TRUE),
+    max(pay_dates, na.rm = TRUE),
     na.rm = TRUE
   )
   
@@ -1399,14 +1411,22 @@ server <- function(data_list, metric_spec, analysis_tables) {
     paga_total_groups <- metric_groups[grepl("^PAGA - Total", metric_groups)]
     
     # Original date range
+    pay_date_col <- if ("Pay_Period_End" %in% names(data_list$pay1)) {
+      "Pay_Period_End"
+    } else if ("Pay_Date" %in% names(data_list$pay1)) {
+      "Pay_Date"
+    } else {
+      NULL
+    }
+
     original_date_min <- min(
       min(data_list$shift_data1$Date, na.rm = TRUE),
-      min(data_list$pay1$Pay_Date, na.rm = TRUE),
+      min(if (!is.null(pay_date_col)) data_list$pay1[[pay_date_col]] else as.Date(NA), na.rm = TRUE),
       na.rm = TRUE
     )
     original_date_max <- max(
       max(data_list$shift_data1$Date, na.rm = TRUE),
-      max(data_list$pay1$Pay_Date, na.rm = TRUE),
+      max(if (!is.null(pay_date_col)) data_list$pay1[[pay_date_col]] else as.Date(NA), na.rm = TRUE),
       na.rm = TRUE
     )
     
@@ -1517,6 +1537,13 @@ server <- function(data_list, metric_spec, analysis_tables) {
       
       shift_filtered <- copy(data_list$shift_data1)
       pay_filtered   <- copy(data_list$pay1)
+      pay_date_col <- if ("Pay_Period_End" %in% names(pay_filtered)) {
+        "Pay_Period_End"
+      } else if ("Pay_Date" %in% names(pay_filtered)) {
+        "Pay_Date"
+      } else {
+        NULL
+      }
       
       # Shift filters
       if (!is.null(filters$date_min)) shift_filtered <- shift_filtered[Date >= filters$date_min]
@@ -1536,8 +1563,12 @@ server <- function(data_list, metric_spec, analysis_tables) {
       }
       
       # Pay filters
-      if (!is.null(filters$date_min)) pay_filtered <- pay_filtered[Pay_Period_End >= filters$date_min]
-      if (!is.null(filters$date_max)) pay_filtered <- pay_filtered[Pay_Period_End <= filters$date_max]
+      if (!is.null(filters$date_min) && !is.null(pay_date_col)) {
+        pay_filtered <- pay_filtered[get(pay_date_col) >= filters$date_min]
+      }
+      if (!is.null(filters$date_max) && !is.null(pay_date_col)) {
+        pay_filtered <- pay_filtered[get(pay_date_col) <= filters$date_max]
+      }
       if (!is.null(filters$Pay_ID))   pay_filtered <- pay_filtered[Pay_ID %in% filters$Pay_ID]
       
       if (!is.null(filters$Sample) && "Pay_Sample" %in% names(pay_filtered)) {
@@ -1595,7 +1626,11 @@ server <- function(data_list, metric_spec, analysis_tables) {
       }
       
       shift_years <- if (nrow(shift_filtered) > 0 && "Date" %in% names(shift_filtered)) sort(unique(year(shift_filtered$Date))) else NULL
-      pay_years   <- if (nrow(pay_filtered)   > 0 && "Pay_Period_End" %in% names(pay_filtered)) sort(unique(year(pay_filtered$Pay_Period_End))) else NULL
+      pay_years   <- if (nrow(pay_filtered) > 0 && !is.null(pay_date_col)) {
+        sort(unique(year(pay_filtered[[pay_date_col]])))
+      } else {
+        NULL
+      }
       
       shift_key_groups <- if ("Key_Gps" %in% names(shift_filtered)) {
         gps <- unique(shift_filtered$Key_Gps)
@@ -1682,10 +1717,22 @@ server <- function(data_list, metric_spec, analysis_tables) {
         Type = "Time Data"
       ), by = .(Period = Period_End)]
 
-      pay_emp <- data$pay1[, .(
-        Employees = uniqueN(Pay_ID),
-        Type = "Pay Data"
-      ), by = .(Period = Pay_Period_End)]
+      pay_date_col <- if ("Pay_Period_End" %in% names(data$pay1)) {
+        "Pay_Period_End"
+      } else if ("Pay_Date" %in% names(data$pay1)) {
+        "Pay_Date"
+      } else {
+        NULL
+      }
+
+      pay_emp <- if (!is.null(pay_date_col)) {
+        data$pay1[, .(
+          Employees = uniqueN(Pay_ID),
+          Type = "Pay Data"
+        ), by = .(Period = get(pay_date_col))]
+      } else {
+        data.table(Period = as.Date(character()), Employees = integer(), Type = character())
+      }
       
       combined <- rbindlist(list(time_emp, pay_emp), fill = TRUE)
       combined <- combined[order(Period)]
@@ -2743,6 +2790,9 @@ server <- function(data_list, metric_spec, analysis_tables) {
         withProgress(message = "Generating PDF Report", value = 0, {
           
           sections <- c(input$pdf_sections_col1, input$pdf_sections_col2, input$pdf_sections_col3, input$pdf_sections_col4)
+          if (isTRUE(input$pdf_include_data_comparison)) {
+            sections <- c(sections, "data_comparison")
+          }
           total_sections <- length(sections) + 2
           
           incProgress(1 / total_sections, detail = "Initializing...")
