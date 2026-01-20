@@ -711,6 +711,17 @@ filter_sidebar <- function(data_list) {
       multiple = TRUE,
       options = list(placeholder = "All key groups...")
     ),
+
+    hr(),
+    
+    checkboxInput("show_extrapolation", "Show Extrapolated Values", value = FALSE),
+    
+    hr(),
+    
+    actionButton("apply_filters", "Apply Filters", class = "btn-primary w-100"),
+    actionButton("reset_filters", "Reset All Filters", class = "btn-outline-secondary w-100 mt-2"),
+    
+    hr(),
     
     hr(),
     
@@ -1494,6 +1505,19 @@ server <- function(data_list, metric_spec, analysis_tables) {
         filters$Class_Key_Gps <- input$key_groups_filter
       }
       
+      # Subclass filter
+      if (!is.null(input$subclass_filter) && input$subclass_filter != "all") {
+        filters$Subclass <- input$subclass_filter
+        filters$Pay_Subclass <- input$subclass_filter
+      }
+
+      # Key Groups filter
+      if (length(input$key_groups_filter) > 0) {
+        filters$Key_Gps <- input$key_groups_filter
+        filters$Pay_Key_Gps <- input$key_groups_filter
+        filters$Class_Key_Gps <- input$key_groups_filter
+      }
+
       current_filters(filters)
     })
     
