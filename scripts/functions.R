@@ -2,46 +2,33 @@
 
 ads_repo <- function() {
   ADS_REPO <- Sys.getenv("ADS_REPO", unset = "")
-  if (!nzchar(ADS_REPO)) stop("ADS_REPO env var not set (use setx ADS_REPO on Windows).")
+  if (!nzchar(ADS_REPO)) stop("ADS_REPO env var not set. On Windows: setx ADS_REPO \"C:/.../GitHub/ads\"")
   normalizePath(ADS_REPO, winslash = "/", mustWork = TRUE)
 }
 
 ads_path <- function(...) file.path(ads_repo(), ...)
-
-# ADS ENGINE: METRIC SPEC (lazy: only loads when you call it)
-load_metrics_spec <- function(path = ads_path("scripts", "metrics_spec.csv")) {
-  if (!file.exists(path)) stop("Missing metrics_spec.csv at: ", path)
-  data.table::fread(path)
-}
 
 
 # CASE PATH INITIALIZER ------------------------------------------------------------------------------
 
 init_case_paths <- function(case_dir = Sys.getenv("ADS_CASE_DIR", unset = ""),
                             set_globals = TRUE) {
-  
-  if (!nzchar(case_dir)) case_dir <- getwd()
+  if (!nzchar(case_dir)) stop("ADS_CASE_DIR not set. Set it or call set_case_dir(\"C:/.../CaseFolder\").")
   case_dir <- normalizePath(case_dir, winslash = "/", mustWork = TRUE)
   
   raw_dir       <- file.path(case_dir, "data", "raw")
   processed_dir <- file.path(case_dir, "data", "processed")
   out_dir       <- file.path(case_dir, "output")
   
-  # create canonical folders
   dir.create(raw_dir,       recursive = TRUE, showWarnings = FALSE)
   dir.create(processed_dir, recursive = TRUE, showWarnings = FALSE)
   dir.create(out_dir,       recursive = TRUE, showWarnings = FALSE)
   
-  message("CASE_DIR:      ", case_dir)
-  message("RAW_DIR:       ", raw_dir)
-  message("PROCESSED_DIR: ", processed_dir)
-  message("OUT_DIR:       ", out_dir)
-  
   paths <- list(
-    CASE_DIR = case_dir,
-    RAW_DIR = raw_dir,
+    CASE_DIR      = case_dir,
+    RAW_DIR       = raw_dir,
     PROCESSED_DIR = processed_dir,
-    OUT_DIR = out_dir
+    OUT_DIR       = out_dir
   )
   
   if (isTRUE(set_globals)) {
@@ -54,12 +41,19 @@ init_case_paths <- function(case_dir = Sys.getenv("ADS_CASE_DIR", unset = ""),
   paths
 }
 
+# One-liner you can call at the top of scripts (absolute, deterministic)
+set_case_dir <- function(case_dir, set_globals = TRUE) {
+  case_dir <- normalizePath(case_dir, winslash = "/", mustWork = TRUE)
+  Sys.setenv(ADS_CASE_DIR = case_dir)
+  init_case_paths(case_dir = case_dir, set_globals = set_globals)
+}
+
 resolve_case_paths <- function() {
-  if (exists("RAW_DIR", inherits = TRUE) &&
+  # Prefer globals if already initialized
+  if (exists("CASE_DIR", inherits = TRUE) &&
+      exists("RAW_DIR", inherits = TRUE) &&
       exists("PROCESSED_DIR", inherits = TRUE) &&
-      exists("OUT_DIR", inherits = TRUE) &&
-      exists("CASE_DIR", inherits = TRUE)) {
-    
+      exists("OUT_DIR", inherits = TRUE)) {
     return(list(
       CASE_DIR      = get("CASE_DIR", inherits = TRUE),
       RAW_DIR       = get("RAW_DIR", inherits = TRUE),
@@ -68,6 +62,7 @@ resolve_case_paths <- function() {
     ))
   }
   
+  # Otherwise rely on ADS_CASE_DIR (strict)
   init_case_paths()
 }
 
@@ -90,23 +85,17 @@ resolve_processed_dir <- function(processed_dir = NULL, subdir = NULL) {
 }
 
 
-
 # ADS ENGINE LOADER ------------------------------------------------------------------------------
 
 load_ads_engine <- function() {
-  ads_repo <- Sys.getenv("ADS_REPO", unset = "")
-  if (!nzchar(ads_repo)) stop("ADS_REPO is not set. Run setx ADS_REPO on this machine.")
-  ads_repo <- normalizePath(ads_repo, winslash = "/", mustWork = TRUE)
+  repo <- Sys.getenv("ADS_REPO", unset = "")
+  if (!nzchar(repo)) stop("ADS_REPO is not set. On Windows: setx ADS_REPO \"C:/.../GitHub/ads\"")
+  repo <- normalizePath(repo, winslash = "/", mustWork = TRUE)
   
-  fn_path <- file.path(ads_repo, "scripts", "functions.R")
+  fn_path <- file.path(repo, "scripts", "functions.R")
   if (!file.exists(fn_path)) stop("functions.R not found at: ", fn_path)
   
-  message("ADS_REPO:  ", ads_repo)
-  message("Sourcing:  ", fn_path)
-  
   source(fn_path, local = FALSE, chdir = FALSE)
-  message("✓ functions.R loaded")
-  
   invisible(TRUE)
 }
 
@@ -431,7 +420,7 @@ pay_code_summary <- function(
     summary_list <- list()
     
     for (pay_code in unique_pay_codes) {
-      subset_data <- df %>% dplyr::filter(Pay_Code == pay_code)
+      subset_data <- df %>% uniqueNfilter(Pay_Code == pay_code)
       if (nrow(subset_data) == 0) next
       
       summary_list[[paste(key_label, pay_code, sep = "_")]] <-
@@ -440,8 +429,8 @@ pay_code_summary <- function(
           Pay_Code = pay_code,
           Min_Period_End = min(subset_data$Pay_Period_End, na.rm = TRUE),
           Max_Period_End = max(subset_data$Pay_Period_End, na.rm = TRUE),
-          Employees = dplyr::n_distinct(subset_data$Pay_ID),
-          Pay_Periods = dplyr::n_distinct(subset_data$Pay_ID_Period_End),
+          Employees = uniqueN(subset_data$Pay_ID),
+          Pay_Periods = uniqueN(subset_data$Pay_ID_Period_End),
           Total_Hours = sum(subset_data$Pay_Hours, na.rm = TRUE),
           Total_Amount = sum(subset_data$Pay_Amount, na.rm = TRUE),
           Avg_Amount = mean(subset_data$Pay_Amount, na.rm = TRUE),
@@ -463,13 +452,13 @@ pay_code_summary <- function(
     }
     
     total_summary <- df %>%
-      dplyr::summarise(
+      uniqueNsummarise(
         Pay_Key_Gps = key_label,
         Pay_Code = paste(key_label, "Total", sep = ": "),
         Min_Period_End = min(Pay_Period_End, na.rm = TRUE),
         Max_Period_End = max(Pay_Period_End, na.rm = TRUE),
-        Employees = dplyr::n_distinct(Pay_ID),
-        Pay_Periods = dplyr::n_distinct(Pay_ID_Period_End),
+        Employees = uniqueN(Pay_ID),
+        Pay_Periods = uniqueN(Pay_ID_Period_End),
         Total_Hours = sum(Pay_Hours, na.rm = TRUE),
         Total_Amount = sum(Pay_Amount, na.rm = TRUE),
         Avg_Amount = mean(Pay_Amount, na.rm = TRUE),
@@ -490,31 +479,31 @@ pay_code_summary <- function(
       )
     
     summary_list[[paste(key_label, "Total", sep = "_")]] <- total_summary
-    dplyr::bind_rows(summary_list)
+    uniqueNbind_rows(summary_list)
   }
   
   if (isTRUE(separate_key_gps)) {
     keys <- unique(data$Pay_Key_Gps)
     
-    final_summary_df <- dplyr::bind_rows(lapply(keys, function(k) {
-      summarize_one_group(data %>% dplyr::filter(Pay_Key_Gps == k), key_label = k)
+    final_summary_df <- uniqueNbind_rows(lapply(keys, function(k) {
+      summarize_one_group(data %>% uniqueNfilter(Pay_Key_Gps == k), key_label = k)
     }))
     
     totals <- final_summary_df %>%
-      dplyr::filter(grepl(": Total$", Pay_Code)) %>%
-      dplyr::select(Pay_Key_Gps, Employees, Pay_Periods) %>%
-      dplyr::rename(
+      uniqueNfilter(grepl(": Total$", Pay_Code)) %>%
+      uniqueNselect(Pay_Key_Gps, Employees, Pay_Periods) %>%
+      uniqueNrename(
         Total_Employees = Employees,
         Total_Pay_Periods = Pay_Periods
       )
     
     final_summary_df <- final_summary_df %>%
-      dplyr::left_join(totals, by = "Pay_Key_Gps") %>%
-      dplyr::mutate(
+      uniqueNleft_join(totals, by = "Pay_Key_Gps") %>%
+      uniqueNmutate(
         Percent_Employees   = ifelse(Total_Employees > 0, round(Employees / Total_Employees, 4), NA_real_),
         Percent_Pay_Periods = ifelse(Total_Pay_Periods > 0, round(Pay_Periods / Total_Pay_Periods, 4), NA_real_)
       ) %>%
-      dplyr::select(
+      uniqueNselect(
         Pay_Key_Gps, Pay_Code,
         Min_Period_End, Max_Period_End,
         Employees, Percent_Employees,
@@ -528,11 +517,11 @@ pay_code_summary <- function(
     
   } else {
     final_summary_df <- summarize_one_group(data, key_label = "ALL") %>%
-      dplyr::mutate(
+      uniqueNmutate(
         Percent_Employees = NA_real_,
         Percent_Pay_Periods = NA_real_
       ) %>%
-      dplyr::select(
+      uniqueNselect(
         Pay_Key_Gps, Pay_Code,
         Min_Period_End, Max_Period_End,
         Employees, Percent_Employees,
@@ -2442,8 +2431,8 @@ generate_metadata <- function(data, file_name,
   adjusted_data <- data
   if (length(existing_date_cols) > 0) {
     adjusted_data <- adjusted_data |>
-      dplyr::mutate(
-        dplyr::across(dplyr::all_of(existing_date_cols), ~ as.Date(.))
+      uniqueNmutate(
+        uniqueNacross(uniqueNall_of(existing_date_cols), ~ as.Date(.))
       )
   }
   
@@ -2455,8 +2444,8 @@ generate_metadata <- function(data, file_name,
   
   # Convert R classes to Power Query friendly types
   metadata <- metadata |>
-    dplyr::mutate(
-      DataType = dplyr::case_when(
+    uniqueNmutate(
+      DataType = uniqueNcase_when(
         DataType %in% c("integer") ~ "Whole Number",
         DataType %in% c("double", "numeric") ~ "Decimal Number",
         DataType == "character" ~ "Text",
@@ -2477,53 +2466,22 @@ generate_metadata <- function(data, file_name,
 
 # FINAL ANALYSIS TABLE ---------------------------------------------------------------
 
-<<<<<<< Updated upstream
 # Unified Metrics Pipeline
 # Requires: data.table, lubridate
 # Uses: resolve_out_dir(), resolve_processed_dir(), write_csv_and_rds() (from your engine helpers)
 
-# --- 0) Load spec (ABSOLUTE PATH via ADS_REPO) ---
-ADS_REPO <- normalizePath(Sys.getenv("ADS_REPO"), winslash = "/", mustWork = TRUE)
-metrics_spec_path <- file.path(ADS_REPO, "scripts", "metrics_spec.csv")
-if (!file.exists(metrics_spec_path)) stop("Missing metrics_spec.csv at: ", metrics_spec_path)
-
-metrics_spec <- data.table::fread(metrics_spec_path)
-
-metrics_spec[, metric_type := data.table::fcase(
-  grepl("date", metric_label, ignore.case = TRUE), "date",
-  grepl("percent", metric_label, ignore.case = TRUE), "percent",
-  default = "value"
-)]
-metrics_spec[, metric_order := .I]
-
-# --- 1) Denominator functions (unchanged from your draft) ---
-=======
-library(data.table)
-library(lubridate)
-
-# 1. Spec split: groups that should NOT be broken out by year
-
-is_no_year_group <- function(x) {
-  grepl("^Damages", x, ignore.case = TRUE) | grepl("^PAGA", x, ignore.case = TRUE)
-}
-
-metric_spec_no_year <- metric_spec[is_no_year_group(metric_group)]
-metric_spec_year_ok <- metric_spec[!is_no_year_group(metric_group)]
-
-# 2. Denominator definitions
-
+# Denominator definitions
 # Time data denominators (shift-level)
->>>>>>> Stashed changes
 denom_functions_time <- list(
-  shifts_all              = function(dt) dt[, dplyr::n_distinct(ID_Shift)],
-  shifts_gt_3_5           = function(dt) dt[shift_hrs > 3.5, dplyr::n_distinct(ID_Shift)],
-  shifts_gt_5             = function(dt) dt[shift_hrs > 5, dplyr::n_distinct(ID_Shift)],
-  shifts_gt_6             = function(dt) dt[shift_hrs > 6, dplyr::n_distinct(ID_Shift)],
-  shifts_gt_10            = function(dt) dt[shift_hrs > 10, dplyr::n_distinct(ID_Shift)],
-  shifts_gt_12            = function(dt) dt[shift_hrs > 12, dplyr::n_distinct(ID_Shift)],
-  pay_periods             = function(dt) dt[, dplyr::n_distinct(ID_Period_End)],
-  weeks                   = function(dt) dt[, dplyr::n_distinct(ID_Week_End)],
-  employees               = function(dt) dt[, dplyr::n_distinct(ID)],
+  shifts_all              = function(dt) dt[, uniqueN(ID_Shift)],
+  shifts_gt_3_5           = function(dt) dt[shift_hrs > 3.5, uniqueN(ID_Shift)],
+  shifts_gt_5             = function(dt) dt[shift_hrs > 5, uniqueN(ID_Shift)],
+  shifts_gt_6             = function(dt) dt[shift_hrs > 6, uniqueN(ID_Shift)],
+  shifts_gt_10            = function(dt) dt[shift_hrs > 10, uniqueN(ID_Shift)],
+  shifts_gt_12            = function(dt) dt[shift_hrs > 12, uniqueN(ID_Shift)],
+  pay_periods             = function(dt) dt[, uniqueN(ID_Period_End)],
+  weeks                   = function(dt) dt[, uniqueN(ID_Week_End)],
+  employees               = function(dt) dt[, uniqueN(ID)],
   meal_periods            = function(dt) dt[, sum(shift_mps, na.rm = TRUE)],
   auto_meal_periods       = function(dt) dt[, sum(!is.na(auto_mp))],
   shifts_gt_5_late_meals  = function(dt) dt[, sum(LateMP1, na.rm = TRUE)],
@@ -2536,8 +2494,8 @@ denom_functions_time <- list(
 )
 
 denom_functions_pay <- list(
-  employees_pay           = function(dt) dt[, dplyr::n_distinct(Pay_ID)],
-  pay_periods_pay         = function(dt) dt[, dplyr::n_distinct(Pay_ID_Period_End)]
+  employees_pay           = function(dt) dt[, uniqueN(Pay_ID)],
+  pay_periods_pay         = function(dt) dt[, uniqueN(Pay_ID_Period_End)]
 )
 
 denom_functions_pp <- list(
@@ -2545,7 +2503,10 @@ denom_functions_pp <- list(
   pp_with_shift           = function(dt) dt[has_shift == 1, .N],
   pp_with_pay             = function(dt) dt[has_pay == 1, .N],
   pp_with_both            = function(dt) dt[has_shift == 1 & has_pay == 1, .N],
-  pp_employees            = function(dt) dt[, dplyr::n_distinct(ID)],
+  pp_employees            = function(dt) dt[, uniqueN(ID)],
+  pp_pay_periods          = function(dt) dt[, uniqueN(ID_Period_End)],
+  pp_paga_employees       = function(dt) uniqueN(dt[in_PAGA_period==1, ID]),
+  pp_paga_pay_periods     = function(dt) uniqueN(dt[in_PAGA_period==1, ID_Period_End]),
   pp_with_shifts_gt_5     = function(dt) dt[Shifts_gt_5 > 0, .N],
   pp_with_shifts_gt_6     = function(dt) dt[Shifts_gt_6 > 0, .N],
   pp_with_shifts_gt_3_5   = function(dt) dt[Shifts_gt_3_5 > 0, .N],
@@ -2553,33 +2514,14 @@ denom_functions_pp <- list(
   pp_with_rp_violations   = function(dt) dt[rpv_per_pp > 0, .N]
 )
 
-denom_functions_ee <- list(
-  ee_all                  = function(dt) dt[, .N],
-  ee_with_shift           = function(dt) dt[has_shift == 1, .N],
-  ee_with_pay             = function(dt) dt[has_pay == 1, .N],
-  ee_with_both            = function(dt) dt[has_shift == 1 & has_pay == 1, .N],
-  ee_with_shifts_gt_5     = function(dt) dt[Shifts_gt_5 > 0, .N],
-  ee_with_shifts_gt_6     = function(dt) dt[Shifts_gt_6 > 0, .N],
-  ee_with_shifts_gt_3_5   = function(dt) dt[Shifts_gt_3_5 > 0, .N],
-  ee_with_mp_violations   = function(dt) dt[mpv_ee > 0, .N],
-  ee_with_rp_violations   = function(dt) dt[rpv_ee > 0, .N],
-  ee_with_mp_less_prems   = function(dt) dt[mpv_ee_less_prems > 0, .N],
-  ee_with_rp_less_prems   = function(dt) dt[rpv_ee_less_prems > 0, .N]
-)
+denom_functions <- c(denom_functions_time, denom_functions_pay, denom_functions_pp)
 
-denom_functions <- c(denom_functions_time, denom_functions_pay, denom_functions_pp, denom_functions_ee)
-
-<<<<<<< Updated upstream
-# --- 2) Core evaluation (unchanged) ---
-=======
-# 3. Core evaluation function
-
+# Core evaluation function
 #' Evaluate a single metric expression against a data.table
 #' @param dt data.table to evaluate against
 #' @param expr_str character string of the R expression
 #' @param digits number of decimal places (NA for no rounding)
 #' @return numeric or Date result
->>>>>>> Stashed changes
 eval_metric <- function(dt, expr_str, digits = NA) {
   if (is.null(dt) || nrow(dt) == 0) return(NA_real_)
   
@@ -2611,15 +2553,12 @@ eval_denom <- function(dt, denom_name, source) {
   tryCatch(denom_fn(dt), error = function(e) NA_real_)
 }
 
-<<<<<<< Updated upstream
-=======
-# 4. Calculate all metrics for a given data list
 
+# 4. Calculate all metrics for a given data list
 #' Calculate all metrics from spec for given data
 #' @param data_list list with 'shift_data1', 'pay1', 'pp_data1', 'ee_data1' data.tables
 #' @param spec data.table of metric specifications
 #' @return data.table with columns: metric_group, metric_label, metric_type, value, denom_value, pct
->>>>>>> Stashed changes
 calculate_metrics <- function(data_list, spec) {
   results <- lapply(seq_len(nrow(spec)), function(i) {
     src <- spec$source[i]
@@ -2646,12 +2585,7 @@ calculate_metrics <- function(data_list, spec) {
   data.table::rbindlist(results)
 }
 
-<<<<<<< Updated upstream
-=======
-# 5. Filtering helpers
-
-#' Filter data by expression
->>>>>>> Stashed changes
+# Filtering helpers
 filter_data <- function(dt, filter_expr = NULL) {
   if (is.null(dt)) return(NULL)
   if (is.null(filter_expr)) return(dt)
@@ -2669,12 +2603,7 @@ create_filtered_data <- function(time_dt, pay_dt, pp_dt = NULL, ee_dt = NULL,
   )
 }
 
-<<<<<<< Updated upstream
-=======
 # 6. Build filter configurations
-
-#' Build standard filter configurations for all data sources
->>>>>>> Stashed changes
 build_filter_configs <- function(time_dt, pay_dt, pp_dt = NULL, ee_dt = NULL, custom_filters = list()) {
   configs <- list()
   
@@ -2702,7 +2631,6 @@ build_filter_configs <- function(time_dt, pay_dt, pp_dt = NULL, ee_dt = NULL, cu
   configs
 }
 
-<<<<<<< Updated upstream
 run_metrics_pipeline <- function(time_dt, pay_dt, spec,
                                  pp_dt = NULL, ee_dt = NULL,
                                  custom_filters = list()) {
@@ -2730,7 +2658,6 @@ run_metrics_pipeline <- function(time_dt, pay_dt, spec,
   data.table::rbindlist(results_list)
 }
 
-=======
 # 7. Main calculation pipeline
 
 #' Run full metrics calculation across all filters
@@ -2805,7 +2732,6 @@ run_metrics_pipeline <- function(time_dt, pay_dt, spec,
 #' Format the raw metrics results into a wide table
 #' @param results_dt data.table from run_metrics_pipeline
 #' @return formatted data.table ready for export
->>>>>>> Stashed changes
 format_metrics_table <- function(results_dt) {
   dt <- data.table::copy(results_dt)
   dt[, digits := suppressWarnings(as.numeric(digits))]
@@ -2850,17 +2776,14 @@ format_metrics_table <- function(results_dt) {
   wide_dt
 }
 
-<<<<<<< Updated upstream
-# --- 3) Export helper (ABSOLUTE OUT_DIR + CSV/RDS) ---
 export_metrics <- function(wide_dt, base_name = "Metrics_Table", out_dir = NULL) {
   out_dir <- resolve_out_dir(out_dir)
   out_csv <- file.path(out_dir, paste0(base_name, ".csv"))
   write_csv_and_rds(wide_dt, out_csv)
   invisible(list(csv = out_csv, rds = sub("\\.csv$", ".rds", out_csv)))
 }
-=======
+
 # USAGE EXAMPLE
->>>>>>> Stashed changes
 
 # Example: Standard run (All Data + Year tabs) and export
 # metrics_raw  <- run_metrics_pipeline(
