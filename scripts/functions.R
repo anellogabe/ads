@@ -2477,6 +2477,7 @@ generate_metadata <- function(data, file_name,
 
 # FINAL ANALYSIS TABLE ---------------------------------------------------------------
 
+<<<<<<< Updated upstream
 # Unified Metrics Pipeline
 # Requires: data.table, lubridate
 # Uses: resolve_out_dir(), resolve_processed_dir(), write_csv_and_rds() (from your engine helpers)
@@ -2496,6 +2497,23 @@ metrics_spec[, metric_type := data.table::fcase(
 metrics_spec[, metric_order := .I]
 
 # --- 1) Denominator functions (unchanged from your draft) ---
+=======
+library(data.table)
+library(lubridate)
+
+# 1. Spec split: groups that should NOT be broken out by year
+
+is_no_year_group <- function(x) {
+  grepl("^Damages", x, ignore.case = TRUE) | grepl("^PAGA", x, ignore.case = TRUE)
+}
+
+metric_spec_no_year <- metric_spec[is_no_year_group(metric_group)]
+metric_spec_year_ok <- metric_spec[!is_no_year_group(metric_group)]
+
+# 2. Denominator definitions
+
+# Time data denominators (shift-level)
+>>>>>>> Stashed changes
 denom_functions_time <- list(
   shifts_all              = function(dt) dt[, dplyr::n_distinct(ID_Shift)],
   shifts_gt_3_5           = function(dt) dt[shift_hrs > 3.5, dplyr::n_distinct(ID_Shift)],
@@ -2551,7 +2569,17 @@ denom_functions_ee <- list(
 
 denom_functions <- c(denom_functions_time, denom_functions_pay, denom_functions_pp, denom_functions_ee)
 
+<<<<<<< Updated upstream
 # --- 2) Core evaluation (unchanged) ---
+=======
+# 3. Core evaluation function
+
+#' Evaluate a single metric expression against a data.table
+#' @param dt data.table to evaluate against
+#' @param expr_str character string of the R expression
+#' @param digits number of decimal places (NA for no rounding)
+#' @return numeric or Date result
+>>>>>>> Stashed changes
 eval_metric <- function(dt, expr_str, digits = NA) {
   if (is.null(dt) || nrow(dt) == 0) return(NA_real_)
   
@@ -2583,6 +2611,15 @@ eval_denom <- function(dt, denom_name, source) {
   tryCatch(denom_fn(dt), error = function(e) NA_real_)
 }
 
+<<<<<<< Updated upstream
+=======
+# 4. Calculate all metrics for a given data list
+
+#' Calculate all metrics from spec for given data
+#' @param data_list list with 'shift_data1', 'pay1', 'pp_data1', 'ee_data1' data.tables
+#' @param spec data.table of metric specifications
+#' @return data.table with columns: metric_group, metric_label, metric_type, value, denom_value, pct
+>>>>>>> Stashed changes
 calculate_metrics <- function(data_list, spec) {
   results <- lapply(seq_len(nrow(spec)), function(i) {
     src <- spec$source[i]
@@ -2609,6 +2646,12 @@ calculate_metrics <- function(data_list, spec) {
   data.table::rbindlist(results)
 }
 
+<<<<<<< Updated upstream
+=======
+# 5. Filtering helpers
+
+#' Filter data by expression
+>>>>>>> Stashed changes
 filter_data <- function(dt, filter_expr = NULL) {
   if (is.null(dt)) return(NULL)
   if (is.null(filter_expr)) return(dt)
@@ -2626,6 +2669,12 @@ create_filtered_data <- function(time_dt, pay_dt, pp_dt = NULL, ee_dt = NULL,
   )
 }
 
+<<<<<<< Updated upstream
+=======
+# 6. Build filter configurations
+
+#' Build standard filter configurations for all data sources
+>>>>>>> Stashed changes
 build_filter_configs <- function(time_dt, pay_dt, pp_dt = NULL, ee_dt = NULL, custom_filters = list()) {
   configs <- list()
   
@@ -2653,6 +2702,7 @@ build_filter_configs <- function(time_dt, pay_dt, pp_dt = NULL, ee_dt = NULL, cu
   configs
 }
 
+<<<<<<< Updated upstream
 run_metrics_pipeline <- function(time_dt, pay_dt, spec,
                                  pp_dt = NULL, ee_dt = NULL,
                                  custom_filters = list()) {
@@ -2680,6 +2730,82 @@ run_metrics_pipeline <- function(time_dt, pay_dt, spec,
   data.table::rbindlist(results_list)
 }
 
+=======
+# 7. Main calculation pipeline
+
+#' Run full metrics calculation across all filters
+#' @param time_dt shift-level time data (shift_data1)
+#' @param pay_dt pay record-level pay data (pay1)
+#' @param spec metric specification data.table
+#' @param pp_dt pay period-level merged data (pp_data1), optional
+#' @param ee_dt employee-level merged data (ee_data1), optional
+#' @param custom_filters list of custom filter configurations, optional
+#' @return data.table of all metrics across all filters
+run_metrics_pipeline <- function(time_dt, pay_dt, spec, 
+                                 pp_dt = NULL, ee_dt = NULL, 
+                                 custom_filters = list()) {
+  
+  if (!is.null(time_dt)) setDT(time_dt)
+  if (!is.null(pay_dt))  setDT(pay_dt)
+  if (!is.null(pp_dt))   setDT(pp_dt)
+  if (!is.null(ee_dt))   setDT(ee_dt)
+  
+  # Split spec: year-OK vs no-year groups
+  is_no_year <- function(x) {
+    grepl("^Damages", x, ignore.case = TRUE) | grepl("^PAGA", x, ignore.case = TRUE)
+  }
+  spec_no_year <- spec[is_no_year(metric_group)]
+  spec_year_ok <- spec[!is_no_year(metric_group)]
+  
+  # Build ALL filter configs (All Data + Years + Custom)
+  filter_configs_all <- build_filter_configs(time_dt, pay_dt, pp_dt, ee_dt, custom_filters)
+  
+  # Build NO-YEAR filter configs: All Data + Custom only (drop year-only configs)
+  keep_nm <- names(filter_configs_all)
+  is_year_nm <- grepl("^\\d{4}$", keep_nm)
+  filter_configs_no_year <- filter_configs_all[!is_year_nm]
+  
+  # ---- Pass 1: year-OK metrics over ALL filters ----
+  res1 <- if (nrow(spec_year_ok) > 0) {
+    rbindlist(lapply(names(filter_configs_all), function(filter_name) {
+      cfg <- filter_configs_all[[filter_name]]
+      filtered_data <- create_filtered_data(
+        time_dt, pay_dt, pp_dt, ee_dt,
+        cfg$time_filter, cfg$pay_filter, cfg$pp_filter, cfg$ee_filter
+      )
+      metrics <- calculate_metrics(filtered_data, spec_year_ok)
+      metrics[, filter_name := filter_name]
+      metrics
+    }))
+  } else {
+    NULL
+  }
+  
+  # ---- Pass 2: no-year metrics over NO-YEAR filters only ----
+  res2 <- if (nrow(spec_no_year) > 0) {
+    rbindlist(lapply(names(filter_configs_no_year), function(filter_name) {
+      cfg <- filter_configs_no_year[[filter_name]]
+      filtered_data <- create_filtered_data(
+        time_dt, pay_dt, pp_dt, ee_dt,
+        cfg$time_filter, cfg$pay_filter, cfg$pp_filter, cfg$ee_filter
+      )
+      metrics <- calculate_metrics(filtered_data, spec_no_year)
+      metrics[, filter_name := filter_name]
+      metrics
+    }))
+  } else {
+    NULL
+  }
+  
+  rbindlist(list(res1, res2), fill = TRUE)
+}
+
+# 8. Format output table
+
+#' Format the raw metrics results into a wide table
+#' @param results_dt data.table from run_metrics_pipeline
+#' @return formatted data.table ready for export
+>>>>>>> Stashed changes
 format_metrics_table <- function(results_dt) {
   dt <- data.table::copy(results_dt)
   dt[, digits := suppressWarnings(as.numeric(digits))]
@@ -2724,6 +2850,7 @@ format_metrics_table <- function(results_dt) {
   wide_dt
 }
 
+<<<<<<< Updated upstream
 # --- 3) Export helper (ABSOLUTE OUT_DIR + CSV/RDS) ---
 export_metrics <- function(wide_dt, base_name = "Metrics_Table", out_dir = NULL) {
   out_dir <- resolve_out_dir(out_dir)
@@ -2731,6 +2858,9 @@ export_metrics <- function(wide_dt, base_name = "Metrics_Table", out_dir = NULL)
   write_csv_and_rds(wide_dt, out_csv)
   invisible(list(csv = out_csv, rds = sub("\\.csv$", ".rds", out_csv)))
 }
+=======
+# USAGE EXAMPLE
+>>>>>>> Stashed changes
 
 # Example: Standard run (All Data + Year tabs) and export
 # metrics_raw  <- run_metrics_pipeline(
