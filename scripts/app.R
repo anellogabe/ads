@@ -1797,8 +1797,8 @@ server <- function(data_list, metric_spec, analysis_tables) {
       # These represent the full class population (not filtered by date/sample)
       extrap_env <- list(
         # Use full class list for employee count (not filtered data)
-        extrap_class_ees = if (!is.null(data_list$class1) && "Class_ID" %in% names(data_list$class1)) {
-          uniqueN(data_list$class1$Class_ID, na.rm = TRUE)
+        extrap_class_ees = if (!is.null(data$class1) && "Class_ID" %in% names(data$class1)) {
+          uniqueN(data$class1$Class_ID, na.rm = TRUE)
         } else {
           uniqueN(data$shift_data1$ID, na.rm = TRUE)
         },
@@ -3390,6 +3390,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
         })
       }
     )
+  }
 }
 
 # ---- RUN APP ----
