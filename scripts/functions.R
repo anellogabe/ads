@@ -2571,16 +2571,28 @@ calculate_metrics <- function(data_list, spec) {
     
     pct <- if (!is.na(val) && !is.na(denom_val) && denom_val > 0) val / denom_val else NA_real_
     
-    list(
-      metric_order = spec$metric_order[i],
+    result <- list(
+      metric_order = if ("metric_order" %in% names(spec)) spec$metric_order[i] else i,
       metric_group = spec$metric_group[i],
       metric_label = spec$metric_label[i],
-      metric_type  = spec$metric_type[i],
+      metric_type  = if ("metric_type" %in% names(spec)) spec$metric_type[i] else "value",
       digits       = digits_val,
       value        = val,
       denom_value  = denom_val,
       pct          = pct
     )
+
+    # Add scenario column if present in spec
+    if ("scenario" %in% names(spec)) {
+      result$scenario <- spec$scenario[i]
+    }
+
+    # Add no_year_breakdown column if present in spec
+    if ("no_year_breakdown" %in% names(spec)) {
+      result$no_year_breakdown <- spec$no_year_breakdown[i]
+    }
+
+    result
   })
   rbindlist(results)
 }
@@ -2631,33 +2643,6 @@ build_filter_configs <- function(time_dt, pay_dt, pp_dt = NULL, ee_dt = NULL, cu
   configs
 }
 
-run_metrics_pipeline <- function(time_dt, pay_dt, spec,
-                                 pp_dt = NULL, ee_dt = NULL,
-                                 custom_filters = list()) {
-  
-  if (!is.null(time_dt)) setDT(time_dt)
-  if (!is.null(pay_dt))  setDT(pay_dt)
-  if (!is.null(pp_dt))   setDT(pp_dt)
-  if (!is.null(ee_dt))   setDT(ee_dt)
-  
-  filter_configs <- build_filter_configs(time_dt, pay_dt, pp_dt, ee_dt, custom_filters)
-  
-  results_list <- lapply(names(filter_configs), function(filter_name) {
-    cfg <- filter_configs[[filter_name]]
-    
-    filtered_data <- create_filtered_data(
-      time_dt, pay_dt, pp_dt, ee_dt,
-      cfg$time_filter, cfg$pay_filter, cfg$pp_filter, cfg$ee_filter
-    )
-    
-    metrics <- calculate_metrics(filtered_data, spec)
-    metrics[, filter_name := filter_name]
-    metrics
-  })
-  
-  rbindlist(results_list)
-}
-
 # 7. Main calculation pipeline
 
 #' Run full metrics calculation across all filters
@@ -2678,11 +2663,21 @@ run_metrics_pipeline <- function(time_dt, pay_dt, spec,
   if (!is.null(ee_dt))   setDT(ee_dt)
   
   # Split spec: year-OK vs no-year groups
-  is_no_year <- function(x) {
-    grepl("^Damages", x, ignore.case = TRUE) | grepl("^PAGA", x, ignore.case = TRUE)
+  # Use explicit no_year_breakdown column if available, otherwise fall back to pattern matching
+  if ("no_year_breakdown" %in% names(spec)) {
+    # Convert to logical, treating empty/NA as FALSE
+    spec[, no_year_flag := fifelse(is.na(no_year_breakdown) | no_year_breakdown == "" | no_year_breakdown == "FALSE", FALSE, TRUE)]
+    spec_no_year <- spec[no_year_flag == TRUE]
+    spec_year_ok <- spec[no_year_flag == FALSE]
+    spec[, no_year_flag := NULL]  # Clean up temp column
+  } else {
+    # Fallback: use pattern matching for backward compatibility
+    is_no_year <- function(x) {
+      grepl("^Damages", x, ignore.case = TRUE) | grepl("^PAGA", x, ignore.case = TRUE)
+    }
+    spec_no_year <- spec[is_no_year(metric_group)]
+    spec_year_ok <- spec[!is_no_year(metric_group)]
   }
-  spec_no_year <- spec[is_no_year(metric_group)]
-  spec_year_ok <- spec[!is_no_year(metric_group)]
   
   # Build ALL filter configs (All Data + Years + Custom)
   filter_configs_all <- build_filter_configs(time_dt, pay_dt, pp_dt, ee_dt, custom_filters)
