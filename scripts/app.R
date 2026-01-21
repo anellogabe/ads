@@ -1793,14 +1793,47 @@ server <- function(data_list, metric_spec, analysis_tables) {
         }
       }
 
-      # Run the pipeline with all data sources
+      # Calculate extrapolation values for use in extrap_expr evaluation
+      # These represent the full class population (not filtered by date/sample)
+      extrap_env <- list(
+        # Use full class list for employee count (not filtered data)
+        extrap_class_ees = if (!is.null(data_list$class1) && "Class_ID" %in% names(data_list$class1)) {
+          uniqueN(data_list$class1$Class_ID, na.rm = TRUE)
+        } else {
+          uniqueN(data$shift_data1$ID, na.rm = TRUE)
+        },
+
+        # Extrapolated pay periods based on data
+        extrap_class_pps = if (!is.null(data$pp_data1) && "ID_Period_End" %in% names(data$pp_data1)) {
+          uniqueN(data$pp_data1$ID_Period_End, na.rm = TRUE)
+        } else {
+          0
+        },
+
+        # Extrapolated weeks based on data
+        extrap_class_wks = if (!is.null(data$shift_data1) && "week" %in% names(data$shift_data1)) {
+          sum(data$shift_data1$week, na.rm = TRUE)
+        } else {
+          0
+        },
+
+        # Extrapolated shifts based on data
+        extrap_class_shifts = if (!is.null(data$shift_data1) && "ID_Shift" %in% names(data$shift_data1)) {
+          uniqueN(data$shift_data1$ID_Shift, na.rm = TRUE)
+        } else {
+          0
+        }
+      )
+
+      # Run the pipeline with all data sources and extrapolation environment
       results <- run_metrics_pipeline(
         time_dt = data$shift_data1,
         pay_dt = data$pay1,
         spec = metric_spec,
         pp_dt = data$pp_data1,
         ee_dt = data$ee_data1,
-        custom_filters = custom_filters
+        custom_filters = custom_filters,
+        extrap_env = extrap_env
       )
 
       results

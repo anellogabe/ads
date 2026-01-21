@@ -2554,23 +2554,72 @@ eval_denom <- function(dt, denom_name, source) {
 }
 
 
+#' Evaluate extrapolation expression with environment variables
+#' @param dt data.table to evaluate against
+#' @param extrap_expr_str character string of the R expression for extrapolation
+#' @param extrap_env named list of extrapolation variables (extrap_class_ees, etc.)
+#' @param digits number of decimal places
+#' @return numeric result
+eval_extrap <- function(dt, extrap_expr_str, extrap_env = list(), digits = NA) {
+  if (is.null(dt) || nrow(dt) == 0) return(NA_real_)
+  if (is.na(extrap_expr_str) || extrap_expr_str == "") return(NA_real_)
+
+  # Create evaluation environment with extrapolation variables
+  eval_env <- new.env(parent = globalenv())
+
+  # Add extrapolation variables to environment
+  for (var_name in names(extrap_env)) {
+    assign(var_name, extrap_env[[var_name]], envir = eval_env)
+  }
+
+  # Evaluate expression in the data.table context with extrap variables available
+  result <- tryCatch({
+    dt[, eval(parse(text = extrap_expr_str), envir = eval_env)]
+  }, error = function(e) {
+    NA_real_
+  })
+
+  if (inherits(result, c("Date", "POSIXct", "POSIXlt", "IDate"))) {
+    result <- as.numeric(as.Date(result))
+  }
+
+  if (!is.numeric(result)) {
+    result <- tryCatch(as.numeric(result), error = function(e) NA_real_)
+  }
+
+  digits_num <- suppressWarnings(as.numeric(digits))
+  if (!is.na(digits_num) && is.numeric(result) && length(result) == 1 && !is.na(result)) {
+    result <- round(result, digits_num)
+  }
+
+  as.numeric(result)
+}
+
 # 4. Calculate all metrics for a given data list
 #' Calculate all metrics from spec for given data
 #' @param data_list list with 'shift_data1', 'pay1', 'pp_data1', 'ee_data1' data.tables
 #' @param spec data.table of metric specifications
-#' @return data.table with columns: metric_group, metric_label, metric_type, value, denom_value, pct
-calculate_metrics <- function(data_list, spec) {
+#' @param extrap_env named list of extrapolation variables (optional)
+#' @return data.table with columns: metric_group, metric_label, metric_type, value, denom_value, pct, extrap_value
+calculate_metrics <- function(data_list, spec, extrap_env = list()) {
   results <- lapply(seq_len(nrow(spec)), function(i) {
     src <- spec$source[i]
     dt <- data_list[[src]]
     denom_name <- spec$denom[i]
     digits_val <- suppressWarnings(as.numeric(spec$digits[i]))
-    
+
     val <- eval_metric(dt, spec$expr[i], digits_val)
     denom_val <- eval_denom(dt, denom_name, src)
-    
+
     pct <- if (!is.na(val) && !is.na(denom_val) && denom_val > 0) val / denom_val else NA_real_
-    
+
+    # Evaluate extrapolation expression if present
+    extrap_val <- if ("extrap_expr" %in% names(spec) && !is.na(spec$extrap_expr[i]) && spec$extrap_expr[i] != "") {
+      eval_extrap(dt, spec$extrap_expr[i], extrap_env, digits_val)
+    } else {
+      NA_real_
+    }
+
     result <- list(
       metric_order = if ("metric_order" %in% names(spec)) spec$metric_order[i] else i,
       metric_group = spec$metric_group[i],
@@ -2579,7 +2628,8 @@ calculate_metrics <- function(data_list, spec) {
       digits       = digits_val,
       value        = val,
       denom_value  = denom_val,
-      pct          = pct
+      pct          = pct,
+      extrap_value = extrap_val
     )
 
     # Add scenario column if present in spec
@@ -2652,10 +2702,12 @@ build_filter_configs <- function(time_dt, pay_dt, pp_dt = NULL, ee_dt = NULL, cu
 #' @param pp_dt pay period-level merged data (pp_data1), optional
 #' @param ee_dt employee-level merged data (ee_data1), optional
 #' @param custom_filters list of custom filter configurations, optional
+#' @param extrap_env named list of extrapolation variables (extrap_class_ees, etc.), optional
 #' @return data.table of all metrics across all filters
-run_metrics_pipeline <- function(time_dt, pay_dt, spec, 
-                                 pp_dt = NULL, ee_dt = NULL, 
-                                 custom_filters = list()) {
+run_metrics_pipeline <- function(time_dt, pay_dt, spec,
+                                 pp_dt = NULL, ee_dt = NULL,
+                                 custom_filters = list(),
+                                 extrap_env = list()) {
   
   if (!is.null(time_dt)) setDT(time_dt)
   if (!is.null(pay_dt))  setDT(pay_dt)
@@ -2695,14 +2747,14 @@ run_metrics_pipeline <- function(time_dt, pay_dt, spec,
         time_dt, pay_dt, pp_dt, ee_dt,
         cfg$time_filter, cfg$pay_filter, cfg$pp_filter, cfg$ee_filter
       )
-      metrics <- calculate_metrics(filtered_data, spec_year_ok)
+      metrics <- calculate_metrics(filtered_data, spec_year_ok, extrap_env)
       metrics[, filter_name := filter_name]
       metrics
     }))
   } else {
     NULL
   }
-  
+
   # ---- Pass 2: no-year metrics over NO-YEAR filters only ----
   res2 <- if (nrow(spec_no_year) > 0) {
     rbindlist(lapply(names(filter_configs_no_year), function(filter_name) {
@@ -2711,7 +2763,7 @@ run_metrics_pipeline <- function(time_dt, pay_dt, spec,
         time_dt, pay_dt, pp_dt, ee_dt,
         cfg$time_filter, cfg$pay_filter, cfg$pp_filter, cfg$ee_filter
       )
-      metrics <- calculate_metrics(filtered_data, spec_no_year)
+      metrics <- calculate_metrics(filtered_data, spec_no_year, extrap_env)
       metrics[, filter_name := filter_name]
       metrics
     }))
@@ -2753,19 +2805,53 @@ format_metrics_table <- function(results_dt) {
   
   dt[formatted_value == "NaN", formatted_value := "0"]
   dt[grepl("NaN", formatted_value), formatted_value := gsub(" \\(NaN%\\)", "", formatted_value)]
-  
+
+  # Format extrapolated value (no percentage, just the value)
+  if ("extrap_value" %in% names(dt)) {
+    dt[, formatted_extrap := {
+      rounded_val <- fifelse(is.na(digits) | is.na(extrap_value), extrap_value, round(extrap_value, digits))
+
+      fv <- fcase(
+        metric_type == "date", as.character(as.Date(extrap_value, origin = "1970-01-01")),
+        is.na(extrap_value), "-",
+        is.nan(extrap_value), "-",
+        default = format(rounded_val, big.mark = ",", scientific = FALSE, trim = TRUE, nsmall = 0)
+      )
+
+      fv <- fifelse(is.na(digits) | digits == 0, gsub("\\.0+$", "", fv), fv)
+      gsub("^\\s+|\\s+$", "", fv)
+    }]
+
+    dt[formatted_extrap == "NaN", formatted_extrap := "-"]
+  }
+
+  # Pivot to wide format for filter columns
   wide_dt <- dcast(dt, metric_order + metric_group + metric_label ~ filter_name,
-                               value.var = "formatted_value")
-  
+                   value.var = "formatted_value")
+
   setorder(wide_dt, metric_order)
-  
+
+  # Add Extrapolated column (same value for all filters, so take from "All Data" filter)
+  if ("extrap_value" %in% names(dt)) {
+    extrap_col <- dt[filter_name == "All Data", .(metric_order, Extrapolated = formatted_extrap)]
+    wide_dt <- merge(wide_dt, extrap_col, by = "metric_order", all.x = TRUE)
+
+    # If no "All Data" filter, try to get from any filter
+    if (all(is.na(wide_dt$Extrapolated))) {
+      extrap_col <- dt[, .(Extrapolated = first(formatted_extrap)), by = metric_order]
+      wide_dt[, Extrapolated := NULL]
+      wide_dt <- merge(wide_dt, extrap_col, by = "metric_order", all.x = TRUE)
+    }
+  }
+
   all_cols <- names(wide_dt)
   year_cols <- sort(all_cols[grepl("^\\d{4}$", all_cols)])
-  other_cols <- setdiff(all_cols, c("metric_order", "metric_group", "metric_label", "All Data", year_cols))
-  
-  col_order <- c("metric_group", "metric_label", "All Data", year_cols, other_cols)
+  other_cols <- setdiff(all_cols, c("metric_order", "metric_group", "metric_label", "Extrapolated", "All Data", year_cols))
+
+  # Position: metric_group, metric_label, Extrapolated (NEW), All Data, years, other columns
+  col_order <- c("metric_group", "metric_label", "Extrapolated", "All Data", year_cols, other_cols)
   col_order <- col_order[col_order %in% all_cols]
-  
+
   setcolorder(wide_dt, col_order)
   wide_dt[, metric_order := NULL]
   wide_dt
