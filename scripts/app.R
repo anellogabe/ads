@@ -325,16 +325,119 @@ calculate_group_metrics <- function(data_list, spec, group_names, filters = list
   rbindlist(Filter(Negate(is.null), all_results), fill = TRUE)
 }
 
+# NEW PIPELINE-BASED CALCULATION SYSTEM
+# Uses run_metrics_pipeline() from functions.R with caching and filtering
+
+#' Convert pipeline results to display format with metric groups
+#' @param pipeline_results Raw output from run_metrics_pipeline()
+#' @param group_names Vector of metric_group names to include
+#' @param include_years Logical - whether to include year columns (TRUE for most, FALSE for Damages/PAGA)
+#' @return data.table formatted for display with Metric column
+pipeline_to_display_format <- function(pipeline_results, group_names = NULL, include_years = TRUE) {
+  if (is.null(pipeline_results) || nrow(pipeline_results) == 0) return(data.table())
+
+  # Filter by metric groups if specified
+  dt <- if (!is.null(group_names) && length(group_names) > 0) {
+    pipeline_results[metric_group %in% group_names]
+  } else {
+    copy(pipeline_results)
+  }
+
+  if (nrow(dt) == 0) return(data.table())
+
+  # Format the results table
+  formatted <- format_metrics_table(dt)
+
+  # Rename metric_label to Metric for display
+  if ("metric_label" %in% names(formatted)) {
+    setnames(formatted, "metric_label", "Metric")
+  }
+
+  # Remove metric_group column (used for filtering, not display)
+  if ("metric_group" %in% names(formatted)) {
+    formatted[, metric_group := NULL]
+  }
+
+  # If not including years, remove year columns
+  if (!include_years) {
+    year_cols <- names(formatted)[grepl("^\\d{4}$", names(formatted))]
+    if (length(year_cols) > 0) {
+      formatted[, (year_cols) := NULL]
+    }
+  }
+
+  formatted
+}
+
+#' Format damages tables with section headers
+#' @param pipeline_results Raw output from run_metrics_pipeline()
+#' @param section_definitions List of lists with section_name and groups
+#' @param scenario_filter Optional: "all", "no waivers", or "waivers" (uses new spec column if available)
+#' @return data.table formatted for display with section headers
+pipeline_to_damages_format <- function(pipeline_results, section_definitions, scenario_filter = NULL) {
+  if (is.null(pipeline_results) || nrow(pipeline_results) == 0) return(data.table())
+
+  all_sections <- lapply(section_definitions, function(def) {
+    section_name <- def$section_name
+    groups <- def$groups
+
+    if (length(groups) == 0) return(NULL)
+
+    # Filter by metric groups
+    dt <- pipeline_results[metric_group %in% groups]
+
+    # If scenario column exists in spec, filter by it; otherwise use label-based filtering
+    if (!is.null(scenario_filter) && "scenario" %in% names(dt)) {
+      dt <- dt[scenario == scenario_filter]
+    }
+
+    if (nrow(dt) == 0) return(NULL)
+
+    # Format the results (no years for damages)
+    formatted <- format_metrics_table(dt)
+
+    # Rename metric_label to Metric
+    if ("metric_label" %in% names(formatted)) {
+      setnames(formatted, "metric_label", "Metric")
+    }
+
+    # Remove year columns (damages don't have year breakdown)
+    year_cols <- names(formatted)[grepl("^\\d{4}$", names(formatted))]
+    if (length(year_cols) > 0) {
+      formatted[, (year_cols) := NULL]
+    }
+
+    # Remove metric_group column
+    if ("metric_group" %in% names(formatted)) {
+      formatted[, metric_group := NULL]
+    }
+
+    # Create section header
+    header_row <- data.table(Metric = paste0("### ", section_name))
+    for (col in setdiff(names(formatted), "Metric")) {
+      header_row[, (col) := ""]
+    }
+
+    # Combine header and metrics
+    rbind(header_row, formatted, fill = TRUE)
+  })
+
+  # Combine all sections
+  result <- rbindlist(Filter(Negate(is.null), all_sections), fill = TRUE)
+  result
+}
+
+
 # Damages-specific calculation (no year columns, only All Data and Key Groups)
 calculate_damages_metrics <- function(data_list, spec, group_names, filters = list(), extrapolation_factor = 1.0) {
   if (length(group_names) == 0) return(data.table())
-  
+
   all_results <- lapply(group_names, function(group_name) {
     group_spec <- spec[metric_group == group_name]
     if (nrow(group_spec) == 0) return(NULL)
-    
+
     first_source <- group_spec$source[1]
-    
+
     # Determine key groups based on source
     if (grepl("pay", first_source, ignore.case = TRUE)) {
       key_groups <- data_list$pay_key_groups
@@ -1656,7 +1759,39 @@ server <- function(data_list, metric_spec, analysis_tables) {
         pay_key_groups = pay_key_groups
       )
     }) |> shiny::bindCache(current_filters())
-    
+
+    # Run metrics pipeline once with all data and cache results
+    pipeline_results <- reactive({
+      data <- filtered_data()
+
+      # Build custom filters for Key Groups
+      custom_filters <- list()
+
+      # Add Key Group filters if they exist
+      if (!is.null(data$shift_key_groups) && length(data$shift_key_groups) > 0) {
+        for (kg in data$shift_key_groups) {
+          custom_filters[[kg]] <- list(
+            time_filter = bquote(Key_Gps == .(kg)),
+            pay_filter  = bquote(Pay_Key_Gps == .(kg)),
+            pp_filter   = bquote(Key_Gps == .(kg)),
+            ee_filter   = bquote(Key_Gps == .(kg))
+          )
+        }
+      }
+
+      # Run the pipeline with all data sources
+      results <- run_metrics_pipeline(
+        time_dt = data$shift_data1,
+        pay_dt = data$pay1,
+        spec = metric_spec,
+        pp_dt = data$pp_data1,
+        ee_dt = data$ee_data1,
+        custom_filters = custom_filters
+      )
+
+      results
+    }) |> shiny::bindCache(current_filters())
+
     # Populate Key Groups filter choices
     observe({
       time_key_gps <- if (!is.null(data_list$shift_data1) && "Key_Gps" %in% names(data_list$shift_data1)) unique(data_list$shift_data1$Key_Gps) else character(0)
@@ -1790,89 +1925,91 @@ server <- function(data_list, metric_spec, analysis_tables) {
     extrap_factor <- reactive({ 1.0 })
     
     output$table_time_summary <- renderDT({
-      data <- filtered_data()
-      results <- calculate_group_metrics(data, metric_spec, time_summary_groups, current_filters(), extrap_factor())
-      create_dt_table(results)
-    })
+      results <- pipeline_results()
+      display <- pipeline_to_display_format(results, time_summary_groups, include_years = TRUE)
+      create_dt_table(display)
+    }) |> shiny::bindCache(current_filters())
     
     output$table_shift_hours <- renderDT({
-      data <- filtered_data()
-      results <- calculate_group_metrics(data, metric_spec, time_shift_groups, current_filters(), extrap_factor())
-      create_dt_table(results)
-    })
-    
+      results <- pipeline_results()
+      display <- pipeline_to_display_format(results, time_shift_groups, include_years = TRUE)
+      create_dt_table(display)
+    }) |> shiny::bindCache(current_filters())
+
     output$table_rounding_consolidated <- renderDT({
-      data <- filtered_data()
-      results <- calculate_group_metrics(data, metric_spec, time_rounding_groups, current_filters(), extrap_factor())
-      create_dt_table(results)
-    })
-    
+      results <- pipeline_results()
+      display <- pipeline_to_display_format(results, time_rounding_groups, include_years = TRUE)
+      create_dt_table(display)
+    }) |> shiny::bindCache(current_filters())
+
     output$table_meal_consolidated <- renderDT({
-      data <- filtered_data()
-      results <- calculate_group_metrics(data, metric_spec, time_meal_analysis, current_filters(), extrap_factor())
-      create_dt_table(results)
-    })
-    
+      results <- pipeline_results()
+      display <- pipeline_to_display_format(results, time_meal_analysis, include_years = TRUE)
+      create_dt_table(display)
+    }) |> shiny::bindCache(current_filters())
+
     output$table_meal_5hr_consolidated <- renderDT({
-      data <- filtered_data()
-      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_5_summary, current_filters(), extrap_factor())
-      create_dt_table(results)
-    })
-    
+      results <- pipeline_results()
+      display <- pipeline_to_display_format(results, time_meal_violations_5_summary, include_years = TRUE)
+      create_dt_table(display)
+    }) |> shiny::bindCache(current_filters())
+
     output$table_meal_5hr_short_details <- renderDT({
-      data <- filtered_data()
-      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_5_short, current_filters(), extrap_factor())
-      create_dt_table(results)
-    })
-    
+      results <- pipeline_results()
+      display <- pipeline_to_display_format(results, time_meal_violations_5_short, include_years = TRUE)
+      create_dt_table(display)
+    }) |> shiny::bindCache(current_filters())
+
     output$table_meal_5hr_late_details <- renderDT({
-      data <- filtered_data()
-      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_5_late, current_filters(), extrap_factor())
-      create_dt_table(results)
-    })
-    
+      results <- pipeline_results()
+      display <- pipeline_to_display_format(results, time_meal_violations_5_late, include_years = TRUE)
+      create_dt_table(display)
+    }) |> shiny::bindCache(current_filters())
+
     output$table_meal_6hr_consolidated <- renderDT({
-      data <- filtered_data()
-      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6_summary, current_filters(), extrap_factor())
-      create_dt_table(results)
-    })
-    
+      results <- pipeline_results()
+      display <- pipeline_to_display_format(results, time_meal_violations_6_summary, include_years = TRUE)
+      create_dt_table(display)
+    }) |> shiny::bindCache(current_filters())
+
     output$table_meal_6hr_short_details <- renderDT({
-      data <- filtered_data()
-      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6_short, current_filters(), extrap_factor())
-      create_dt_table(results)
-    })
-    
+      results <- pipeline_results()
+      display <- pipeline_to_display_format(results, time_meal_violations_6_short, include_years = TRUE)
+      create_dt_table(display)
+    }) |> shiny::bindCache(current_filters())
+
     output$table_meal_6hr_late_details <- renderDT({
-      data <- filtered_data()
-      results <- calculate_group_metrics(data, metric_spec, time_meal_violations_6_late, current_filters(), extrap_factor())
-      create_dt_table(results)
-    })
-    
+      results <- pipeline_results()
+      display <- pipeline_to_display_format(results, time_meal_violations_6_late, include_years = TRUE)
+      create_dt_table(display)
+    }) |> shiny::bindCache(current_filters())
+
     output$table_rest_consolidated <- renderDT({
-      data <- filtered_data()
-      results <- calculate_group_metrics(data, metric_spec, time_rest, current_filters(), extrap_factor())
-      create_dt_table(results)
+      results <- pipeline_results()
+      display <- pipeline_to_display_format(results, time_rest, include_years = TRUE)
+      create_dt_table(display)
     })
     
+    }) |> shiny::bindCache(current_filters())
+
     output$table_pay_consolidated <- renderDT({
-      data <- filtered_data()
-      results <- calculate_group_metrics(data, metric_spec, pay_summary_groups, current_filters(), extrap_factor())
-      create_dt_table(results)
-    })
+      results <- pipeline_results()
+      display <- pipeline_to_display_format(results, pay_summary_groups, include_years = TRUE)
+      create_dt_table(display)
+    }) |> shiny::bindCache(current_filters())
     
     output$table_rrop_consolidated <- renderDT({
-      data <- filtered_data()
-      results <- calculate_group_metrics(data, metric_spec, pay_regular_rate, current_filters(), extrap_factor())
-      
-      if (nrow(results) > 0 && "Metric" %in% names(results)) {
-        total_rows <- results[grepl("^(Total|Net)", Metric, ignore.case = TRUE)]
-        other_rows <- results[!grepl("^(Total|Net)", Metric, ignore.case = TRUE)]
-        results <- rbindlist(list(other_rows, total_rows), fill = TRUE)
+      results <- pipeline_results()
+      display <- pipeline_to_display_format(results, pay_regular_rate, include_years = TRUE)
+
+      if (nrow(display) > 0 && "Metric" %in% names(display)) {
+        total_rows <- display[grepl("^(Total|Net)", Metric, ignore.case = TRUE)]
+        other_rows <- display[!grepl("^(Total|Net)", Metric, ignore.case = TRUE)]
+        display <- rbindlist(list(other_rows, total_rows), fill = TRUE)
       }
-      
-      create_dt_table(results)
-    })
+
+      create_dt_table(display)
+    }) |> shiny::bindCache(current_filters())
     
     # ===========================================================================
     # ANALYSIS TABLES (FROM FILES)
@@ -1880,8 +2017,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
     
     # Class/Individual Claims - No Waivers
     output$table_damages_class_no_waivers <- renderDT({
-      data <- filtered_data()
-      factor <- extrap_factor()
+      results <- pipeline_results()
 
       # Split each metric group by waiver status
       meal_split <- split_by_waiver(damages_meal_groups)
@@ -1968,17 +2104,19 @@ server <- function(data_list, metric_spec, analysis_tables) {
         )
       }
 
-      results <- combine_damages_with_headers(data, metric_spec, sections, current_filters(), factor)
+      display <- pipeline_to_damages_format(results, sections, scenario_filter = "no waivers")
+
       # Filter out waiver metrics from no-waiver tab based on metric labels
-      results <- filter_metrics_by_label(results, include_waivers = FALSE)
-      create_dt_table(results)
-    }) |> shiny::bindCache(current_filters(), extrap_factor())
+      # (fallback for old spec without scenario column)
+      display <- filter_metrics_by_label(display, include_waivers = FALSE)
+
+      create_dt_table(display)
+    }) |> shiny::bindCache(current_filters())
     
     # Class/Individual Claims - Waivers
     output$table_damages_class_waivers <- renderDT({
-      data <- filtered_data()
-      factor <- extrap_factor()
-      
+      results <- pipeline_results()
+
       # Split each metric group by waiver status
       meal_split <- split_by_waiver(damages_meal_groups)
       rest_split <- split_by_waiver(damages_rest_groups)
@@ -1990,91 +2128,93 @@ server <- function(data_list, metric_spec, analysis_tables) {
       wsv_split <- split_by_waiver(damages_wsv_groups)
       wt_split <- split_by_waiver(damages_wt_groups)
       total_split <- split_by_waiver(damages_class_total_groups)
-      
+
       # Build section definitions for waiver metrics
       sections <- list()
-      
+
       if (length(meal_split$waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "MEAL PERIOD DAMAGES",
           groups = meal_split$waiver
         )
       }
-      
+
       if (length(rest_split$waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "REST PERIOD DAMAGES",
           groups = rest_split$waiver
         )
       }
-      
+
       if (length(rrop_split$waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "RROP DAMAGES",
           groups = rrop_split$waiver
         )
       }
-      
+
       if (length(otc_split$waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "OFF-THE-CLOCK DAMAGES",
           groups = otc_split$waiver
         )
       }
-      
+
       if (length(rounding_split$waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "CLOCK ROUNDING DAMAGES",
           groups = rounding_split$waiver
         )
       }
-      
+
       if (length(unpaid_ot_split$waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "UNPAID OT/DT DAMAGES",
           groups = unpaid_ot_split$waiver
         )
       }
-      
+
       if (length(expenses_split$waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "UNREIMBURSED EXPENSES DAMAGES",
           groups = expenses_split$waiver
         )
       }
-      
+
       if (length(wsv_split$waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "WAGE STATEMENT PENALTIES",
           groups = wsv_split$waiver
         )
       }
-      
+
       if (length(wt_split$waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "WAITING TIME PENALTIES",
           groups = wt_split$waiver
         )
       }
-      
+
       if (length(total_split$waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "TOTAL DAMAGES",
           groups = total_split$waiver
         )
       }
-      
-      results <- combine_damages_with_headers(data, metric_spec, sections, current_filters(), factor)
+
+      display <- pipeline_to_damages_format(results, sections, scenario_filter = "waivers")
+
       # Filter out no-waiver metrics from waiver tab based on metric labels
-      results <- filter_metrics_by_label(results, include_waivers = TRUE)
-      create_dt_table(results)
-    }) |> shiny::bindCache(current_filters(), extrap_factor())
+      # (fallback for old spec without scenario column)
+      display <- filter_metrics_by_label(display, include_waivers = TRUE)
+
+      create_dt_table(display)
+    }) |> shiny::bindCache(current_filters())
 
     # PAGA - No Waivers
     output$table_paga_no_waivers <- renderDT({
-      data <- filtered_data()
-      factor <- extrap_factor()
-      
+      results <- pipeline_results()
+
       # Split each PAGA metric group by waiver status
       meal_split <- split_by_waiver(paga_meal_groups)
       rest_split <- split_by_waiver(paga_rest_groups)
@@ -2086,91 +2226,93 @@ server <- function(data_list, metric_spec, analysis_tables) {
       recordkeeping_split <- split_by_waiver(paga_recordkeeping_groups)
       waiting_time_split <- split_by_waiver(paga_waiting_time_groups)
       total_split <- split_by_waiver(paga_total_groups)
-      
+
       # Build section definitions for no-waiver metrics
       sections <- list()
-      
+
       if (length(meal_split$no_waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - MEAL PERIODS",
           groups = meal_split$no_waiver
         )
       }
-      
+
       if (length(rest_split$no_waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - REST PERIODS",
           groups = rest_split$no_waiver
         )
       }
-      
+
       if (length(rrop_split$no_waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - REGULAR RATE (RROP)",
           groups = rrop_split$no_waiver
         )
       }
-      
+
       if (length(s226_split$no_waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - WAGE STATEMENT (226)",
           groups = s226_split$no_waiver
         )
       }
-      
+
       if (length(s558_split$no_waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - UNPAID WAGES (558)",
           groups = s558_split$no_waiver
         )
       }
-      
+
       if (length(min_wage_split$no_waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - MIN WAGE (1197.1)",
           groups = min_wage_split$no_waiver
         )
       }
-      
+
       if (length(expenses_split$no_waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - UNREIMBURSED EXPENSES (2802)",
           groups = expenses_split$no_waiver
         )
       }
-      
+
       if (length(recordkeeping_split$no_waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - RECORDKEEPING (1174)",
           groups = recordkeeping_split$no_waiver
         )
       }
-      
+
       if (length(waiting_time_split$no_waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - WAITING TIME (203)",
           groups = waiting_time_split$no_waiver
         )
       }
-      
+
       if (length(total_split$no_waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - TOTAL",
           groups = total_split$no_waiver
         )
       }
-      
-      results <- combine_damages_with_headers(data, metric_spec, sections, current_filters(), factor)
+
+      display <- pipeline_to_damages_format(results, sections, scenario_filter = "no waivers")
+
       # Filter out waiver metrics from no-waiver tab based on metric labels
-      results <- filter_metrics_by_label(results, include_waivers = FALSE)
-      create_dt_table(results)
-    }) |> shiny::bindCache(current_filters(), extrap_factor())
+      # (fallback for old spec without scenario column)
+      display <- filter_metrics_by_label(display, include_waivers = FALSE)
+
+      create_dt_table(display)
+    }) |> shiny::bindCache(current_filters())
 
     # PAGA - Waivers
     output$table_paga_waivers <- renderDT({
-      data <- filtered_data()
-      factor <- extrap_factor()
-      
+      results <- pipeline_results()
+
       # Split each PAGA metric group by waiver status
       meal_split <- split_by_waiver(paga_meal_groups)
       rest_split <- split_by_waiver(paga_rest_groups)
@@ -2182,85 +2324,88 @@ server <- function(data_list, metric_spec, analysis_tables) {
       recordkeeping_split <- split_by_waiver(paga_recordkeeping_groups)
       waiting_time_split <- split_by_waiver(paga_waiting_time_groups)
       total_split <- split_by_waiver(paga_total_groups)
-      
+
       # Build section definitions for waiver metrics
       sections <- list()
-      
+
       if (length(meal_split$waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - MEAL PERIODS",
           groups = meal_split$waiver
         )
       }
-      
+
       if (length(rest_split$waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - REST PERIODS",
           groups = rest_split$waiver
         )
       }
-      
+
       if (length(rrop_split$waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - REGULAR RATE (RROP)",
           groups = rrop_split$waiver
         )
       }
-      
+
       if (length(s226_split$waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - WAGE STATEMENT (226)",
           groups = s226_split$waiver
         )
       }
-      
+
       if (length(s558_split$waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - UNPAID WAGES (558)",
           groups = s558_split$waiver
         )
       }
-      
+
       if (length(min_wage_split$waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - MIN WAGE (1197.1)",
           groups = min_wage_split$waiver
         )
       }
-      
+
       if (length(expenses_split$waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - UNREIMBURSED EXPENSES (2802)",
           groups = expenses_split$waiver
         )
       }
-      
+
       if (length(recordkeeping_split$waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - RECORDKEEPING (1174)",
           groups = recordkeeping_split$waiver
         )
       }
-      
+
       if (length(waiting_time_split$waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - WAITING TIME (203)",
           groups = waiting_time_split$waiver
         )
       }
-      
+
       if (length(total_split$waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - TOTAL",
           groups = total_split$waiver
         )
       }
-      
-      results <- combine_damages_with_headers(data, metric_spec, sections, current_filters(), factor)
+
+      display <- pipeline_to_damages_format(results, sections, scenario_filter = "waivers")
+
       # Filter out no-waiver metrics from waiver tab based on metric labels
-      results <- filter_metrics_by_label(results, include_waivers = TRUE)
-      create_dt_table(results)
-    }) |> shiny::bindCache(current_filters(), extrap_factor())
+      # (fallback for old spec without scenario column)
+      display <- filter_metrics_by_label(display, include_waivers = TRUE)
+
+      create_dt_table(display)
+    }) |> shiny::bindCache(current_filters())
 
     # ===========================================================================
     # EMPLOYEE-PERIOD EXAMPLE TAB
