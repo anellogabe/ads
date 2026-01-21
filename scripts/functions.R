@@ -113,7 +113,7 @@ write_csv_and_rds <- function(dt, out_path_csv) {
   out_path_rds <- sub("\\.csv$", ".rds", out_path_csv, ignore.case = TRUE)
   
   csv_ok <- tryCatch(
-    { data.table::fwrite(dt, out_path_csv); TRUE },
+    { fwrite(dt, out_path_csv); TRUE },
     error = function(e) { warning("❌ FAILED CSV: ", out_path_csv, "\n   ", e$message); FALSE }
   )
   
@@ -151,10 +151,10 @@ run_test_sample_from_all_ids <- function(all_ids, pay1, time1, class1,
                                          require_cols_all = c("Time_Present","Pay_Present","Class_Present"),
                                          verbose = TRUE) {
   
-  data.table::setDT(all_ids)
-  data.table::setDT(pay1)
-  data.table::setDT(time1)
-  data.table::setDT(class1)
+  setDT(all_ids)
+  setDT(pay1)
+  setDT(time1)
+  setDT(class1)
   
   # Validate selector params
   if (!is.na(test_n) && !is.na(test_pct)) stop("Set ONLY one of test_n or test_pct, not both.")
@@ -420,7 +420,7 @@ pay_code_summary <- function(
     summary_list <- list()
     
     for (pay_code in unique_pay_codes) {
-      subset_data <- df %>% uniqueNfilter(Pay_Code == pay_code)
+      subset_data <- df %>% filter(Pay_Code == pay_code)
       if (nrow(subset_data) == 0) next
       
       summary_list[[paste(key_label, pay_code, sep = "_")]] <-
@@ -429,8 +429,8 @@ pay_code_summary <- function(
           Pay_Code = pay_code,
           Min_Period_End = min(subset_data$Pay_Period_End, na.rm = TRUE),
           Max_Period_End = max(subset_data$Pay_Period_End, na.rm = TRUE),
-          Employees = uniqueN(subset_data$Pay_ID),
-          Pay_Periods = uniqueN(subset_data$Pay_ID_Period_End),
+          Employees = uniqueN(subset_data$Pay_ID, na.rm = TRUE),
+          Pay_Periods = uniqueN(subset_data$Pay_ID_Period_End, na.rm = TRUE),
           Total_Hours = sum(subset_data$Pay_Hours, na.rm = TRUE),
           Total_Amount = sum(subset_data$Pay_Amount, na.rm = TRUE),
           Avg_Amount = mean(subset_data$Pay_Amount, na.rm = TRUE),
@@ -452,13 +452,13 @@ pay_code_summary <- function(
     }
     
     total_summary <- df %>%
-      uniqueNsummarise(
+      summarise(
         Pay_Key_Gps = key_label,
         Pay_Code = paste(key_label, "Total", sep = ": "),
         Min_Period_End = min(Pay_Period_End, na.rm = TRUE),
         Max_Period_End = max(Pay_Period_End, na.rm = TRUE),
-        Employees = uniqueN(Pay_ID),
-        Pay_Periods = uniqueN(Pay_ID_Period_End),
+        Employees = uniqueN(Pay_ID, na.rm = TRUE),
+        Pay_Periods = uniqueN(Pay_ID_Period_End, na.rm = TRUE),
         Total_Hours = sum(Pay_Hours, na.rm = TRUE),
         Total_Amount = sum(Pay_Amount, na.rm = TRUE),
         Avg_Amount = mean(Pay_Amount, na.rm = TRUE),
@@ -479,31 +479,31 @@ pay_code_summary <- function(
       )
     
     summary_list[[paste(key_label, "Total", sep = "_")]] <- total_summary
-    uniqueNbind_rows(summary_list)
+    bind_rows(summary_list)
   }
   
   if (isTRUE(separate_key_gps)) {
     keys <- unique(data$Pay_Key_Gps)
     
-    final_summary_df <- uniqueNbind_rows(lapply(keys, function(k) {
-      summarize_one_group(data %>% uniqueNfilter(Pay_Key_Gps == k), key_label = k)
+    final_summary_df <- bind_rows(lapply(keys, function(k) {
+      summarize_one_group(data %>% filter(Pay_Key_Gps == k), key_label = k)
     }))
     
     totals <- final_summary_df %>%
-      uniqueNfilter(grepl(": Total$", Pay_Code)) %>%
-      uniqueNselect(Pay_Key_Gps, Employees, Pay_Periods) %>%
-      uniqueNrename(
+      filter(grepl(": Total$", Pay_Code)) %>%
+      select(Pay_Key_Gps, Employees, Pay_Periods) %>%
+      rename(
         Total_Employees = Employees,
         Total_Pay_Periods = Pay_Periods
       )
     
     final_summary_df <- final_summary_df %>%
-      uniqueNleft_join(totals, by = "Pay_Key_Gps") %>%
-      uniqueNmutate(
+      left_join(totals, by = "Pay_Key_Gps") %>%
+      mutate(
         Percent_Employees   = ifelse(Total_Employees > 0, round(Employees / Total_Employees, 4), NA_real_),
         Percent_Pay_Periods = ifelse(Total_Pay_Periods > 0, round(Pay_Periods / Total_Pay_Periods, 4), NA_real_)
       ) %>%
-      uniqueNselect(
+      select(
         Pay_Key_Gps, Pay_Code,
         Min_Period_End, Max_Period_End,
         Employees, Percent_Employees,
@@ -517,11 +517,11 @@ pay_code_summary <- function(
     
   } else {
     final_summary_df <- summarize_one_group(data, key_label = "ALL") %>%
-      uniqueNmutate(
+      mutate(
         Percent_Employees = NA_real_,
         Percent_Pay_Periods = NA_real_
       ) %>%
-      uniqueNselect(
+      select(
         Pay_Key_Gps, Pay_Code,
         Min_Period_End, Max_Period_End,
         Employees, Percent_Employees,
@@ -762,8 +762,8 @@ run_data_comparison <- function(
   output_dir <- normalizePath(output_dir, winslash = "/", mustWork = FALSE)
   
   # Convert to data.table copies
-  time1 <- data.table::as.data.table(data.table::copy(time_data))
-  pay1  <- data.table::as.data.table(data.table::copy(pay_data))
+  time1 <- as.data.table(copy(time_data))
+  pay1  <- as.data.table(copy(pay_data))
   
   # Remove any duplicate columns (defensive)
   time1 <- time1[, .SD, .SDcols = unique(names(time1))]
@@ -783,19 +783,19 @@ run_data_comparison <- function(
   
   # Summaries
   time_summary <- time1[, .(
-    Employees = data.table::uniqueN(ID),
+    Employees = uniqueN(ID, na.rm = TRUE),
     Records   = .N
   ), by = .(Period_End)]
   time_summary[, Data := "Time Data"]
   
   pay_summary <- pay1[, .(
-    Employees = data.table::uniqueN(Pay_ID),
+    Employees = uniqueN(Pay_ID, na.rm = TRUE),
     Records   = .N
   ), by = .(Pay_Period_End)]
-  data.table::setnames(pay_summary, "Pay_Period_End", "Period_End")
+  setnames(pay_summary, "Pay_Period_End", "Period_End")
   pay_summary[, Data := "Pay Data"]
   
-  comparison_dt <- data.table::rbindlist(list(time_summary, pay_summary), fill = TRUE)
+  comparison_dt <- rbindlist(list(time_summary, pay_summary), fill = TRUE)
   
   # Period breakdown grouping
   if (period_breakdown == "weekly") {
@@ -820,12 +820,12 @@ run_data_comparison <- function(
       First_Period = min(Period_End, na.rm = TRUE),
       Last_Period  = max(Period_End, na.rm = TRUE)
     ), by = .(Period_Group, Data)]
-    data.table::setnames(comparison_dt, "Period_Group", "Period_End")
+    setnames(comparison_dt, "Period_Group", "Period_End")
   }
   
   # Clean + order
   comparison_dt <- comparison_dt[!is.na(Period_End)]
-  data.table::setorder(comparison_dt, Period_End, Data)
+  setorder(comparison_dt, Period_End, Data)
   
   # Plot
   plot_line <- ggplot2::ggplot(
@@ -895,7 +895,7 @@ run_data_comparison <- function(
     if (exists("write_csv_and_rds", mode = "function", inherits = TRUE)) {
       write_csv_and_rds(comparison_dt, csv_path)
     } else {
-      data.table::fwrite(comparison_dt, csv_path)
+      fwrite(comparison_dt, csv_path)
       saveRDS(comparison_dt, sub("\\.csv$", ".rds", csv_path))
       message("✔ Output status:")
       message("  • CSV: ", csv_path)
@@ -957,8 +957,8 @@ employee_period_comparison <- function(
     return_data = TRUE
 ) {
   stopifnot(requireNamespace("data.table", quietly = TRUE))
-  data.table::setDT(time_data)
-  data.table::setDT(pay_data)
+  setDT(time_data)
+  setDT(pay_data)
   
   # Resolve output_dir
   if (is.null(output_dir) || !nzchar(output_dir)) {
@@ -971,8 +971,8 @@ employee_period_comparison <- function(
   output_dir <- normalizePath(output_dir, winslash = "/", mustWork = FALSE)
   
   # Copies (don’t modify originals)
-  time1 <- data.table::as.data.table(data.table::copy(time_data))
-  pay1  <- data.table::as.data.table(data.table::copy(pay_data))
+  time1 <- as.data.table(copy(time_data))
+  pay1  <- as.data.table(copy(pay_data))
   
   # Ensure required columns
   req_time <- c("ID", "Period_End")
@@ -988,7 +988,7 @@ employee_period_comparison <- function(
   
   # Time summary by employee
   time_summary <- time1[!is.na(Period_End), .(
-    Time_Periods     = data.table::uniqueN(Period_End),
+    Time_Periods     = uniqueN(Period_End, na.rm = TRUE),
     Time_First_Date  = min(Period_End, na.rm = TRUE),
     Time_Last_Date   = max(Period_End, na.rm = TRUE),
     Time_Records     = .N,
@@ -997,13 +997,13 @@ employee_period_comparison <- function(
   
   # Pay summary by employee
   pay_summary <- pay1[!is.na(Pay_Period_End), .(
-    Pay_Periods     = data.table::uniqueN(Pay_Period_End),
+    Pay_Periods     = uniqueN(Pay_Period_End, na.rm = TRUE),
     Pay_First_Date  = min(Pay_Period_End, na.rm = TRUE),
     Pay_Last_Date   = max(Pay_Period_End, na.rm = TRUE),
     Pay_Records     = .N,
     Pay_Period_List = list(unique(Pay_Period_End))
   ), by = .(Pay_ID)]
-  data.table::setnames(pay_summary, "Pay_ID", "ID")
+  setnames(pay_summary, "Pay_ID", "ID")
   
   # Merge
   all_employees <- merge(time_summary, pay_summary, by = "ID", all = TRUE)
@@ -1037,22 +1037,22 @@ employee_period_comparison <- function(
   # Match rates / coverage / status
   all_employees[, `:=`(
     Total_Unique_Periods = pmax(Time_Periods, Pay_Periods, na.rm = TRUE),
-    Match_Rate = data.table::fifelse(
+    Match_Rate = fifelse(
       (Time_Periods + Pay_Periods) > 0,
       round(Matching_Periods * 2 / (Time_Periods + Pay_Periods), 3),
       0
     ),
-    Time_Coverage = data.table::fifelse(
+    Time_Coverage = fifelse(
       Pay_Periods > 0,
       round(Matching_Periods / Pay_Periods, 3),
       0
     ),
-    Pay_Coverage = data.table::fifelse(
+    Pay_Coverage = fifelse(
       Time_Periods > 0,
       round(Matching_Periods / Time_Periods, 3),
       0
     ),
-    Data_Status = data.table::fcase(
+    Data_Status = fcase(
       Time_Periods == 0 & Pay_Periods == 0, "No Data",
       Time_Periods == 0, "Pay Only",
       Pay_Periods == 0, "Time Only",
@@ -1064,7 +1064,7 @@ employee_period_comparison <- function(
   output_df <- all_employees[, -c("Time_Period_List", "Pay_Period_List")]
   
   # Sort
-  data.table::setorder(output_df, Match_Rate, -Total_Unique_Periods)
+  setorder(output_df, Match_Rate, -Total_Unique_Periods)
   
   # Save outputs (CSV + RDS)
   if (isTRUE(save_output)) {
@@ -1076,7 +1076,7 @@ employee_period_comparison <- function(
       write_csv_and_rds(output_df, out_csv)
     } else {
       # fallback
-      data.table::fwrite(output_df, out_csv)
+      fwrite(output_df, out_csv)
       saveRDS(output_df, sub("\\.csv$", ".rds", out_csv))
       message("✔ Output status:")
       message("  • CSV: ", out_csv)
@@ -1616,7 +1616,7 @@ meal_start_time_tbl <- function(data,
   # Count frequency by exact time
   time_counts <- meal_data[, .(
     Records = .N,
-    Days = uniqueN(ID_Date)
+    Days = uniqueN(ID_Date, na.rm = TRUE)
   ), by = start_time_exact]
   
   setorder(time_counts, -Records)
@@ -1629,7 +1629,7 @@ meal_start_time_tbl <- function(data,
     other_row <- data.table(
       start_time_exact = "Other",
       Records = sum(other_counts$Records),
-      Days = uniqueN(meal_data[!start_time_exact %in% top_rows$start_time_exact, ID_Date])
+      Days = uniqueN(meal_data[!start_time_exact %in% top_rows$start_time_exact, ID_Date], na.rm = TRUE)
     )
     
     summary_df <- rbindlist(list(top_rows, other_row))
@@ -1639,7 +1639,7 @@ meal_start_time_tbl <- function(data,
   
   # Totals
   total_records <- nrow(meal_data)
-  total_days <- uniqueN(meal_data$ID_Date)
+  total_days <- uniqueN(meal_data$ID_Date, na.rm = TRUE)
   
   # Percentages
   summary_df[, `:=`(
@@ -1734,9 +1734,9 @@ meal_quarter_hour_tbl <- function(data,
   any_quarter_total <- data.table(
     Quarter_Hour_Type   = "ANY QUARTER HOUR",
     Records             = sum(any_quarter$Records),
-    Days                = uniqueN(meal_data[start_minute %in% c(0, 15, 30, 45), ID_Date]),
+    Days                = uniqueN(meal_data[start_minute %in% c(0, 15, 30, 45), ID_Date], na.rm = TRUE),
     Percent_of_Records  = round(sum(any_quarter$Records) / total_records, 10),
-    Percent_of_Days     = round(uniqueN(meal_data[start_minute %in% c(0, 15, 30, 45), ID_Date]) / total_days, 10)
+    Percent_of_Days     = round(uniqueN(meal_data[start_minute %in% c(0, 15, 30, 45), ID_Date], na.rm = TRUE) / total_days, 10)
   )
   
   # Separator row
@@ -2023,9 +2023,9 @@ generate_random_sample <- function(
   
   # ----------------- POPULATION COUNTS -----------------
   
-  time_population  <- all_ids[grepl("Time Data", Source), uniqueN(ID)]
-  pay_population   <- all_ids[grepl("Pay Data", Source), uniqueN(ID)]
-  class1_population <- if (use_class1) uniqueN(class1$ID) else NA
+  time_population  <- all_ids[grepl("Time Data", Source), uniqueN(ID, na.rm = TRUE)]
+  pay_population   <- all_ids[grepl("Pay Data", Source), uniqueN(ID, na.rm = TRUE)]
+  class1_population <- if (use_class1) uniqueN(class1$ID, na.rm = TRUE) else NA
   
   both_time_pay <- all_ids[Source == "Time Data; Pay Data"]
   
@@ -2226,7 +2226,7 @@ validate_prod_fields <- function(dt, fields, dt_name = deparse(substitute(dt))) 
 prep_xlsx_output <- function(x, drop_prefixes = character()) {
   
   # Copy so we never mutate analysis tables
-  y <- data.table::as.data.table(data.table::copy(x))
+  y <- as.data.table(copy(x))
   nms <- names(y)
   
   # Remove prefixes like "Pay_" or "Class_"
@@ -2247,7 +2247,7 @@ prep_xlsx_output <- function(x, drop_prefixes = character()) {
     nms <- tools::toTitleCase(tolower(nms))
   }
   
-  data.table::setnames(y, nms)
+  setnames(y, nms)
   y
 }
 
@@ -2265,9 +2265,9 @@ generate_production_files <- function(time1,
   cat("\n========== CREATING PRODUCTION FILES ==========\n")
   
   # Ensure data.tables
-  data.table::setDT(time1); data.table::setDT(pay1)
-  if (!is.null(class1)) data.table::setDT(class1)
-  data.table::setDT(sample_list)
+  setDT(time1); setDT(pay1)
+  if (!is.null(class1)) setDT(class1)
+  setDT(sample_list)
   
   # Assign anonymized IDs for SAMPLE ONLY (time/pay are filtered later)
   time1[, Anon_ID := NA_real_]
@@ -2290,7 +2290,7 @@ generate_production_files <- function(time1,
     time1_prod[punch_type == "out", Hours := NA]
   }
   if (all(c("Anon_ID", "Date") %in% names(time1_prod))) {
-    data.table::setorder(time1_prod, Anon_ID, Date)
+    setorder(time1_prod, Anon_ID, Date)
   }
   
   # Build production pay data (sample + date filter)
@@ -2298,7 +2298,7 @@ generate_production_files <- function(time1,
   validate_prod_fields(pay1_prod, prod_fields_pay, "pay1 (pre-subset)")
   pay1_prod <- pay1_prod[, ..prod_fields_pay]
   if (all(c("Pay_Anon_ID", "Pay_Date") %in% names(pay1_prod))) {
-    data.table::setorder(pay1_prod, Pay_Anon_ID, Pay_Date)
+    setorder(pay1_prod, Pay_Anon_ID, Pay_Date)
   }
   
   # Build production class list (FULL class list; no sample/date filtering)
@@ -2306,8 +2306,8 @@ generate_production_files <- function(time1,
   if (!is.null(class1)) {
     validate_prod_fields(class1, prod_fields_class, "class1 (full list)")
     class1_prod <- class1[, ..prod_fields_class]
-    if ("Class_Anon_ID" %in% names(class1_prod)) data.table::setorder(class1_prod, Class_Anon_ID)
-    else if ("ID" %in% names(class1_prod)) data.table::setorder(class1_prod, ID)
+    if ("Class_Anon_ID" %in% names(class1_prod)) setorder(class1_prod, Class_Anon_ID)
+    else if ("ID" %in% names(class1_prod)) setorder(class1_prod, ID)
   }
   
   # Prod directory (absolute): default to <OUT_DIR>/prod if OUT_DIR exists
@@ -2351,8 +2351,8 @@ generate_production_files <- function(time1,
   
   # Summary counts
   sample_count      <- nrow(sample_list)
-  time_unique_count <- if (nrow(time1_prod) > 0 && prod_fields_time[1] %in% names(time1_prod)) data.table::uniqueN(time1_prod[[prod_fields_time[1]]]) else 0
-  pay_unique_count  <- if (nrow(pay1_prod)  > 0 && prod_fields_pay[1]  %in% names(pay1_prod))  data.table::uniqueN(pay1_prod[[prod_fields_pay[1]]])  else 0
+  time_unique_count <- if (nrow(time1_prod) > 0 && prod_fields_time[1] %in% names(time1_prod)) uniqueN(time1_prod[[prod_fields_time[1]]], na.rm = TRUE) else 0
+  pay_unique_count  <- if (nrow(pay1_prod)  > 0 && prod_fields_pay[1]  %in% names(pay1_prod))  uniqueN(pay1_prod[[prod_fields_pay[1]]], na.rm = TRUE)  else 0
   
   cat("\nPRODUCTION SUMMARY:\n")
   cat(sprintf("time records:  %s\n", format(nrow(time1_prod), big.mark=",")))
@@ -2431,8 +2431,8 @@ generate_metadata <- function(data, file_name,
   adjusted_data <- data
   if (length(existing_date_cols) > 0) {
     adjusted_data <- adjusted_data |>
-      uniqueNmutate(
-        uniqueNacross(uniqueNall_of(existing_date_cols), ~ as.Date(.))
+      mutate(
+        across(all_of(existing_date_cols), ~ as.Date(.))
       )
   }
   
@@ -2444,8 +2444,8 @@ generate_metadata <- function(data, file_name,
   
   # Convert R classes to Power Query friendly types
   metadata <- metadata |>
-    uniqueNmutate(
-      DataType = uniqueNcase_when(
+    mutate(
+      DataType = case_when(
         DataType %in% c("integer") ~ "Whole Number",
         DataType %in% c("double", "numeric") ~ "Decimal Number",
         DataType == "character" ~ "Text",
@@ -2473,15 +2473,15 @@ generate_metadata <- function(data, file_name,
 # Denominator definitions
 # Time data denominators (shift-level)
 denom_functions_time <- list(
-  shifts_all              = function(dt) dt[, uniqueN(ID_Shift)],
-  shifts_gt_3_5           = function(dt) dt[shift_hrs > 3.5, uniqueN(ID_Shift)],
-  shifts_gt_5             = function(dt) dt[shift_hrs > 5, uniqueN(ID_Shift)],
-  shifts_gt_6             = function(dt) dt[shift_hrs > 6, uniqueN(ID_Shift)],
-  shifts_gt_10            = function(dt) dt[shift_hrs > 10, uniqueN(ID_Shift)],
-  shifts_gt_12            = function(dt) dt[shift_hrs > 12, uniqueN(ID_Shift)],
-  pay_periods             = function(dt) dt[, uniqueN(ID_Period_End)],
-  weeks                   = function(dt) dt[, uniqueN(ID_Week_End)],
-  employees               = function(dt) dt[, uniqueN(ID)],
+  shifts_all              = function(dt) dt[, uniqueN(ID_Shift, na.rm = TRUE)],
+  shifts_gt_3_5           = function(dt) dt[shift_hrs > 3.5, uniqueN(ID_Shift, na.rm = TRUE)],
+  shifts_gt_5             = function(dt) dt[shift_hrs > 5, uniqueN(ID_Shift, na.rm = TRUE)],
+  shifts_gt_6             = function(dt) dt[shift_hrs > 6, uniqueN(ID_Shift, na.rm = TRUE)],
+  shifts_gt_10            = function(dt) dt[shift_hrs > 10, uniqueN(ID_Shift, na.rm = TRUE)],
+  shifts_gt_12            = function(dt) dt[shift_hrs > 12, uniqueN(ID_Shift, na.rm = TRUE)],
+  pay_periods             = function(dt) dt[, uniqueN(ID_Period_End, na.rm = TRUE)],
+  weeks                   = function(dt) dt[, uniqueN(ID_Week_End, na.rm = TRUE)],
+  employees               = function(dt) dt[, uniqueN(ID, na.rm = TRUE)],
   meal_periods            = function(dt) dt[, sum(shift_mps, na.rm = TRUE)],
   auto_meal_periods       = function(dt) dt[, sum(!is.na(auto_mp))],
   shifts_gt_5_late_meals  = function(dt) dt[, sum(LateMP1, na.rm = TRUE)],
@@ -2494,8 +2494,8 @@ denom_functions_time <- list(
 )
 
 denom_functions_pay <- list(
-  employees_pay           = function(dt) dt[, uniqueN(Pay_ID)],
-  pay_periods_pay         = function(dt) dt[, uniqueN(Pay_ID_Period_End)]
+  employees_pay           = function(dt) dt[, uniqueN(Pay_ID, na.rm = TRUE)],
+  pay_periods_pay         = function(dt) dt[, uniqueN(Pay_ID_Period_End, na.rm = TRUE)]
 )
 
 denom_functions_pp <- list(
@@ -2503,10 +2503,10 @@ denom_functions_pp <- list(
   pp_with_shift           = function(dt) dt[has_shift == 1, .N],
   pp_with_pay             = function(dt) dt[has_pay == 1, .N],
   pp_with_both            = function(dt) dt[has_shift == 1 & has_pay == 1, .N],
-  pp_employees            = function(dt) dt[, uniqueN(ID)],
-  pp_pay_periods          = function(dt) dt[, uniqueN(ID_Period_End)],
-  pp_paga_employees       = function(dt) uniqueN(dt[in_PAGA_period==1, ID]),
-  pp_paga_pay_periods     = function(dt) uniqueN(dt[in_PAGA_period==1, ID_Period_End]),
+  pp_employees            = function(dt) dt[, uniqueN(ID, na.rm = TRUE)],
+  pp_pay_periods          = function(dt) dt[, uniqueN(ID_Period_End, na.rm = TRUE)],
+  pp_paga_employees       = function(dt) uniqueN(dt[in_PAGA_period==1, ID], na.rm = TRUE),
+  pp_paga_pay_periods     = function(dt) uniqueN(dt[in_PAGA_period==1, ID_Period_End], na.rm = TRUE),
   pp_with_shifts_gt_5     = function(dt) dt[Shifts_gt_5 > 0, .N],
   pp_with_shifts_gt_6     = function(dt) dt[Shifts_gt_6 > 0, .N],
   pp_with_shifts_gt_3_5   = function(dt) dt[Shifts_gt_3_5 > 0, .N],
@@ -2582,7 +2582,7 @@ calculate_metrics <- function(data_list, spec) {
       pct          = pct
     )
   })
-  data.table::rbindlist(results)
+  rbindlist(results)
 }
 
 # Filtering helpers
@@ -2635,10 +2635,10 @@ run_metrics_pipeline <- function(time_dt, pay_dt, spec,
                                  pp_dt = NULL, ee_dt = NULL,
                                  custom_filters = list()) {
   
-  if (!is.null(time_dt)) data.table::setDT(time_dt)
-  if (!is.null(pay_dt))  data.table::setDT(pay_dt)
-  if (!is.null(pp_dt))   data.table::setDT(pp_dt)
-  if (!is.null(ee_dt))   data.table::setDT(ee_dt)
+  if (!is.null(time_dt)) setDT(time_dt)
+  if (!is.null(pay_dt))  setDT(pay_dt)
+  if (!is.null(pp_dt))   setDT(pp_dt)
+  if (!is.null(ee_dt))   setDT(ee_dt)
   
   filter_configs <- build_filter_configs(time_dt, pay_dt, pp_dt, ee_dt, custom_filters)
   
@@ -2655,7 +2655,7 @@ run_metrics_pipeline <- function(time_dt, pay_dt, spec,
     metrics
   })
   
-  data.table::rbindlist(results_list)
+  rbindlist(results_list)
 }
 
 # 7. Main calculation pipeline
@@ -2733,23 +2733,23 @@ run_metrics_pipeline <- function(time_dt, pay_dt, spec,
 #' @param results_dt data.table from run_metrics_pipeline
 #' @return formatted data.table ready for export
 format_metrics_table <- function(results_dt) {
-  dt <- data.table::copy(results_dt)
+  dt <- copy(results_dt)
   dt[, digits := suppressWarnings(as.numeric(digits))]
   
   dt[, formatted_value := {
-    rounded_val <- data.table::fifelse(is.na(digits) | is.na(value), value, round(value, digits))
+    rounded_val <- fifelse(is.na(digits) | is.na(value), value, round(value, digits))
     
-    fv <- data.table::fcase(
+    fv <- fcase(
       metric_type == "date", as.character(as.Date(value, origin = "1970-01-01")),
       is.na(value), "0",
       is.nan(value), "0",
       default = format(rounded_val, big.mark = ",", scientific = FALSE, trim = TRUE, nsmall = 0)
     )
     
-    fv <- data.table::fifelse(is.na(digits) | digits == 0, gsub("\\.0+$", "", fv), fv)
+    fv <- fifelse(is.na(digits) | digits == 0, gsub("\\.0+$", "", fv), fv)
     fv <- gsub("^\\s+|\\s+$", "", fv)
     
-    data.table::fifelse(
+    fifelse(
       !is.na(pct) & !is.nan(pct),
       paste0(fv, " (", round(pct * 100, 1), "%)"),
       fv
@@ -2759,10 +2759,10 @@ format_metrics_table <- function(results_dt) {
   dt[formatted_value == "NaN", formatted_value := "0"]
   dt[grepl("NaN", formatted_value), formatted_value := gsub(" \\(NaN%\\)", "", formatted_value)]
   
-  wide_dt <- data.table::dcast(dt, metric_order + metric_group + metric_label ~ filter_name,
+  wide_dt <- dcast(dt, metric_order + metric_group + metric_label ~ filter_name,
                                value.var = "formatted_value")
   
-  data.table::setorder(wide_dt, metric_order)
+  setorder(wide_dt, metric_order)
   
   all_cols <- names(wide_dt)
   year_cols <- sort(all_cols[grepl("^\\d{4}$", all_cols)])
@@ -2771,7 +2771,7 @@ format_metrics_table <- function(results_dt) {
   col_order <- c("metric_group", "metric_label", "All Data", year_cols, other_cols)
   col_order <- col_order[col_order %in% all_cols]
   
-  data.table::setcolorder(wide_dt, col_order)
+  setcolorder(wide_dt, col_order)
   wide_dt[, metric_order := NULL]
   wide_dt
 }
