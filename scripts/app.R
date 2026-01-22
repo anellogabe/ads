@@ -942,15 +942,19 @@ filter_sidebar <- function(data_list) {
     ),
     
     hr(),
-    
+
     # Display Settings
     h5("Display Settings"),
     selectInput("font_size", "Font Size",
                 choices = c("Small" = "12px", "Medium" = "14px", "Large" = "16px", "X-Large" = "18px"),
                 selected = "14px"),
-    
+
     hr(),
-    
+
+    actionButton("open_pdf_modal", "Generate PDF Report",
+                 class = "w-100 mt-2 btn-primary",
+                 icon = icon("file-pdf"),
+                 style = "background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; font-weight: bold; padding: 10px;"),
     downloadButton("download_report", "Download CSV Report", class = "w-100 mt-2")
   )
 }
@@ -1076,166 +1080,6 @@ ui <- function(data_list, metric_spec) {
             p(strong("Mediation Date: "), textOutput("mediation_date", inline = TRUE)),
             p(strong("Sample Size: "), textOutput("sample_size", inline = TRUE))
           )
-        )
-      ),
-      
-      card(
-        card_header("Export to PDF"),
-        card_body(
-          div(
-            style = "margin-bottom: 15px;",
-            h5("Select Sections to Include:"),
-            div(
-              style = "display: inline-block; margin-right: 20px;",
-              actionButton("pdf_select_all", "Select All", class = "btn-sm btn-primary")
-            ),
-            div(
-              style = "display: inline-block;",
-              actionButton("pdf_deselect_all", "Deselect All", class = "btn-sm btn-secondary")
-            )
-          ),
-
-          h6("Case Overview & Time Analysis"),
-          layout_columns(
-            col_widths = c(3, 3, 3, 3),
-            div(
-              checkboxGroupInput(
-                "pdf_sections_col1",
-                NULL,
-                choices = c(
-                  "Overview Statistics" = "overview",
-                  "Time - Summary" = "time_summary",
-                  "Time - Shift Hours" = "time_shift_hours",
-                  "Time - Punch Rounding" = "time_rounding"
-                ),
-                selected = c("overview", "time_summary", "time_shift_hours", "time_rounding")
-              )
-            ),
-            div(
-              checkboxGroupInput(
-                "pdf_sections_col2",
-                NULL,
-                choices = c(
-                  "Meal - Analysis" = "meal_analysis",
-                  "Meal - Violations (no waivers)" = "meal_5hr",
-                  "Meal - Violations (waivers)" = "meal_6hr",
-                  "Rest Periods" = "rest_periods"
-                ),
-                selected = c("meal_analysis", "meal_5hr", "meal_6hr", "rest_periods")
-              )
-            ),
-            div(
-              checkboxGroupInput(
-                "pdf_sections_col3",
-                NULL,
-                choices = c(
-                  "Pay - Summary" = "pay_summary",
-                  "Pay - Regular Rate" = "pay_regular_rate",
-                  "Pay - Codes" = "pay_codes",
-                  "Pay - Rate Type" = "rate_type_analysis"
-                ),
-                selected = c("pay_summary", "pay_regular_rate", "pay_codes", "rate_type_analysis")
-              )
-            )
-          ),
-
-          hr(),
-          h6("Class Damages / Individual Claims"),
-          layout_columns(
-            col_widths = c(3, 3, 3, 3),
-            div(
-              checkboxGroupInput(
-                "pdf_damages_class_col1",
-                NULL,
-                choices = c(
-                  "Overview (Summary)" = "damages_class_overview",
-                  "Meal Premium Damages" = "damages_meal",
-                  "Rest Premium Damages" = "damages_rest",
-                  "RROP Damages" = "damages_rrop"
-                ),
-                selected = c()
-              )
-            ),
-            div(
-              checkboxGroupInput(
-                "pdf_damages_class_col2",
-                NULL,
-                choices = c(
-                  "Off-the-Clock Damages" = "damages_otc",
-                  "Clock Rounding Damages" = "damages_rounding",
-                  "Unpaid OT/DT Damages" = "damages_unpaid_ot",
-                  "Unreimbursed Expenses" = "damages_expenses"
-                ),
-                selected = c()
-              )
-            ),
-            div(
-              checkboxGroupInput(
-                "pdf_damages_class_col3",
-                NULL,
-                choices = c(
-                  "Wage Statement Penalties" = "damages_wsv",
-                  "Waiting Time Penalties" = "damages_wt",
-                  "Total Damages" = "damages_total"
-                ),
-                selected = c()
-              )
-            )
-          ),
-
-          hr(),
-          h6("PAGA Penalties"),
-          layout_columns(
-            col_widths = c(3, 3, 3, 3),
-            div(
-              checkboxGroupInput(
-                "pdf_paga_col1",
-                NULL,
-                choices = c(
-                  "Overview (Summary)" = "paga_overview",
-                  "Meal Periods" = "paga_meal",
-                  "Rest Periods" = "paga_rest",
-                  "RROP" = "paga_rrop"
-                ),
-                selected = c()
-              )
-            ),
-            div(
-              checkboxGroupInput(
-                "pdf_paga_col2",
-                NULL,
-                choices = c(
-                  "Wage Statement (226)" = "paga_226",
-                  "Unpaid Wages (558)" = "paga_558",
-                  "Min Wage (1197.1)" = "paga_min_wage"
-                ),
-                selected = c()
-              )
-            ),
-            div(
-              checkboxGroupInput(
-                "pdf_paga_col3",
-                NULL,
-                choices = c(
-                  "Unreimbursed Expenses (2802)" = "paga_expenses",
-                  "Recordkeeping (1174.1)" = "paga_recordkeeping",
-                  "Waiting Time (203)" = "paga_waiting_time",
-                  "PAGA Total" = "paga_total"
-                ),
-                selected = c()
-              )
-            )
-          ),
-
-          hr(),
-          div(
-            checkboxInput("pdf_include_appendix", "Appendix Tables (All)", value = FALSE),
-            checkboxInput("pdf_include_data_comparison", "Data Comparison (1-Page Landscape)", value = TRUE)
-          ),
-          hr(),
-          downloadButton("download_pdf", "Generate PDF Report",
-                         class = "btn-primary btn-lg",
-                         icon = icon("file-pdf"))
         )
       )
     ),
@@ -1749,6 +1593,169 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       current_filters(list())
     })
     
+    # PDF Modal Dialog
+    observeEvent(input$open_pdf_modal, {
+      showModal(modalDialog(
+        title = div(
+          style = "font-size: 20px; font-weight: bold;",
+          icon("file-pdf", style = "margin-right: 10px; color: #667eea;"),
+          "PDF Export Options"
+        ),
+        size = "xl",
+        easyClose = TRUE,
+        footer = div(
+          style = "display: flex; justify-content: space-between; align-items: center;",
+          div(
+            actionButton("pdf_select_all", "Select All", class = "btn-sm btn-outline-primary"),
+            actionButton("pdf_deselect_all", "Deselect All", class = "btn-sm btn-outline-secondary", style = "margin-left: 10px;")
+          ),
+          div(
+            modalButton("Cancel", class = "btn-secondary"),
+            downloadButton("download_pdf", "Generate PDF",
+                          class = "btn-primary",
+                          icon = icon("file-pdf"),
+                          style = "margin-left: 10px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none;")
+          )
+        ),
+
+        # PDF Export Content
+        div(
+          style = "max-height: 70vh; overflow-y: auto; padding: 20px;",
+
+          h5(style = "color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; margin-bottom: 20px;",
+             icon("clock"), " Time Data Statistics"),
+          layout_columns(
+            col_widths = c(3, 3, 3, 3),
+            checkboxGroupInput(
+              "pdf_sections_col1",
+              NULL,
+              choices = c(
+                "Overview Statistics" = "overview",
+                "Time - Summary" = "time_summary",
+                "Time - Shift Hours" = "time_shift_hours",
+                "Time - Punch Rounding" = "time_rounding"
+              ),
+              selected = c("overview", "time_summary")
+            ),
+            checkboxGroupInput(
+              "pdf_sections_col2",
+              NULL,
+              choices = c(
+                "Meal - Analysis" = "meal_analysis",
+                "Meal - Violations (no waivers)" = "meal_5hr",
+                "Meal - Violations (waivers)" = "meal_6hr",
+                "Rest Periods" = "rest_periods"
+              ),
+              selected = c()
+            )
+          ),
+
+          hr(),
+          h5(style = "color: #2c3e50; border-bottom: 2px solid #27ae60; padding-bottom: 10px; margin-bottom: 20px;",
+             icon("dollar-sign"), " Pay Data Statistics"),
+          layout_columns(
+            col_widths = c(3, 3, 3, 3),
+            checkboxGroupInput(
+              "pdf_sections_col3",
+              NULL,
+              choices = c(
+                "Pay - Summary" = "pay_summary",
+                "Pay - Regular Rate" = "pay_regular_rate",
+                "Pay - Codes" = "pay_codes",
+                "Pay - Rate Type" = "rate_type_analysis"
+              ),
+              selected = c("pay_summary")
+            )
+          ),
+
+          hr(),
+          h5(style = "color: #2c3e50; border-bottom: 2px solid #e74c3c; padding-bottom: 10px; margin-bottom: 20px;",
+             icon("gavel"), " Class / Individual Claim Damages"),
+          layout_columns(
+            col_widths = c(3, 3, 3, 3),
+            checkboxGroupInput(
+              "pdf_damages_class_col1",
+              NULL,
+              choices = c(
+                "Overview (Summary)" = "damages_class_overview",
+                "Meal Premium Damages" = "damages_meal",
+                "Rest Premium Damages" = "damages_rest",
+                "RROP Damages" = "damages_rrop"
+              ),
+              selected = c()
+            ),
+            checkboxGroupInput(
+              "pdf_damages_class_col2",
+              NULL,
+              choices = c(
+                "Off-the-Clock Damages" = "damages_otc",
+                "Unpaid OT/DT Damages" = "damages_unpaid_ot",
+                "Min Wage Damages" = "damages_min_wage",
+                "Unreimbursed Expenses" = "damages_expenses"
+              ),
+              selected = c()
+            ),
+            checkboxGroupInput(
+              "pdf_damages_class_col3",
+              NULL,
+              choices = c(
+                "Wage Statement Penalties" = "damages_wsv",
+                "Waiting Time Penalties" = "damages_wt"
+              ),
+              selected = c()
+            )
+          ),
+
+          hr(),
+          h5(style = "color: #2c3e50; border-bottom: 2px solid #9b59b6; padding-bottom: 10px; margin-bottom: 20px;",
+             icon("balance-scale"), " PAGA Damages"),
+          layout_columns(
+            col_widths = c(3, 3, 3, 3),
+            checkboxGroupInput(
+              "pdf_paga_col1",
+              NULL,
+              choices = c(
+                "Overview (Summary)" = "paga_overview",
+                "Meal Periods" = "paga_meal",
+                "Rest Periods" = "paga_rest",
+                "RROP" = "paga_rrop"
+              ),
+              selected = c()
+            ),
+            checkboxGroupInput(
+              "pdf_paga_col2",
+              NULL,
+              choices = c(
+                "Wage Statement (226)" = "paga_226",
+                "Unpaid Wages (558)" = "paga_558",
+                "Min Wage (1197.1)" = "paga_min_wage"
+              ),
+              selected = c()
+            ),
+            checkboxGroupInput(
+              "pdf_paga_col3",
+              NULL,
+              choices = c(
+                "Unreimbursed Expenses (2802)" = "paga_expenses",
+                "Recordkeeping (1174.1)" = "paga_recordkeeping",
+                "Waiting Time (203)" = "paga_waiting_time",
+                "PAGA Total" = "paga_total"
+              ),
+              selected = c()
+            )
+          ),
+
+          hr(),
+          h5(style = "color: #2c3e50; border-bottom: 2px solid #95a5a6; padding-bottom: 10px; margin-bottom: 20px;",
+             icon("book"), " Additional Options"),
+          div(
+            checkboxInput("pdf_include_data_comparison", "Data Comparison (1-Page Landscape)", value = TRUE),
+            checkboxInput("pdf_include_appendix", "Appendix Tables (All)", value = FALSE)
+          )
+        )
+      ))
+    })
+
     # PDF Select All button
     observeEvent(input$pdf_select_all, {
       # Time/Pay sections
@@ -1758,8 +1765,8 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
 
       # Damages - Class sections
       all_damages_class_col1 <- c("damages_class_overview", "damages_meal", "damages_rest", "damages_rrop")
-      all_damages_class_col2 <- c("damages_otc", "damages_rounding", "damages_unpaid_ot", "damages_expenses")
-      all_damages_class_col3 <- c("damages_wsv", "damages_wt", "damages_total")
+      all_damages_class_col2 <- c("damages_otc", "damages_unpaid_ot", "damages_min_wage", "damages_expenses")
+      all_damages_class_col3 <- c("damages_wsv", "damages_wt")
 
       # PAGA sections
       all_paga_col1 <- c("paga_overview", "paga_meal", "paga_rest", "paga_rrop")
@@ -3577,16 +3584,16 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
             html_content <- paste0(html_content, add_table(results, "Class Damages - Off-the-Clock Damages", "⏰"))
           }
 
-          if ("damages_rounding" %in% sections && length(damages_rounding_groups) > 0) {
-            html_content <- paste0(html_content, '<div class="page-break"></div>')
-            results <- calculate_group_metrics(data, metric_spec, damages_rounding_groups, current_filters(), extrap_factor())
-            html_content <- paste0(html_content, add_table(results, "Class Damages - Clock Rounding Damages", "🔄"))
-          }
-
           if ("damages_unpaid_ot" %in% sections && length(damages_unpaid_ot_groups) > 0) {
             html_content <- paste0(html_content, '<div class="page-break"></div>')
             results <- calculate_group_metrics(data, metric_spec, damages_unpaid_ot_groups, current_filters(), extrap_factor())
             html_content <- paste0(html_content, add_table(results, "Class Damages - Unpaid OT/DT Damages", "⏱️"))
+          }
+
+          if ("damages_min_wage" %in% sections && length(damages_min_wage_groups) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            results <- calculate_group_metrics(data, metric_spec, damages_min_wage_groups, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, add_table(results, "Class Damages - Unpaid Wages (Min Wage)", "💵"))
           }
 
           if ("damages_expenses" %in% sections && length(damages_expenses_groups) > 0) {
