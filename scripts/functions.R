@@ -2576,9 +2576,9 @@ denom_functions <- c(denom_functions_time, denom_functions_pay, denom_functions_
 #' @return numeric or Date result
 eval_metric <- function(dt, expr_str, digits = NA) {
   if (is.null(dt) || nrow(dt) == 0) return(NA_real_)
-  
+
   result <- tryCatch(
-    dt[, eval(parse(text = expr_str))],
+    suppressWarnings(dt[, eval(parse(text = expr_str))]),
     error = function(e) NA_real_
   )
   
