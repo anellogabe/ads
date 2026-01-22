@@ -9,6 +9,7 @@ library(plotly)
 library(shinycssloaders)
 library(shinyjs)
 library(magrittr)  # for %>% pipe operator
+library(digest)    # for cache key hashing
 
 # ---- CONFIGURATION - engine repo + case paths ----
 
@@ -112,9 +113,24 @@ load_data <- function() {
   pp_data1 <- read_if_exists(DATA_DIR, PP_DATA_FILE)
   ee_data1 <- read_if_exists(DATA_DIR, EE_DATA_FILE)
 
+  # Set primary keys for fast filtering
   if (!is.null(shift_data1) && all(c("Date", "ID") %in% names(shift_data1))) {
     setkeyv(shift_data1, c("Date", "ID"))
+
+    # Pre-compute year column for faster year-based filtering
+    if ("Date" %in% names(shift_data1) && !"Year" %in% names(shift_data1)) {
+      shift_data1[, Year := data.table::year(Date)]
+    }
+
+    # Add secondary indices for commonly filtered columns
+    if ("Sample" %in% names(shift_data1)) setindex(shift_data1, Sample)
+    if ("Key_Gps" %in% names(shift_data1)) setindex(shift_data1, Key_Gps)
+    if ("Subclass" %in% names(shift_data1)) setindex(shift_data1, Subclass)
+    if ("ID_Period_End" %in% names(shift_data1)) setindex(shift_data1, ID_Period_End)
+    if ("ID_Week_End" %in% names(shift_data1)) setindex(shift_data1, ID_Week_End)
+    if ("Year" %in% names(shift_data1)) setindex(shift_data1, Year)
   }
+
   if (!is.null(pay1)) {
     pay_date_col <- if ("Pay_Period_End" %in% names(pay1)) {
       "Pay_Period_End"
@@ -125,16 +141,38 @@ load_data <- function() {
     }
     if (!is.null(pay_date_col) && "Pay_ID" %in% names(pay1)) {
       setkeyv(pay1, c(pay_date_col, "Pay_ID"))
+
+      # Pre-compute year column for faster year-based filtering
+      if (!is.null(pay_date_col) && !"Pay_Year" %in% names(pay1)) {
+        pay1[, Pay_Year := data.table::year(get(pay_date_col))]
+      }
+
+      # Add secondary indices
+      if ("Pay_Sample" %in% names(pay1)) setindex(pay1, Pay_Sample)
+      if ("Pay_Key_Gps" %in% names(pay1)) setindex(pay1, Pay_Key_Gps)
+      if ("Pay_Subclass" %in% names(pay1)) setindex(pay1, Pay_Subclass)
+      if ("Subclass" %in% names(pay1)) setindex(pay1, Subclass)
+      if ("Pay_ID_Period_End" %in% names(pay1)) setindex(pay1, Pay_ID_Period_End)
+      if ("Pay_Year" %in% names(pay1)) setindex(pay1, Pay_Year)
     }
   }
+
   if (!is.null(pp_data1) && all(c("Period_End", "ID") %in% names(pp_data1))) {
     setkeyv(pp_data1, c("Period_End", "ID"))
+    if ("ID_Period_End" %in% names(pp_data1)) setindex(pp_data1, ID_Period_End)
   }
+
   if (!is.null(ee_data1) && "ID" %in% names(ee_data1)) {
     setkeyv(ee_data1, "ID")
   }
+
   if (!is.null(class1) && "Class_ID" %in% names(class1)) {
     setkeyv(class1, "Class_ID")
+
+    # Add secondary indices
+    if ("Sample" %in% names(class1)) setindex(class1, Sample)
+    if ("Class_Key_Gps" %in% names(class1)) setindex(class1, Class_Key_Gps)
+    if ("Subclass" %in% names(class1)) setindex(class1, Subclass)
   }
 
   list(
@@ -1503,60 +1541,19 @@ ui <- function(data_list, metric_spec) {
 
 # ---- SERVER ----
 
-server <- function(data_list, metric_spec, analysis_tables) {
+server <- function(data_list, metric_spec, analysis_tables, metric_group_categories) {
   function(input, output, session) {
-    
-    # Categorize metric groups for consolidation
-    metric_groups <- unique(metric_spec$metric_group)
-    time_summary_groups   <- metric_groups[grepl("^Time Summary$", metric_groups)]
-    time_shift_groups     <- metric_groups[grepl("^Time Shift Hours Analysis", metric_groups)]
-    time_rounding_groups  <- metric_groups[grepl("^Time Punch Rounding", metric_groups)]
-    time_meal_analysis    <- metric_groups[grepl("^Time Meal Period Analysis", metric_groups)]
-    
-    # Meal violations - split into summary and detail groups
-    time_meal_violations_5_summary <- metric_groups[grepl("^Time Meal Violations \\(no waivers\\)$", metric_groups)]
-    time_meal_violations_5_short   <- metric_groups[grepl("^Time Meal Violations \\(no waivers\\) - Short Detail", metric_groups)]
-    time_meal_violations_5_late    <- metric_groups[grepl("^Time Meal Violations \\(no waivers\\) - Late Detail", metric_groups)]
-    
-    time_meal_violations_6_summary <- metric_groups[grepl("^Time Meal Violations \\(waivers\\)$", metric_groups)]
-    time_meal_violations_6_short   <- metric_groups[grepl("^Time Meal Violations \\(waivers\\) - Short Detail", metric_groups)]
-    time_meal_violations_6_late    <- metric_groups[grepl("^Time Meal Violations \\(waivers\\) - Late Detail", metric_groups)]
-    
-    time_rest <- metric_groups[grepl("^Time Rest", metric_groups)]
-    
-    pay_summary_groups <- metric_groups[
-      grepl("^Pay Summary$|^Pay Overtime$|^Pay Double Time$|^Pay Meal Premiums$|^Pay Rest Premiums$|^Pay Bonuses$|^Pay Shift Differentials$|^Pay Sick Pay$",
-            metric_groups)
-    ]
-    pay_regular_rate <- metric_groups[grepl("^Pay Regular Rate", metric_groups)]
-    
-    # Damages metric groups (Class/Individual Claims)
-    damages_meal_groups <- metric_groups[grepl("^Time Meal Violations.*Damages", metric_groups)]
-    damages_rest_groups <- metric_groups[grepl("^Time Rest Violations.*Damages", metric_groups)]
-    damages_rrop_groups <- metric_groups[grepl("^Pay Regular Rate.*RROP Damages", metric_groups)]
-    
-    damages_otc_groups       <- metric_groups[grepl("^Off-the-clock.*Damages", metric_groups)]
-    damages_rounding_groups  <- metric_groups[grepl("^Clock Rounding.*Damages", metric_groups)]
-    damages_unpaid_ot_groups <- metric_groups[grepl("^Unpaid OT/DT.*Damages", metric_groups)]
-    damages_expenses_groups  <- metric_groups[grepl("^Unreimbursed Expenses.*Damages", metric_groups)]
-    
-    damages_wsv_groups         <- metric_groups[grepl("^Wage Statement Penalties", metric_groups)]
-    damages_wt_groups          <- metric_groups[grepl("^Waiting Time Penalties", metric_groups)]
-    damages_class_total_groups <- metric_groups[grepl("^Total damages", metric_groups)]
-    
-    # PAGA metric groups
-    paga_meal_groups <- metric_groups[grepl("^PAGA - Meal Periods", metric_groups)]
-    paga_rest_groups <- metric_groups[grepl("^PAGA - Rest Periods", metric_groups)]
-    paga_rrop_groups <- metric_groups[grepl("^PAGA - Regular Rate", metric_groups)]
-    paga_226_groups  <- metric_groups[grepl("^PAGA - Wage Statement", metric_groups)]
-    paga_558_groups  <- metric_groups[grepl("^PAGA - Unpaid Wages", metric_groups)]
-    
-    paga_min_wage_groups      <- metric_groups[grepl("^PAGA - Min Wage|^PAGA$", metric_groups)]
-    paga_expenses_groups      <- metric_groups[grepl("^PAGA - Unreimbursed Expenses", metric_groups)]
-    paga_recordkeeping_groups <- metric_groups[grepl("^PAGA - Recordkeeping", metric_groups)]
-    paga_waiting_time_groups  <- metric_groups[grepl("^PAGA - Waiting Time", metric_groups)]
-    
-    paga_total_groups <- metric_groups[grepl("^PAGA - Total", metric_groups)]
+
+    # Cache storage for expensive operations
+    cache <- reactiveValues(
+      filtered_data_key = NULL,
+      filtered_data_value = NULL,
+      pipeline_results_key = NULL,
+      pipeline_results_value = NULL
+    )
+
+    # Extract pre-computed metric group categories
+    list2env(metric_group_categories, envir = environment())
     
     # Original date range
     pay_date_col <- if ("Pay_Period_End" %in% names(data_list$pay1)) {
@@ -1603,7 +1600,12 @@ server <- function(data_list, metric_spec, analysis_tables) {
     
     # Current filters
     current_filters <- reactiveVal(list())
-    
+
+    # Debounce filter inputs to reduce excessive recalculation
+    date_range_debounced <- debounce(reactive(input$date_range), 500)
+    employee_filter_debounced <- debounce(reactive(input$employee_filter), 300)
+    subclass_filter_debounced <- debounce(reactive(input$subclass_filter), 300)
+
     # Show/hide filter banner
     observe({
       filters <- current_filters()
@@ -1682,7 +1684,16 @@ server <- function(data_list, metric_spec, analysis_tables) {
     # Filtered data with precomputed metadata
     filtered_data <- reactive({
       filters <- current_filters()
-      
+
+      # Check cache first
+      cache_key <- digest(filters, algo = "xxhash64")
+      if (!is.null(cache$filtered_data_key) && cache$filtered_data_key == cache_key) {
+        return(cache$filtered_data_value)
+      }
+
+      # Validate required data exists
+      req(data_list$shift_data1, data_list$pay1)
+
       shift_filtered <- data_list$shift_data1
       pay_filtered   <- data_list$pay1
       pay_date_col <- if ("Pay_Period_End" %in% names(pay_filtered)) {
@@ -1792,7 +1803,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
         sort(gps)
       } else NULL
       
-      list(
+      result <- list(
         shift_data1 = shift_filtered,
         pay1 = pay_filtered,
         pp_data1 = pp_filtered,
@@ -1803,30 +1814,20 @@ server <- function(data_list, metric_spec, analysis_tables) {
         shift_key_groups = shift_key_groups,
         pay_key_groups = pay_key_groups
       )
+
+      # Store in cache
+      cache$filtered_data_key <- cache_key
+      cache$filtered_data_value <- result
+
+      result
     })
 
-    # Run metrics pipeline once with all data and cache results
-    pipeline_results <- reactive({
+    # Calculate extrapolation environment (cached separately)
+    extrap_environment <- reactive({
       data <- filtered_data()
+      req(data$shift_data1)
 
-      # Build custom filters for Key Groups
-      custom_filters <- list()
-
-      # Add Key Group filters if they exist
-      if (!is.null(data$shift_key_groups) && length(data$shift_key_groups) > 0) {
-        for (kg in data$shift_key_groups) {
-          custom_filters[[kg]] <- list(
-            time_filter = bquote(Key_Gps == .(kg)),
-            pay_filter  = bquote(Pay_Key_Gps == .(kg)),
-            pp_filter   = bquote(Key_Gps == .(kg)),
-            ee_filter   = bquote(Key_Gps == .(kg))
-          )
-        }
-      }
-
-      # Calculate extrapolation values for use in extrap_expr evaluation
-      # These represent the full class population (not filtered by date/sample)
-      extrap_env <- list(
+      list(
         # Use full class list for employee count (not filtered data)
         extrap_class_ees = if (!is.null(data$class1) && "Class_ID" %in% names(data$class1)) {
           uniqueN(data$class1$Class_ID, na.rm = TRUE)
@@ -1855,6 +1856,32 @@ server <- function(data_list, metric_spec, analysis_tables) {
           0
         }
       )
+    })
+
+    # Run metrics pipeline once with all data and cache results
+    pipeline_results <- reactive({
+      data <- filtered_data()
+
+      # Check cache first
+      cache_key <- digest(list(current_filters(), extrap_environment()), algo = "xxhash64")
+      if (!is.null(cache$pipeline_results_key) && cache$pipeline_results_key == cache_key) {
+        return(cache$pipeline_results_value)
+      }
+
+      # Build custom filters for Key Groups
+      custom_filters <- list()
+
+      # Add Key Group filters if they exist
+      if (!is.null(data$shift_key_groups) && length(data$shift_key_groups) > 0) {
+        for (kg in data$shift_key_groups) {
+          custom_filters[[kg]] <- list(
+            time_filter = bquote(Key_Gps == .(kg)),
+            pay_filter  = bquote(Pay_Key_Gps == .(kg)),
+            pp_filter   = bquote(Key_Gps == .(kg)),
+            ee_filter   = bquote(Key_Gps == .(kg))
+          )
+        }
+      }
 
       # Run the pipeline with all data sources and extrapolation environment
       results <- run_metrics_pipeline(
@@ -1864,8 +1891,12 @@ server <- function(data_list, metric_spec, analysis_tables) {
         pp_dt = data$pp_data1,
         ee_dt = data$ee_data1,
         custom_filters = custom_filters,
-        extrap_env = extrap_env
+        extrap_env = extrap_environment()  # Use cached reactive
       )
+
+      # Store in cache
+      cache$pipeline_results_key <- cache_key
+      cache$pipeline_results_value <- results
 
       results
     })
@@ -3428,6 +3459,61 @@ message("Loading data...")
 data_list <- load_data()
 metric_spec <- load_metric_spec()
 
+message("Pre-computing metric groups...")
+# Categorize metric groups for consolidation (done once at startup for performance)
+metric_groups <- unique(metric_spec$metric_group)
+metric_group_categories <- list(
+  time_summary_groups   = metric_groups[grepl("^Time Summary$", metric_groups)],
+  time_shift_groups     = metric_groups[grepl("^Time Shift Hours Analysis", metric_groups)],
+  time_rounding_groups  = metric_groups[grepl("^Time Punch Rounding", metric_groups)],
+  time_meal_analysis    = metric_groups[grepl("^Time Meal Period Analysis", metric_groups)],
+
+  # Meal violations - split into summary and detail groups
+  time_meal_violations_5_summary = metric_groups[grepl("^Time Meal Violations \\(no waivers\\)$", metric_groups)],
+  time_meal_violations_5_short   = metric_groups[grepl("^Time Meal Violations \\(no waivers\\) - Short Detail", metric_groups)],
+  time_meal_violations_5_late    = metric_groups[grepl("^Time Meal Violations \\(no waivers\\) - Late Detail", metric_groups)],
+
+  time_meal_violations_6_summary = metric_groups[grepl("^Time Meal Violations \\(waivers\\)$", metric_groups)],
+  time_meal_violations_6_short   = metric_groups[grepl("^Time Meal Violations \\(waivers\\) - Short Detail", metric_groups)],
+  time_meal_violations_6_late    = metric_groups[grepl("^Time Meal Violations \\(waivers\\) - Late Detail", metric_groups)],
+
+  time_rest = metric_groups[grepl("^Time Rest", metric_groups)],
+
+  pay_summary_groups = metric_groups[
+    grepl("^Pay Summary$|^Pay Overtime$|^Pay Double Time$|^Pay Meal Premiums$|^Pay Rest Premiums$|^Pay Bonuses$|^Pay Shift Differentials$|^Pay Sick Pay$",
+          metric_groups)
+  ],
+  pay_regular_rate = metric_groups[grepl("^Pay Regular Rate", metric_groups)],
+
+  # Damages metric groups (Class/Individual Claims)
+  damages_meal_groups = metric_groups[grepl("^Time Meal Violations.*Damages", metric_groups)],
+  damages_rest_groups = metric_groups[grepl("^Time Rest Violations.*Damages", metric_groups)],
+  damages_rrop_groups = metric_groups[grepl("^Pay Regular Rate.*RROP Damages", metric_groups)],
+
+  damages_otc_groups       = metric_groups[grepl("^Off-the-clock.*Damages", metric_groups)],
+  damages_rounding_groups  = metric_groups[grepl("^Clock Rounding.*Damages", metric_groups)],
+  damages_unpaid_ot_groups = metric_groups[grepl("^Unpaid OT/DT.*Damages", metric_groups)],
+  damages_expenses_groups  = metric_groups[grepl("^Unreimbursed Expenses.*Damages", metric_groups)],
+
+  damages_wsv_groups         = metric_groups[grepl("^Wage Statement Penalties", metric_groups)],
+  damages_wt_groups          = metric_groups[grepl("^Waiting Time Penalties", metric_groups)],
+  damages_class_total_groups = metric_groups[grepl("^Total damages", metric_groups)],
+
+  # PAGA metric groups
+  paga_meal_groups = metric_groups[grepl("^PAGA - Meal Periods", metric_groups)],
+  paga_rest_groups = metric_groups[grepl("^PAGA - Rest Periods", metric_groups)],
+  paga_rrop_groups = metric_groups[grepl("^PAGA - Regular Rate", metric_groups)],
+  paga_226_groups  = metric_groups[grepl("^PAGA - Wage Statement", metric_groups)],
+  paga_558_groups  = metric_groups[grepl("^PAGA - Unpaid Wages", metric_groups)],
+
+  paga_min_wage_groups      = metric_groups[grepl("^PAGA - Min Wage|^PAGA$", metric_groups)],
+  paga_expenses_groups      = metric_groups[grepl("^PAGA - Unreimbursed Expenses", metric_groups)],
+  paga_recordkeeping_groups = metric_groups[grepl("^PAGA - Recordkeeping", metric_groups)],
+  paga_waiting_time_groups  = metric_groups[grepl("^PAGA - Waiting Time", metric_groups)],
+
+  paga_total_groups = metric_groups[grepl("^PAGA - Total", metric_groups)]
+)
+
 message("Loading analysis tables...")
 analysis_tables <- list(
   pay_code_summary    = load_analysis_table(PAY_CODE_SUMMARY_FILE),
@@ -3443,5 +3529,5 @@ analysis_tables <- list(
 message("Starting dashboard...")
 shinyApp(
   ui = ui(data_list, metric_spec),
-  server = server(data_list, metric_spec, analysis_tables)
+  server = server(data_list, metric_spec, analysis_tables, metric_group_categories)
 )
