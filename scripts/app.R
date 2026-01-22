@@ -954,8 +954,22 @@ filter_sidebar <- function(data_list) {
     actionButton("open_pdf_modal", "Generate PDF Report",
                  class = "w-100 mt-2 btn-primary",
                  icon = icon("file-pdf"),
-                 style = "background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; font-weight: bold; padding: 10px;"),
-    downloadButton("download_report", "Download CSV Report", class = "w-100 mt-2")
+                 style = "background: linear-gradient(135deg, #90EE90 0%, #3CB371 50%, #2E8B57 100%);
+                          border: none;
+                          font-weight: bold;
+                          padding: 10px;
+                          box-shadow: 0 4px 6px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.4);
+                          color: white;"),
+    downloadButton("download_report", "Download CSV Report",
+                   class = "w-100 mt-2",
+                   style = "background: linear-gradient(135deg, #90EE90 0%, #3CB371 50%, #2E8B57 100%);
+                            border: none;
+                            font-weight: bold;
+                            padding: 10px;
+                            box-shadow: 0 4px 6px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.4);
+                            color: white;"),
+    # Hidden download button for PDF (triggered by modal)
+    shinyjs::hidden(downloadButton("download_pdf_hidden", "Hidden PDF"))
   )
 }
 
@@ -1611,10 +1625,15 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
           ),
           div(
             modalButton("Cancel", class = "btn-secondary"),
-            downloadButton("download_pdf", "Generate PDF",
-                          class = "btn-primary",
-                          icon = icon("file-pdf"),
-                          style = "margin-left: 10px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none;")
+            actionButton("trigger_pdf_generation", "Generate PDF",
+                        class = "btn-primary",
+                        icon = icon("file-pdf"),
+                        style = "margin-left: 10px;
+                                 background: linear-gradient(135deg, #90EE90 0%, #3CB371 50%, #2E8B57 100%);
+                                 border: none;
+                                 font-weight: bold;
+                                 box-shadow: 0 4px 6px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.4);
+                                 color: white;")
           )
         ),
 
@@ -1805,6 +1824,12 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
 
       updateCheckboxInput(session, "pdf_include_appendix", value = FALSE)
       updateCheckboxInput(session, "pdf_include_data_comparison", value = FALSE)
+    })
+
+    # Trigger PDF generation from modal
+    observeEvent(input$trigger_pdf_generation, {
+      removeModal()
+      shinyjs::click("download_pdf_hidden")
     })
 
     # Toggle extrapolation columns
@@ -2505,21 +2530,36 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
 
     # PAGA - Overview
     output$table_paga_overview <- renderDT({
-      results <- pipeline_results()
+      tryCatch({
+        results <- pipeline_results()
 
-      # Build section definitions for PAGA overview (summary metrics)
-      sections <- list()
+        # Build section definitions for PAGA overview (summary metrics)
+        sections <- list()
 
-      if (length(paga_summary_groups) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA SUMMARY",
-          groups = paga_summary_groups
-        )
-      }
+        if (length(paga_summary_groups) > 0 && is.character(paga_summary_groups)) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "PAGA SUMMARY",
+            groups = as.character(paga_summary_groups)
+          )
+        }
 
-      display <- pipeline_to_damages_format(results, sections, scenario_filter = "all")
+        if (length(sections) == 0) {
+          return(datatable(data.table(Message = "No PAGA summary data available"),
+                          rownames = FALSE, options = list(dom = 't')))
+        }
 
-      create_dt_table(display)
+        display <- pipeline_to_damages_format(results, sections, scenario_filter = "all")
+
+        if (is.null(display) || nrow(display) == 0) {
+          return(datatable(data.table(Message = "No PAGA summary data available"),
+                          rownames = FALSE, options = list(dom = 't')))
+        }
+
+        create_dt_table(display)
+      }, error = function(e) {
+        datatable(data.table(Error = paste("Error rendering PAGA overview:", e$message)),
+                 rownames = FALSE, options = list(dom = 't'))
+      })
     })
 
     # PAGA - No Waivers
@@ -3239,7 +3279,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       }
     )
     
-    output$download_pdf <- downloadHandler(
+    output$download_pdf_hidden <- downloadHandler(
       filename = function() paste0("Wage_Hour_Report_", format(Sys.Date(), "%Y%m%d"), ".html"),
       content = function(file) {
 
