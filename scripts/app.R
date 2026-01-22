@@ -1088,10 +1088,10 @@ ui <- function(data_list, metric_spec) {
               actionButton("pdf_deselect_all", "Deselect All", class = "btn-sm btn-secondary")
             )
           ),
+
+          h6("Case Overview & Time Analysis"),
           layout_columns(
             col_widths = c(3, 3, 3, 3),
-            
-            # Column 1
             div(
               checkboxGroupInput(
                 "pdf_sections_col1",
@@ -1100,62 +1100,132 @@ ui <- function(data_list, metric_spec) {
                   "Overview Statistics" = "overview",
                   "Time - Summary" = "time_summary",
                   "Time - Shift Hours" = "time_shift_hours",
-                  "Time - Punch Rounding" = "time_rounding",
-                  "Meal - Analysis" = "meal_analysis"
+                  "Time - Punch Rounding" = "time_rounding"
                 ),
-                selected = c("overview", "time_summary", "time_shift_hours", "time_rounding",
-                             "meal_analysis")
+                selected = c("overview", "time_summary", "time_shift_hours", "time_rounding")
               )
             ),
-            
-            # Column 2
             div(
               checkboxGroupInput(
                 "pdf_sections_col2",
                 NULL,
                 choices = c(
+                  "Meal - Analysis" = "meal_analysis",
                   "Meal - Violations (no waivers)" = "meal_5hr",
                   "Meal - Violations (waivers)" = "meal_6hr",
-                  "Rest Periods" = "rest_periods",
-                  "Pay - Summary" = "pay_summary",
-                  "Pay - Regular Rate" = "pay_regular_rate"
+                  "Rest Periods" = "rest_periods"
                 ),
-                selected = c("meal_5hr", "meal_6hr", "rest_periods", "pay_summary", "pay_regular_rate")
+                selected = c("meal_analysis", "meal_5hr", "meal_6hr", "rest_periods")
               )
             ),
-            
-            # Column 3
             div(
               checkboxGroupInput(
                 "pdf_sections_col3",
                 NULL,
                 choices = c(
+                  "Pay - Summary" = "pay_summary",
+                  "Pay - Regular Rate" = "pay_regular_rate",
                   "Pay - Codes" = "pay_codes",
-                  "Pay - Rate Type" = "rate_type_analysis",
-                  "Damages - Class (No Waiv.)" = "damages_class_no_waivers",
-                  "Damages - Class (Waiv.)" = "damages_class_waivers",
-                  "Damages - PAGA (No Waiv.)" = "damages_paga_no_waivers"
+                  "Pay - Rate Type" = "rate_type_analysis"
                 ),
-                selected = c("pay_codes", "rate_type_analysis")
+                selected = c("pay_summary", "pay_regular_rate", "pay_codes", "rate_type_analysis")
               )
-            ),
-            
-            # Column 4
-            div(
-              checkboxGroupInput(
-                "pdf_sections_col4",
-                NULL,
-                choices = c(
-                  "Damages - PAGA (Waiv.)" = "damages_paga_waivers"
-                ),
-                selected = c()
-              ),
-              br(),
-              checkboxInput("pdf_include_appendix", "Appendix Tables (All)", value = FALSE)
             )
           ),
+
           hr(),
-          checkboxInput("pdf_include_data_comparison", "Data Comparison (1-Page Landscape)", value = TRUE),
+          h6("Class Damages / Individual Claims"),
+          layout_columns(
+            col_widths = c(3, 3, 3, 3),
+            div(
+              checkboxGroupInput(
+                "pdf_damages_class_col1",
+                NULL,
+                choices = c(
+                  "Overview (Summary)" = "damages_class_overview",
+                  "Meal Premium Damages" = "damages_meal",
+                  "Rest Premium Damages" = "damages_rest",
+                  "RROP Damages" = "damages_rrop"
+                ),
+                selected = c()
+              )
+            ),
+            div(
+              checkboxGroupInput(
+                "pdf_damages_class_col2",
+                NULL,
+                choices = c(
+                  "Off-the-Clock Damages" = "damages_otc",
+                  "Clock Rounding Damages" = "damages_rounding",
+                  "Unpaid OT/DT Damages" = "damages_unpaid_ot",
+                  "Unreimbursed Expenses" = "damages_expenses"
+                ),
+                selected = c()
+              )
+            ),
+            div(
+              checkboxGroupInput(
+                "pdf_damages_class_col3",
+                NULL,
+                choices = c(
+                  "Wage Statement Penalties" = "damages_wsv",
+                  "Waiting Time Penalties" = "damages_wt",
+                  "Total Damages" = "damages_total"
+                ),
+                selected = c()
+              )
+            )
+          ),
+
+          hr(),
+          h6("PAGA Penalties"),
+          layout_columns(
+            col_widths = c(3, 3, 3, 3),
+            div(
+              checkboxGroupInput(
+                "pdf_paga_col1",
+                NULL,
+                choices = c(
+                  "Overview (Summary)" = "paga_overview",
+                  "Meal Periods" = "paga_meal",
+                  "Rest Periods" = "paga_rest",
+                  "RROP" = "paga_rrop"
+                ),
+                selected = c()
+              )
+            ),
+            div(
+              checkboxGroupInput(
+                "pdf_paga_col2",
+                NULL,
+                choices = c(
+                  "Wage Statement (226)" = "paga_226",
+                  "Unpaid Wages (558)" = "paga_558",
+                  "Min Wage (1197.1)" = "paga_min_wage"
+                ),
+                selected = c()
+              )
+            ),
+            div(
+              checkboxGroupInput(
+                "pdf_paga_col3",
+                NULL,
+                choices = c(
+                  "Unreimbursed Expenses (2802)" = "paga_expenses",
+                  "Recordkeeping (1174.1)" = "paga_recordkeeping",
+                  "Waiting Time (203)" = "paga_waiting_time",
+                  "PAGA Total" = "paga_total"
+                ),
+                selected = c()
+              )
+            )
+          ),
+
+          hr(),
+          div(
+            checkboxInput("pdf_include_appendix", "Appendix Tables (All)", value = FALSE),
+            checkboxInput("pdf_include_data_comparison", "Data Comparison (1-Page Landscape)", value = TRUE)
+          ),
           hr(),
           downloadButton("download_pdf", "Generate PDF Report",
                          class = "btn-primary btn-lg",
@@ -1407,11 +1477,15 @@ ui <- function(data_list, metric_spec) {
     nav_panel(
       title = "Damages",
       icon = icon("gavel"),
-      
+
       navset_card_underline(
         nav_panel(
-          "Class / Individual Claims",
+          "Class Damages / Individ Claims",
           navset_card_underline(
+            nav_panel(
+              "Overview",
+              withSpinner(DTOutput("table_damages_class_overview"), type = 6, color = "#2c3e50")
+            ),
             nav_panel(
               "No Waivers",
               withSpinner(DTOutput("table_damages_class_no_waivers"), type = 6, color = "#2c3e50")
@@ -1425,6 +1499,10 @@ ui <- function(data_list, metric_spec) {
         nav_panel(
           "PAGA",
           navset_card_underline(
+            nav_panel(
+              "Overview",
+              withSpinner(DTOutput("table_paga_overview"), type = 6, color = "#2c3e50")
+            ),
             nav_panel(
               "No Waivers",
               withSpinner(DTOutput("table_paga_no_waivers"), type = 6, color = "#2c3e50")
@@ -1686,26 +1764,53 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     
     # PDF Select All button
     observeEvent(input$pdf_select_all, {
-      all_choices_col1 <- c("overview", "time_summary", "time_shift_hours", "time_rounding", "meal_analysis")
-      all_choices_col2 <- c("meal_5hr", "meal_6hr", "rest_periods", "pay_summary", "pay_regular_rate")
-      all_choices_col3 <- c("pay_codes", "rate_type_analysis", "damages_class_no_waivers",
-                            "damages_class_waivers", "damages_paga_no_waivers")
-      all_choices_col4 <- c("damages_paga_waivers")
-      
+      # Time/Pay sections
+      all_choices_col1 <- c("overview", "time_summary", "time_shift_hours", "time_rounding")
+      all_choices_col2 <- c("meal_analysis", "meal_5hr", "meal_6hr", "rest_periods")
+      all_choices_col3 <- c("pay_summary", "pay_regular_rate", "pay_codes", "rate_type_analysis")
+
+      # Damages - Class sections
+      all_damages_class_col1 <- c("damages_class_overview", "damages_meal", "damages_rest", "damages_rrop")
+      all_damages_class_col2 <- c("damages_otc", "damages_rounding", "damages_unpaid_ot", "damages_expenses")
+      all_damages_class_col3 <- c("damages_wsv", "damages_wt", "damages_total")
+
+      # PAGA sections
+      all_paga_col1 <- c("paga_overview", "paga_meal", "paga_rest", "paga_rrop")
+      all_paga_col2 <- c("paga_226", "paga_558", "paga_min_wage")
+      all_paga_col3 <- c("paga_expenses", "paga_recordkeeping", "paga_waiting_time", "paga_total")
+
       updateCheckboxGroupInput(session, "pdf_sections_col1", selected = all_choices_col1)
       updateCheckboxGroupInput(session, "pdf_sections_col2", selected = all_choices_col2)
       updateCheckboxGroupInput(session, "pdf_sections_col3", selected = all_choices_col3)
-      updateCheckboxGroupInput(session, "pdf_sections_col4", selected = all_choices_col4)
+
+      updateCheckboxGroupInput(session, "pdf_damages_class_col1", selected = all_damages_class_col1)
+      updateCheckboxGroupInput(session, "pdf_damages_class_col2", selected = all_damages_class_col2)
+      updateCheckboxGroupInput(session, "pdf_damages_class_col3", selected = all_damages_class_col3)
+
+      updateCheckboxGroupInput(session, "pdf_paga_col1", selected = all_paga_col1)
+      updateCheckboxGroupInput(session, "pdf_paga_col2", selected = all_paga_col2)
+      updateCheckboxGroupInput(session, "pdf_paga_col3", selected = all_paga_col3)
+
       updateCheckboxInput(session, "pdf_include_appendix", value = TRUE)
+      updateCheckboxInput(session, "pdf_include_data_comparison", value = TRUE)
     })
-    
+
     # PDF Deselect All button
     observeEvent(input$pdf_deselect_all, {
       updateCheckboxGroupInput(session, "pdf_sections_col1", selected = character(0))
       updateCheckboxGroupInput(session, "pdf_sections_col2", selected = character(0))
       updateCheckboxGroupInput(session, "pdf_sections_col3", selected = character(0))
-      updateCheckboxGroupInput(session, "pdf_sections_col4", selected = character(0))
+
+      updateCheckboxGroupInput(session, "pdf_damages_class_col1", selected = character(0))
+      updateCheckboxGroupInput(session, "pdf_damages_class_col2", selected = character(0))
+      updateCheckboxGroupInput(session, "pdf_damages_class_col3", selected = character(0))
+
+      updateCheckboxGroupInput(session, "pdf_paga_col1", selected = character(0))
+      updateCheckboxGroupInput(session, "pdf_paga_col2", selected = character(0))
+      updateCheckboxGroupInput(session, "pdf_paga_col3", selected = character(0))
+
       updateCheckboxInput(session, "pdf_include_appendix", value = FALSE)
+      updateCheckboxInput(session, "pdf_include_data_comparison", value = FALSE)
     })
 
     # Toggle extrapolation columns
@@ -2153,7 +2258,61 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     # ===========================================================================
     # ANALYSIS TABLES (FROM FILES)
     # ===========================================================================
-    
+
+    # Class/Individual Claims - Overview
+    output$table_damages_class_overview <- renderDT({
+      results <- pipeline_results()
+
+      # Build section definitions for overview (summary metrics)
+      sections <- list()
+
+      if (length(damages_summary_groups) > 0) {
+        sections[[length(sections) + 1]] <- list(
+          section_name = "SUMMARY",
+          groups = damages_summary_groups
+        )
+      }
+
+      if (length(damages_credits_groups) > 0) {
+        sections[[length(sections) + 1]] <- list(
+          section_name = "CREDITS OR OFFSETS",
+          groups = damages_credits_groups
+        )
+      }
+
+      if (length(damages_principal_groups) > 0) {
+        sections[[length(sections) + 1]] <- list(
+          section_name = "PRINCIPAL",
+          groups = damages_principal_groups
+        )
+      }
+
+      if (length(damages_interest_groups) > 0) {
+        sections[[length(sections) + 1]] <- list(
+          section_name = "INTEREST",
+          groups = damages_interest_groups
+        )
+      }
+
+      if (length(damages_subtotal_groups) > 0) {
+        sections[[length(sections) + 1]] <- list(
+          section_name = "SUB-TOTAL (PRINCIPAL + INTEREST)",
+          groups = damages_subtotal_groups
+        )
+      }
+
+      if (length(damages_grand_total_groups) > 0) {
+        sections[[length(sections) + 1]] <- list(
+          section_name = "GRAND TOTAL (PRINCIPAL + INTEREST + PENALTIES)",
+          groups = damages_grand_total_groups
+        )
+      }
+
+      display <- pipeline_to_damages_format(results, sections, scenario_filter = "all")
+
+      create_dt_table(display)
+    })
+
     # Class/Individual Claims - No Waivers
     output$table_damages_class_no_waivers <- renderDT({
       results <- pipeline_results()
@@ -2346,6 +2505,25 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       # Filter out no-waiver metrics from waiver tab based on metric labels
       # (fallback for old spec without scenario column)
       display <- filter_metrics_by_label(display, include_waivers = TRUE)
+
+      create_dt_table(display)
+    })
+
+    # PAGA - Overview
+    output$table_paga_overview <- renderDT({
+      results <- pipeline_results()
+
+      # Build section definitions for PAGA overview (summary metrics)
+      sections <- list()
+
+      if (length(paga_summary_groups) > 0) {
+        sections[[length(sections) + 1]] <- list(
+          section_name = "PAGA SUMMARY",
+          groups = paga_summary_groups
+        )
+      }
+
+      display <- pipeline_to_damages_format(results, sections, scenario_filter = "all")
 
       create_dt_table(display)
     })
@@ -3070,10 +3248,22 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     output$download_pdf <- downloadHandler(
       filename = function() paste0("Wage_Hour_Report_", format(Sys.Date(), "%Y%m%d"), ".html"),
       content = function(file) {
-        
+
         withProgress(message = "Generating PDF Report", value = 0, {
-          
-          sections <- c(input$pdf_sections_col1, input$pdf_sections_col2, input$pdf_sections_col3, input$pdf_sections_col4)
+
+          # Collect all selected sections from all checkbox groups
+          sections <- c(
+            input$pdf_sections_col1,
+            input$pdf_sections_col2,
+            input$pdf_sections_col3,
+            input$pdf_damages_class_col1,
+            input$pdf_damages_class_col2,
+            input$pdf_damages_class_col3,
+            input$pdf_paga_col1,
+            input$pdf_paga_col2,
+            input$pdf_paga_col3
+          )
+
           if (isTRUE(input$pdf_include_data_comparison)) {
             sections <- c(sections, "data_comparison")
           }
@@ -3328,6 +3518,184 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
             html_content <- paste0(html_content, add_table(results, "Meal Violations (waivers)", "⚠️"))
           }
 
+          if ("rest_periods" %in% sections && length(time_rest) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            results <- calculate_group_metrics(data, metric_spec, time_rest, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, add_table(results, "Rest Period Analysis", "😴"))
+          }
+
+          if ("pay_summary" %in% sections && length(pay_summary_groups) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            results <- calculate_group_metrics(data, metric_spec, pay_summary_groups, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, add_table(results, "Pay Analysis - Summary", "💰"))
+          }
+
+          if ("pay_regular_rate" %in% sections && length(pay_regular_rate) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            results <- calculate_group_metrics(data, metric_spec, pay_regular_rate, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, add_table(results, "Pay Analysis - Regular Rate of Pay", "📊"))
+          }
+
+          # Class Damages sections
+          if ("damages_class_overview" %in% sections) {
+            html_content <- paste0(html_content, '<div class="page-break"></div><h1>⚖️ Class Damages / Individual Claims - Overview</h1>')
+
+            if (length(damages_summary_groups) > 0) {
+              results <- calculate_group_metrics(data, metric_spec, damages_summary_groups, current_filters(), extrap_factor())
+              html_content <- paste0(html_content, add_table(results, "Summary", "📋"))
+            }
+            if (length(damages_credits_groups) > 0) {
+              results <- calculate_group_metrics(data, metric_spec, damages_credits_groups, current_filters(), extrap_factor())
+              html_content <- paste0(html_content, add_table(results, "Credits or Offsets", "💳"))
+            }
+            if (length(damages_principal_groups) > 0) {
+              results <- calculate_group_metrics(data, metric_spec, damages_principal_groups, current_filters(), extrap_factor())
+              html_content <- paste0(html_content, add_table(results, "Principal", "💵"))
+            }
+            if (length(damages_interest_groups) > 0) {
+              results <- calculate_group_metrics(data, metric_spec, damages_interest_groups, current_filters(), extrap_factor())
+              html_content <- paste0(html_content, add_table(results, "Interest", "📈"))
+            }
+            if (length(damages_subtotal_groups) > 0) {
+              results <- calculate_group_metrics(data, metric_spec, damages_subtotal_groups, current_filters(), extrap_factor())
+              html_content <- paste0(html_content, add_table(results, "Sub-Total (Principal + Interest)", "🧮"))
+            }
+            if (length(damages_grand_total_groups) > 0) {
+              results <- calculate_group_metrics(data, metric_spec, damages_grand_total_groups, current_filters(), extrap_factor())
+              html_content <- paste0(html_content, add_table(results, "Grand Total (Principal + Interest + Penalties)", "💰"))
+            }
+          }
+
+          if ("damages_meal" %in% sections && length(damages_meal_groups) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            results <- calculate_group_metrics(data, metric_spec, damages_meal_groups, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, add_table(results, "Class Damages - Meal Premium Damages", "🍽️"))
+          }
+
+          if ("damages_rest" %in% sections && length(damages_rest_groups) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            results <- calculate_group_metrics(data, metric_spec, damages_rest_groups, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, add_table(results, "Class Damages - Rest Premium Damages", "😴"))
+          }
+
+          if ("damages_rrop" %in% sections && length(damages_rrop_groups) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            results <- calculate_group_metrics(data, metric_spec, damages_rrop_groups, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, add_table(results, "Class Damages - RROP Damages", "📊"))
+          }
+
+          if ("damages_otc" %in% sections && length(damages_otc_groups) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            results <- calculate_group_metrics(data, metric_spec, damages_otc_groups, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, add_table(results, "Class Damages - Off-the-Clock Damages", "⏰"))
+          }
+
+          if ("damages_rounding" %in% sections && length(damages_rounding_groups) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            results <- calculate_group_metrics(data, metric_spec, damages_rounding_groups, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, add_table(results, "Class Damages - Clock Rounding Damages", "🔄"))
+          }
+
+          if ("damages_unpaid_ot" %in% sections && length(damages_unpaid_ot_groups) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            results <- calculate_group_metrics(data, metric_spec, damages_unpaid_ot_groups, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, add_table(results, "Class Damages - Unpaid OT/DT Damages", "⏱️"))
+          }
+
+          if ("damages_expenses" %in% sections && length(damages_expenses_groups) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            results <- calculate_group_metrics(data, metric_spec, damages_expenses_groups, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, add_table(results, "Class Damages - Unreimbursed Expenses", "💸"))
+          }
+
+          if ("damages_wsv" %in% sections && length(damages_wsv_groups) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            results <- calculate_group_metrics(data, metric_spec, damages_wsv_groups, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, add_table(results, "Class Damages - Wage Statement Penalties", "📝"))
+          }
+
+          if ("damages_wt" %in% sections && length(damages_wt_groups) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            results <- calculate_group_metrics(data, metric_spec, damages_wt_groups, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, add_table(results, "Class Damages - Waiting Time Penalties", "⏳"))
+          }
+
+          if ("damages_total" %in% sections && length(damages_class_total_groups) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            results <- calculate_group_metrics(data, metric_spec, damages_class_total_groups, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, add_table(results, "Class Damages - Total Damages", "💰"))
+          }
+
+          # PAGA sections
+          if ("paga_overview" %in% sections) {
+            html_content <- paste0(html_content, '<div class="page-break"></div><h1>⚖️ PAGA Penalties - Overview</h1>')
+
+            if (length(paga_summary_groups) > 0) {
+              results <- calculate_group_metrics(data, metric_spec, paga_summary_groups, current_filters(), extrap_factor())
+              html_content <- paste0(html_content, add_table(results, "PAGA Summary", "📋"))
+            }
+          }
+
+          if ("paga_meal" %in% sections && length(paga_meal_groups) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            results <- calculate_group_metrics(data, metric_spec, paga_meal_groups, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, add_table(results, "PAGA - Meal Periods", "🍽️"))
+          }
+
+          if ("paga_rest" %in% sections && length(paga_rest_groups) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            results <- calculate_group_metrics(data, metric_spec, paga_rest_groups, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, add_table(results, "PAGA - Rest Periods", "😴"))
+          }
+
+          if ("paga_rrop" %in% sections && length(paga_rrop_groups) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            results <- calculate_group_metrics(data, metric_spec, paga_rrop_groups, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, add_table(results, "PAGA - Regular Rate of Pay (RROP)", "📊"))
+          }
+
+          if ("paga_226" %in% sections && length(paga_226_groups) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            results <- calculate_group_metrics(data, metric_spec, paga_226_groups, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, add_table(results, "PAGA - Wage Statement (226)", "📝"))
+          }
+
+          if ("paga_558" %in% sections && length(paga_558_groups) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            results <- calculate_group_metrics(data, metric_spec, paga_558_groups, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, add_table(results, "PAGA - Unpaid Wages (558)", "💵"))
+          }
+
+          if ("paga_min_wage" %in% sections && length(paga_min_wage_groups) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            results <- calculate_group_metrics(data, metric_spec, paga_min_wage_groups, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, add_table(results, "PAGA - Min Wage (1197.1)", "💰"))
+          }
+
+          if ("paga_expenses" %in% sections && length(paga_expenses_groups) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            results <- calculate_group_metrics(data, metric_spec, paga_expenses_groups, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, add_table(results, "PAGA - Unreimbursed Expenses (2802)", "💸"))
+          }
+
+          if ("paga_recordkeeping" %in% sections && length(paga_recordkeeping_groups) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            results <- calculate_group_metrics(data, metric_spec, paga_recordkeeping_groups, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, add_table(results, "PAGA - Recordkeeping (1174.1)", "📚"))
+          }
+
+          if ("paga_waiting_time" %in% sections && length(paga_waiting_time_groups) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            results <- calculate_group_metrics(data, metric_spec, paga_waiting_time_groups, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, add_table(results, "PAGA - Waiting Time (203)", "⏳"))
+          }
+
+          if ("paga_total" %in% sections && length(paga_total_groups) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            results <- calculate_group_metrics(data, metric_spec, paga_total_groups, current_filters(), extrap_factor())
+            html_content <- paste0(html_content, add_table(results, "PAGA - Total", "💰"))
+          }
+
           # Data Comparison Section - removed (now in overview section at top)
           # Close HTML
           incProgress(1 / total_sections, detail = "Finalizing report...")
@@ -3377,6 +3745,13 @@ metric_group_categories <- list(
   pay_regular_rate = metric_groups[grepl("^Pay Regular Rate", metric_groups)],
 
   # Damages metric groups (Class/Individual Claims)
+  damages_summary_groups = metric_groups[grepl("^Damages - Summary$", metric_groups)],
+  damages_credits_groups = metric_groups[grepl("^Damages - Credits or Offsets", metric_groups)],
+  damages_principal_groups = metric_groups[grepl("^Damages - Principal", metric_groups)],
+  damages_interest_groups = metric_groups[grepl("^Damages - Interest", metric_groups)],
+  damages_subtotal_groups = metric_groups[grepl("^Damages - Sub-Total", metric_groups)],
+  damages_grand_total_groups = metric_groups[grepl("^Damages - Grand Total", metric_groups)],
+
   damages_meal_groups = metric_groups[grepl("^Time Meal Violations.*Damages", metric_groups)],
   damages_rest_groups = metric_groups[grepl("^Time Rest Violations.*Damages", metric_groups)],
   damages_rrop_groups = metric_groups[grepl("^Pay Regular Rate.*RROP Damages", metric_groups)],
@@ -3391,6 +3766,8 @@ metric_group_categories <- list(
   damages_class_total_groups = metric_groups[grepl("^Total damages", metric_groups)],
 
   # PAGA metric groups
+  paga_summary_groups = metric_groups[grepl("^PAGA - Summary$", metric_groups)],
+
   paga_meal_groups = metric_groups[grepl("^PAGA - Meal Periods", metric_groups)],
   paga_rest_groups = metric_groups[grepl("^PAGA - Rest Periods", metric_groups)],
   paga_rrop_groups = metric_groups[grepl("^PAGA - Regular Rate", metric_groups)],
