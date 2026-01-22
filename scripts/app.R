@@ -436,9 +436,12 @@ pipeline_to_display_format <- function(pipeline_results, group_names = NULL, inc
     setnames(formatted, "metric_label", "Metric")
   }
 
-  # Remove metric_group column (used for filtering, not display)
+  # Remove metric_group and scenario columns (used for filtering, not display)
   if ("metric_group" %in% names(formatted)) {
     formatted[, metric_group := NULL]
+  }
+  if ("scenario" %in% names(formatted)) {
+    formatted[, scenario := NULL]
   }
 
   # If not including years, remove year columns
@@ -490,9 +493,12 @@ pipeline_to_damages_format <- function(pipeline_results, section_definitions, sc
       formatted[, (year_cols) := NULL]
     }
 
-    # Remove metric_group column
+    # Remove metric_group and scenario columns
     if ("metric_group" %in% names(formatted)) {
       formatted[, metric_group := NULL]
+    }
+    if ("scenario" %in% names(formatted)) {
+      formatted[, scenario := NULL]
     }
 
     # Create section header
@@ -2303,8 +2309,8 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       rest_split <- split_by_waiver(damages_rest_groups)
       rrop_split <- split_by_waiver(damages_rrop_groups)
       otc_split <- split_by_waiver(damages_otc_groups)
-      rounding_split <- split_by_waiver(damages_rounding_groups)
       unpaid_ot_split <- split_by_waiver(damages_unpaid_ot_groups)
+      min_wage_split <- split_by_waiver(damages_min_wage_groups)
       expenses_split <- split_by_waiver(damages_expenses_groups)
       wsv_split <- split_by_waiver(damages_wsv_groups)
       wt_split <- split_by_waiver(damages_wt_groups)
@@ -2341,17 +2347,17 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         )
       }
 
-      if (length(rounding_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "CLOCK ROUNDING DAMAGES",
-          groups = rounding_split$no_waiver
-        )
-      }
-
       if (length(unpaid_ot_split$no_waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "UNPAID OT/DT DAMAGES",
           groups = unpaid_ot_split$no_waiver
+        )
+      }
+
+      if (length(min_wage_split$no_waiver) > 0) {
+        sections[[length(sections) + 1]] <- list(
+          section_name = "UNPAID WAGES (MIN WAGE) DAMAGES",
+          groups = min_wage_split$no_waiver
         )
       }
 
@@ -2401,8 +2407,8 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       rest_split <- split_by_waiver(damages_rest_groups)
       rrop_split <- split_by_waiver(damages_rrop_groups)
       otc_split <- split_by_waiver(damages_otc_groups)
-      rounding_split <- split_by_waiver(damages_rounding_groups)
       unpaid_ot_split <- split_by_waiver(damages_unpaid_ot_groups)
+      min_wage_split <- split_by_waiver(damages_min_wage_groups)
       expenses_split <- split_by_waiver(damages_expenses_groups)
       wsv_split <- split_by_waiver(damages_wsv_groups)
       wt_split <- split_by_waiver(damages_wt_groups)
@@ -2439,17 +2445,17 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         )
       }
 
-      if (length(rounding_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "CLOCK ROUNDING DAMAGES",
-          groups = rounding_split$waiver
-        )
-      }
-
       if (length(unpaid_ot_split$waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
           section_name = "UNPAID OT/DT DAMAGES",
           groups = unpaid_ot_split$waiver
+        )
+      }
+
+      if (length(min_wage_split$waiver) > 0) {
+        sections[[length(sections) + 1]] <- list(
+          section_name = "UNPAID WAGES (MIN WAGE) DAMAGES",
+          groups = min_wage_split$waiver
         )
       }
 
@@ -3703,7 +3709,7 @@ message("Pre-computing metric groups...")
 # Categorize metric groups for consolidation (done once at startup for performance)
 metric_groups <- unique(metric_spec$metric_group)
 metric_group_categories <- list(
-  time_summary_groups   = metric_groups[grepl("^Time Summary$", metric_groups)],
+  time_summary_groups   = metric_groups[grepl("^Summary - Time Data$", metric_groups)],
   time_shift_groups     = metric_groups[grepl("^Time Shift Hours Analysis", metric_groups)],
   time_rounding_groups  = metric_groups[grepl("^Time Punch Rounding", metric_groups)],
   time_meal_analysis    = metric_groups[grepl("^Time Meal Period Analysis", metric_groups)],
@@ -3719,10 +3725,7 @@ metric_group_categories <- list(
 
   time_rest = metric_groups[grepl("^Time Rest", metric_groups)],
 
-  pay_summary_groups = metric_groups[
-    grepl("^Pay Summary$|^Pay Overtime$|^Pay Double Time$|^Pay Meal Premiums$|^Pay Rest Premiums$|^Pay Bonuses$|^Pay Shift Differentials$|^Pay Sick Pay$",
-          metric_groups)
-  ],
+  pay_summary_groups = metric_groups[grepl("^Summary - Pay Data$", metric_groups)],
   pay_regular_rate = metric_groups[grepl("^Pay Regular Rate", metric_groups)],
 
   # Damages metric groups (Class/Individual Claims)
@@ -3733,18 +3736,18 @@ metric_group_categories <- list(
   damages_subtotal_groups = metric_groups[grepl("^Damages - Sub-Total", metric_groups)],
   damages_grand_total_groups = metric_groups[grepl("^Damages - Grand Total", metric_groups)],
 
-  damages_meal_groups = metric_groups[grepl("^Time Meal Violations.*Damages", metric_groups)],
-  damages_rest_groups = metric_groups[grepl("^Time Rest Violations.*Damages", metric_groups)],
-  damages_rrop_groups = metric_groups[grepl("^Pay Regular Rate.*RROP Damages", metric_groups)],
+  damages_meal_groups = metric_groups[grepl("^Damages - Meal Premiums", metric_groups)],
+  damages_rest_groups = metric_groups[grepl("^Damages - Rest Premiums", metric_groups)],
+  damages_rrop_groups = metric_groups[grepl("^Damages - Regular Rate of Pay", metric_groups)],
 
-  damages_otc_groups       = metric_groups[grepl("^Off-the-clock.*Damages", metric_groups)],
-  damages_rounding_groups  = metric_groups[grepl("^Clock Rounding.*Damages", metric_groups)],
-  damages_unpaid_ot_groups = metric_groups[grepl("^Unpaid OT/DT.*Damages", metric_groups)],
-  damages_expenses_groups  = metric_groups[grepl("^Unreimbursed Expenses.*Damages", metric_groups)],
+  damages_otc_groups       = metric_groups[grepl("^Damages - Off-the-Clock", metric_groups)],
+  damages_unpaid_ot_groups = metric_groups[grepl("^Damages - Unpaid OT/DT", metric_groups)],
+  damages_min_wage_groups  = metric_groups[grepl("^Damages - Unpaid Wages \\(Min Wage\\)", metric_groups)],
+  damages_expenses_groups  = metric_groups[grepl("^Damages - Unreimbursed Expenses", metric_groups)],
 
-  damages_wsv_groups         = metric_groups[grepl("^Wage Statement Penalties", metric_groups)],
-  damages_wt_groups          = metric_groups[grepl("^Waiting Time Penalties", metric_groups)],
-  damages_class_total_groups = metric_groups[grepl("^Total damages", metric_groups)],
+  damages_wsv_groups         = metric_groups[grepl("^Damages - Wage Statement Penalties", metric_groups)],
+  damages_wt_groups          = metric_groups[grepl("^Damages - Waiting Time Penalties", metric_groups)],
+  damages_class_total_groups = metric_groups[grepl("^Damages - Grand Total", metric_groups)],
 
   # PAGA metric groups
   paga_summary_groups = metric_groups[grepl("^PAGA - Summary$", metric_groups)],
