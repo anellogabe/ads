@@ -1014,7 +1014,7 @@ ui <- function(data_list, metric_spec) {
           /* Watermark and version - bottom center */
           .footer-info {
             position: fixed;
-            bottom: 5px;
+            bottom: 2px;
             left: 50%;
             transform: translateX(-50%);
             text-align: center;
@@ -1060,7 +1060,7 @@ ui <- function(data_list, metric_spec) {
       card(
         card_header("Case Configuration"),
         card_body(
-          style = "min-height: 200px;",
+          style = "min-height: 280px;",
           div(
             style = "line-height: 1.6;",
             p(strong("Case Name: "), textOutput("case_name", inline = TRUE)),
