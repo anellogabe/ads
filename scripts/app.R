@@ -960,6 +960,11 @@ filter_sidebar <- function(data_list) {
                           padding: 10px;
                           box-shadow: 0 4px 6px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.4);
                           color: white;"),
+    # Hidden download button for PDF (triggered by modal action button)
+    shinyjs::hidden(
+      downloadButton("download_pdf", "Download PDF",
+                     style = "display: none;")
+    ),
     downloadButton("download_report", "Download CSV Report",
                    class = "w-100 mt-2",
                    style = "background: linear-gradient(135deg, #90EE90 0%, #3CB371 50%, #2E8B57 100%);
@@ -1624,15 +1629,15 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
           ),
           div(
             modalButton("Cancel"),
-            downloadButton("download_pdf", "Generate PDF",
-                          class = "btn-primary",
-                          icon = icon("file-pdf"),
-                          style = "margin-left: 10px;
-                                   background: linear-gradient(135deg, #90EE90 0%, #3CB371 50%, #2E8B57 100%);
-                                   border: none;
-                                   font-weight: bold;
-                                   box-shadow: 0 4px 6px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.4);
-                                   color: white;")
+            actionButton("trigger_pdf_download", "Generate PDF",
+                        class = "btn-primary",
+                        icon = icon("file-pdf"),
+                        style = "margin-left: 10px;
+                                 background: linear-gradient(135deg, #90EE90 0%, #3CB371 50%, #2E8B57 100%);
+                                 border: none;
+                                 font-weight: bold;
+                                 box-shadow: 0 4px 6px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.4);
+                                 color: white;")
           )
         ),
 
@@ -1822,6 +1827,12 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
 
       updateCheckboxInput(session, "pdf_include_appendix", value = FALSE)
       updateCheckboxInput(session, "pdf_include_data_comparison", value = FALSE)
+    })
+
+    # Trigger PDF download when Generate PDF button in modal is clicked
+    observeEvent(input$trigger_pdf_download, {
+      removeModal()
+      shinyjs::delay(100, shinyjs::click("download_pdf"))
     })
 
     # Toggle extrapolation columns
