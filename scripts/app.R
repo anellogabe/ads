@@ -1772,7 +1772,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
         shift_key_groups = shift_key_groups,
         pay_key_groups = pay_key_groups
       )
-    }) |> shiny::bindCache(current_filters())
+    }) %>% shiny::bindCache(current_filters())
 
     # Run metrics pipeline once with all data and cache results
     pipeline_results <- reactive({
@@ -1837,7 +1837,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
       )
 
       results
-    }) |> shiny::bindCache(current_filters())
+    }) %>% shiny::bindCache(current_filters())
 
     # Populate Key Groups filter choices
     observe({
@@ -1975,75 +1975,73 @@ server <- function(data_list, metric_spec, analysis_tables) {
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_summary_groups, include_years = TRUE)
       create_dt_table(display)
-    }) |> shiny::bindCache(current_filters())
+    }) %>% shiny::bindCache(current_filters())
     
     output$table_shift_hours <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_shift_groups, include_years = TRUE)
       create_dt_table(display)
-    }) |> shiny::bindCache(current_filters())
+    }) %>% shiny::bindCache(current_filters())
 
     output$table_rounding_consolidated <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_rounding_groups, include_years = TRUE)
       create_dt_table(display)
-    }) |> shiny::bindCache(current_filters())
+    }) %>% shiny::bindCache(current_filters())
 
     output$table_meal_consolidated <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_meal_analysis, include_years = TRUE)
       create_dt_table(display)
-    }) |> shiny::bindCache(current_filters())
+    }) %>% shiny::bindCache(current_filters())
 
     output$table_meal_5hr_consolidated <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_meal_violations_5_summary, include_years = TRUE)
       create_dt_table(display)
-    }) |> shiny::bindCache(current_filters())
+    }) %>% shiny::bindCache(current_filters())
 
     output$table_meal_5hr_short_details <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_meal_violations_5_short, include_years = TRUE)
       create_dt_table(display)
-    }) |> shiny::bindCache(current_filters())
+    }) %>% shiny::bindCache(current_filters())
 
     output$table_meal_5hr_late_details <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_meal_violations_5_late, include_years = TRUE)
       create_dt_table(display)
-    }) |> shiny::bindCache(current_filters())
+    }) %>% shiny::bindCache(current_filters())
 
     output$table_meal_6hr_consolidated <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_meal_violations_6_summary, include_years = TRUE)
       create_dt_table(display)
-    }) |> shiny::bindCache(current_filters())
+    }) %>% shiny::bindCache(current_filters())
 
     output$table_meal_6hr_short_details <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_meal_violations_6_short, include_years = TRUE)
       create_dt_table(display)
-    }) |> shiny::bindCache(current_filters())
+    }) %>% shiny::bindCache(current_filters())
 
     output$table_meal_6hr_late_details <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_meal_violations_6_late, include_years = TRUE)
       create_dt_table(display)
-    }) |> shiny::bindCache(current_filters())
+    }) %>% shiny::bindCache(current_filters())
 
     output$table_rest_consolidated <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_rest, include_years = TRUE)
       create_dt_table(display)
-    })
-    
-    }) |> shiny::bindCache(current_filters())
+    }) %>% shiny::bindCache(current_filters())
 
     output$table_pay_consolidated <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, pay_summary_groups, include_years = TRUE)
       create_dt_table(display)
-    }) |> shiny::bindCache(current_filters())
+    }) %>% shiny::bindCache(current_filters())
     
     output$table_rrop_consolidated <- renderDT({
       results <- pipeline_results()
@@ -2056,7 +2054,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
       }
 
       create_dt_table(display)
-    }) |> shiny::bindCache(current_filters())
+    }) %>% shiny::bindCache(current_filters())
     
     # ===========================================================================
     # ANALYSIS TABLES (FROM FILES)
@@ -2158,7 +2156,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
       display <- filter_metrics_by_label(display, include_waivers = FALSE)
 
       create_dt_table(display)
-    }) |> shiny::bindCache(current_filters())
+    }) %>% shiny::bindCache(current_filters())
     
     # Class/Individual Claims - Waivers
     output$table_damages_class_waivers <- renderDT({
@@ -2256,7 +2254,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
       display <- filter_metrics_by_label(display, include_waivers = TRUE)
 
       create_dt_table(display)
-    }) |> shiny::bindCache(current_filters())
+    }) %>% shiny::bindCache(current_filters())
 
     # PAGA - No Waivers
     output$table_paga_no_waivers <- renderDT({
@@ -2354,7 +2352,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
       display <- filter_metrics_by_label(display, include_waivers = FALSE)
 
       create_dt_table(display)
-    }) |> shiny::bindCache(current_filters())
+    }) %>% shiny::bindCache(current_filters())
 
     # PAGA - Waivers
     output$table_paga_waivers <- renderDT({
@@ -2452,7 +2450,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
       display <- filter_metrics_by_label(display, include_waivers = TRUE)
 
       create_dt_table(display)
-    }) |> shiny::bindCache(current_filters())
+    }) %>% shiny::bindCache(current_filters())
 
     # ===========================================================================
     # EMPLOYEE-PERIOD EXAMPLE TAB
@@ -2674,7 +2672,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
         class = 'cell-border stripe hover compact',
         style = 'bootstrap4'
       )
-    }) |> shiny::bindCache(input$example_period_select)
+    }) %>% shiny::bindCache(input$example_period_select)
 
     # Shift Data (shift_data1) - Show all meal/rest violation columns horizontally
     output$table_example_shift <- renderDT({
@@ -2726,7 +2724,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
         class = 'cell-border stripe hover compact',
         style = 'bootstrap4'
       )
-    }) |> shiny::bindCache(input$example_period_select, current_filters())
+    }) %>% shiny::bindCache(input$example_period_select, current_filters())
 
     # Pay Data (pay1) - Show all pay columns horizontally
     output$table_example_pay <- renderDT({
@@ -2782,7 +2780,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
         class = 'cell-border stripe hover compact',
         style = 'bootstrap4'
       )
-    }) |> shiny::bindCache(input$example_period_select, current_filters())
+    }) %>% shiny::bindCache(input$example_period_select, current_filters())
 
     # Damages Data (pp_data1 / ee_data1) - Show damage columns
     output$table_example_damages <- renderDT({
@@ -2835,7 +2833,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
         class = 'cell-border stripe hover compact',
         style = 'bootstrap4'
       )
-    }) |> shiny::bindCache(input$example_period_select, current_filters())
+    }) %>% shiny::bindCache(input$example_period_select, current_filters())
 
     # ===========================================================================
     # ANALYSIS TABLES (FROM FILES)
