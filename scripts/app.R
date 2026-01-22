@@ -2285,17 +2285,17 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
           )
         }
 
-        if (length(damages_credits_groups) > 0 && is.character(damages_credits_groups)) {
-          sections[[length(sections) + 1]] <- list(
-            section_name = "CREDITS OR OFFSETS",
-            groups = as.character(damages_credits_groups)
-          )
-        }
-
         if (length(damages_principal_groups) > 0 && is.character(damages_principal_groups)) {
           sections[[length(sections) + 1]] <- list(
             section_name = "PRINCIPAL",
             groups = as.character(damages_principal_groups)
+          )
+        }
+
+        if (length(damages_credits_groups) > 0 && is.character(damages_credits_groups)) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "CREDITS OR OFFSETS",
+            groups = as.character(damages_credits_groups)
           )
         }
 
@@ -2341,22 +2341,23 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
 
     # Class/Individual Claims - No Waivers
     output$table_damages_class_no_waivers <- renderDT({
-      results <- pipeline_results()
+      tryCatch({
+        results <- pipeline_results()
 
-      # Split each metric group by waiver status
-      meal_split <- split_by_waiver(damages_meal_groups)
-      rest_split <- split_by_waiver(damages_rest_groups)
-      rrop_split <- split_by_waiver(damages_rrop_groups)
-      otc_split <- split_by_waiver(damages_otc_groups)
-      unpaid_ot_split <- split_by_waiver(damages_unpaid_ot_groups)
-      min_wage_split <- split_by_waiver(damages_min_wage_groups)
-      expenses_split <- split_by_waiver(damages_expenses_groups)
-      wsv_split <- split_by_waiver(damages_wsv_groups)
-      wt_split <- split_by_waiver(damages_wt_groups)
-      total_split <- split_by_waiver(damages_class_total_groups)
+        # Split each metric group by waiver status
+        meal_split <- split_by_waiver(damages_meal_groups)
+        rest_split <- split_by_waiver(damages_rest_groups)
+        rrop_split <- split_by_waiver(damages_rrop_groups)
+        otc_split <- split_by_waiver(damages_otc_groups)
+        unpaid_ot_split <- split_by_waiver(damages_unpaid_ot_groups)
+        min_wage_split <- split_by_waiver(damages_min_wage_groups)
+        expenses_split <- split_by_waiver(damages_expenses_groups)
+        wsv_split <- split_by_waiver(damages_wsv_groups)
+        wt_split <- split_by_waiver(damages_wt_groups)
+        total_split <- split_by_waiver(damages_class_total_groups)
 
-      # Build section definitions for no-waiver metrics
-      sections <- list()
+        # Build section definitions for no-waiver metrics
+        sections <- list()
 
       if (length(meal_split$no_waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
@@ -2428,33 +2429,48 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         )
       }
 
-      display <- pipeline_to_damages_format(results, sections, scenario_filter = "all/no waivers")
+        if (length(sections) == 0) {
+          return(datatable(data.table(Message = "No damages data available for no waivers scenario"),
+                          rownames = FALSE, options = list(dom = 't')))
+        }
 
-      # Filter out waiver metrics from no-waiver tab based on metric labels
-      # (fallback for old spec without scenario column)
-      display <- filter_metrics_by_label(display, include_waivers = FALSE)
+        display <- pipeline_to_damages_format(results, sections, scenario_filter = "all/no waivers")
 
-      create_dt_table(display)
+        # Filter out waiver metrics from no-waiver tab based on metric labels
+        # (fallback for old spec without scenario column)
+        display <- filter_metrics_by_label(display, include_waivers = FALSE)
+
+        if (is.null(display) || nrow(display) == 0) {
+          return(datatable(data.table(Message = "No damages data available for no waivers scenario"),
+                          rownames = FALSE, options = list(dom = 't')))
+        }
+
+        create_dt_table(display)
+      }, error = function(e) {
+        datatable(data.table(Error = paste("Error rendering damages no waivers:", e$message)),
+                 rownames = FALSE, options = list(dom = 't'))
+      })
     })
-    
+
     # Class/Individual Claims - Waivers
     output$table_damages_class_waivers <- renderDT({
-      results <- pipeline_results()
+      tryCatch({
+        results <- pipeline_results()
 
-      # Split each metric group by waiver status
-      meal_split <- split_by_waiver(damages_meal_groups)
-      rest_split <- split_by_waiver(damages_rest_groups)
-      rrop_split <- split_by_waiver(damages_rrop_groups)
-      otc_split <- split_by_waiver(damages_otc_groups)
-      unpaid_ot_split <- split_by_waiver(damages_unpaid_ot_groups)
-      min_wage_split <- split_by_waiver(damages_min_wage_groups)
-      expenses_split <- split_by_waiver(damages_expenses_groups)
-      wsv_split <- split_by_waiver(damages_wsv_groups)
-      wt_split <- split_by_waiver(damages_wt_groups)
-      total_split <- split_by_waiver(damages_class_total_groups)
+        # Split each metric group by waiver status
+        meal_split <- split_by_waiver(damages_meal_groups)
+        rest_split <- split_by_waiver(damages_rest_groups)
+        rrop_split <- split_by_waiver(damages_rrop_groups)
+        otc_split <- split_by_waiver(damages_otc_groups)
+        unpaid_ot_split <- split_by_waiver(damages_unpaid_ot_groups)
+        min_wage_split <- split_by_waiver(damages_min_wage_groups)
+        expenses_split <- split_by_waiver(damages_expenses_groups)
+        wsv_split <- split_by_waiver(damages_wsv_groups)
+        wt_split <- split_by_waiver(damages_wt_groups)
+        total_split <- split_by_waiver(damages_class_total_groups)
 
-      # Build section definitions for waiver metrics
-      sections <- list()
+        # Build section definitions for waiver metrics
+        sections <- list()
 
       if (length(meal_split$waiver) > 0) {
         sections[[length(sections) + 1]] <- list(
@@ -2526,13 +2542,27 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         )
       }
 
-      display <- pipeline_to_damages_format(results, sections, scenario_filter = "all/waivers")
+        if (length(sections) == 0) {
+          return(datatable(data.table(Message = "No damages data available for waivers scenario"),
+                          rownames = FALSE, options = list(dom = 't')))
+        }
 
-      # Filter out no-waiver metrics from waiver tab based on metric labels
-      # (fallback for old spec without scenario column)
-      display <- filter_metrics_by_label(display, include_waivers = TRUE)
+        display <- pipeline_to_damages_format(results, sections, scenario_filter = "all/waivers")
 
-      create_dt_table(display)
+        # Filter out no-waiver metrics from waiver tab based on metric labels
+        # (fallback for old spec without scenario column)
+        display <- filter_metrics_by_label(display, include_waivers = TRUE)
+
+        if (is.null(display) || nrow(display) == 0) {
+          return(datatable(data.table(Message = "No damages data available for waivers scenario"),
+                          rownames = FALSE, options = list(dom = 't')))
+        }
+
+        create_dt_table(display)
+      }, error = function(e) {
+        datatable(data.table(Error = paste("Error rendering damages waivers:", e$message)),
+                 rownames = FALSE, options = list(dom = 't'))
+      })
     })
 
     # PAGA - Overview
@@ -2571,182 +2601,212 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
 
     # PAGA - No Waivers
     output$table_paga_no_waivers <- renderDT({
-      results <- pipeline_results()
+      tryCatch({
+        results <- pipeline_results()
 
-      # Split each PAGA metric group by waiver status
-      meal_split <- split_by_waiver(paga_meal_groups)
-      rest_split <- split_by_waiver(paga_rest_groups)
-      rrop_split <- split_by_waiver(paga_rrop_groups)
-      s226_split <- split_by_waiver(paga_226_groups)
-      s558_split <- split_by_waiver(paga_558_groups)
-      min_wage_split <- split_by_waiver(paga_min_wage_groups)
-      expenses_split <- split_by_waiver(paga_expenses_groups)
-      recordkeeping_split <- split_by_waiver(paga_recordkeeping_groups)
-      waiting_time_split <- split_by_waiver(paga_waiting_time_groups)
+        # Split each PAGA metric group by waiver status
+        meal_split <- split_by_waiver(paga_meal_groups)
+        rest_split <- split_by_waiver(paga_rest_groups)
+        rrop_split <- split_by_waiver(paga_rrop_groups)
+        s226_split <- split_by_waiver(paga_226_groups)
+        s558_split <- split_by_waiver(paga_558_groups)
+        min_wage_split <- split_by_waiver(paga_min_wage_groups)
+        expenses_split <- split_by_waiver(paga_expenses_groups)
+        recordkeeping_split <- split_by_waiver(paga_recordkeeping_groups)
+        waiting_time_split <- split_by_waiver(paga_waiting_time_groups)
 
-      # Build section definitions for no-waiver metrics
-      sections <- list()
+        # Build section definitions for no-waiver metrics
+        sections <- list()
 
-      if (length(meal_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - MEAL PERIODS",
-          groups = meal_split$no_waiver
-        )
-      }
+        if (length(meal_split$no_waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "PAGA - MEAL PERIODS",
+            groups = meal_split$no_waiver
+          )
+        }
 
-      if (length(rest_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - REST PERIODS",
-          groups = rest_split$no_waiver
-        )
-      }
+        if (length(rest_split$no_waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "PAGA - REST PERIODS",
+            groups = rest_split$no_waiver
+          )
+        }
 
-      if (length(rrop_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - REGULAR RATE (RROP)",
-          groups = rrop_split$no_waiver
-        )
-      }
+        if (length(rrop_split$no_waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "PAGA - REGULAR RATE (RROP)",
+            groups = rrop_split$no_waiver
+          )
+        }
 
-      if (length(s226_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - WAGE STATEMENT (226)",
-          groups = s226_split$no_waiver
-        )
-      }
+        if (length(s226_split$no_waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "PAGA - WAGE STATEMENT (226)",
+            groups = s226_split$no_waiver
+          )
+        }
 
-      if (length(s558_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - UNPAID WAGES (558)",
-          groups = s558_split$no_waiver
-        )
-      }
+        if (length(s558_split$no_waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "PAGA - UNPAID WAGES (558)",
+            groups = s558_split$no_waiver
+          )
+        }
 
-      if (length(min_wage_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - MIN WAGE (1197.1)",
-          groups = min_wage_split$no_waiver
-        )
-      }
+        if (length(min_wage_split$no_waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "PAGA - MIN WAGE (1197.1)",
+            groups = min_wage_split$no_waiver
+          )
+        }
 
-      if (length(expenses_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - UNREIMBURSED EXPENSES (2802)",
-          groups = expenses_split$no_waiver
-        )
-      }
+        if (length(expenses_split$no_waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "PAGA - UNREIMBURSED EXPENSES (2802)",
+            groups = expenses_split$no_waiver
+          )
+        }
 
-      if (length(recordkeeping_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - RECORDKEEPING (1174)",
-          groups = recordkeeping_split$no_waiver
-        )
-      }
+        if (length(recordkeeping_split$no_waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "PAGA - RECORDKEEPING (1174)",
+            groups = recordkeeping_split$no_waiver
+          )
+        }
 
-      if (length(waiting_time_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - WAITING TIME (203)",
-          groups = waiting_time_split$no_waiver
-        )
-      }
+        if (length(waiting_time_split$no_waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "PAGA - WAITING TIME (203)",
+            groups = waiting_time_split$no_waiver
+          )
+        }
 
-      display <- pipeline_to_damages_format(results, sections, scenario_filter = "all/no waivers")
+        if (length(sections) == 0) {
+          return(datatable(data.table(Message = "No PAGA data available for no waivers scenario"),
+                          rownames = FALSE, options = list(dom = 't')))
+        }
 
-      # Filter out waiver metrics from no-waiver tab based on metric labels
-      # (fallback for old spec without scenario column)
-      display <- filter_metrics_by_label(display, include_waivers = FALSE)
+        display <- pipeline_to_damages_format(results, sections, scenario_filter = "all/no waivers")
 
-      create_dt_table(display)
+        # Filter out waiver metrics from no-waiver tab based on metric labels
+        # (fallback for old spec without scenario column)
+        display <- filter_metrics_by_label(display, include_waivers = FALSE)
+
+        if (is.null(display) || nrow(display) == 0) {
+          return(datatable(data.table(Message = "No PAGA data available for no waivers scenario"),
+                          rownames = FALSE, options = list(dom = 't')))
+        }
+
+        create_dt_table(display)
+      }, error = function(e) {
+        datatable(data.table(Error = paste("Error rendering PAGA no waivers:", e$message)),
+                 rownames = FALSE, options = list(dom = 't'))
+      })
     })
 
     # PAGA - Waivers
     output$table_paga_waivers <- renderDT({
-      results <- pipeline_results()
+      tryCatch({
+        results <- pipeline_results()
 
-      # Split each PAGA metric group by waiver status
-      meal_split <- split_by_waiver(paga_meal_groups)
-      rest_split <- split_by_waiver(paga_rest_groups)
-      rrop_split <- split_by_waiver(paga_rrop_groups)
-      s226_split <- split_by_waiver(paga_226_groups)
-      s558_split <- split_by_waiver(paga_558_groups)
-      min_wage_split <- split_by_waiver(paga_min_wage_groups)
-      expenses_split <- split_by_waiver(paga_expenses_groups)
-      recordkeeping_split <- split_by_waiver(paga_recordkeeping_groups)
-      waiting_time_split <- split_by_waiver(paga_waiting_time_groups)
+        # Split each PAGA metric group by waiver status
+        meal_split <- split_by_waiver(paga_meal_groups)
+        rest_split <- split_by_waiver(paga_rest_groups)
+        rrop_split <- split_by_waiver(paga_rrop_groups)
+        s226_split <- split_by_waiver(paga_226_groups)
+        s558_split <- split_by_waiver(paga_558_groups)
+        min_wage_split <- split_by_waiver(paga_min_wage_groups)
+        expenses_split <- split_by_waiver(paga_expenses_groups)
+        recordkeeping_split <- split_by_waiver(paga_recordkeeping_groups)
+        waiting_time_split <- split_by_waiver(paga_waiting_time_groups)
 
-      # Build section definitions for waiver metrics
-      sections <- list()
+        # Build section definitions for waiver metrics
+        sections <- list()
 
-      if (length(meal_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - MEAL PERIODS",
-          groups = meal_split$waiver
-        )
-      }
+        if (length(meal_split$waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "PAGA - MEAL PERIODS",
+            groups = meal_split$waiver
+          )
+        }
 
-      if (length(rest_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - REST PERIODS",
-          groups = rest_split$waiver
-        )
-      }
+        if (length(rest_split$waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "PAGA - REST PERIODS",
+            groups = rest_split$waiver
+          )
+        }
 
-      if (length(rrop_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - REGULAR RATE (RROP)",
-          groups = rrop_split$waiver
-        )
-      }
+        if (length(rrop_split$waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "PAGA - REGULAR RATE (RROP)",
+            groups = rrop_split$waiver
+          )
+        }
 
-      if (length(s226_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - WAGE STATEMENT (226)",
-          groups = s226_split$waiver
-        )
-      }
+        if (length(s226_split$waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "PAGA - WAGE STATEMENT (226)",
+            groups = s226_split$waiver
+          )
+        }
 
-      if (length(s558_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - UNPAID WAGES (558)",
-          groups = s558_split$waiver
-        )
-      }
+        if (length(s558_split$waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "PAGA - UNPAID WAGES (558)",
+            groups = s558_split$waiver
+          )
+        }
 
-      if (length(min_wage_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - MIN WAGE (1197.1)",
-          groups = min_wage_split$waiver
-        )
-      }
+        if (length(min_wage_split$waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "PAGA - MIN WAGE (1197.1)",
+            groups = min_wage_split$waiver
+          )
+        }
 
-      if (length(expenses_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - UNREIMBURSED EXPENSES (2802)",
-          groups = expenses_split$waiver
-        )
-      }
+        if (length(expenses_split$waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "PAGA - UNREIMBURSED EXPENSES (2802)",
+            groups = expenses_split$waiver
+          )
+        }
 
-      if (length(recordkeeping_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - RECORDKEEPING (1174)",
-          groups = recordkeeping_split$waiver
-        )
-      }
+        if (length(recordkeeping_split$waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "PAGA - RECORDKEEPING (1174)",
+            groups = recordkeeping_split$waiver
+          )
+        }
 
-      if (length(waiting_time_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - WAITING TIME (203)",
-          groups = waiting_time_split$waiver
-        )
-      }
+        if (length(waiting_time_split$waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "PAGA - WAITING TIME (203)",
+            groups = waiting_time_split$waiver
+          )
+        }
 
-      display <- pipeline_to_damages_format(results, sections, scenario_filter = "all/waivers")
+        if (length(sections) == 0) {
+          return(datatable(data.table(Message = "No PAGA data available for waivers scenario"),
+                          rownames = FALSE, options = list(dom = 't')))
+        }
 
-      # Filter out no-waiver metrics from waiver tab based on metric labels
-      # (fallback for old spec without scenario column)
-      display <- filter_metrics_by_label(display, include_waivers = TRUE)
+        display <- pipeline_to_damages_format(results, sections, scenario_filter = "all/waivers")
 
-      create_dt_table(display)
+        # Filter out no-waiver metrics from waiver tab based on metric labels
+        # (fallback for old spec without scenario column)
+        display <- filter_metrics_by_label(display, include_waivers = TRUE)
+
+        if (is.null(display) || nrow(display) == 0) {
+          return(datatable(data.table(Message = "No PAGA data available for waivers scenario"),
+                          rownames = FALSE, options = list(dom = 't')))
+        }
+
+        create_dt_table(display)
+      }, error = function(e) {
+        datatable(data.table(Error = paste("Error rendering PAGA waivers:", e$message)),
+                 rownames = FALSE, options = list(dom = 't'))
+      })
     })
 
     # ===========================================================================
