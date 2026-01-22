@@ -2445,7 +2445,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
                           rownames = FALSE, options = list(dom = 't')))
         }
 
-        display <- pipeline_to_damages_format(results, sections, scenario_filter = "all/no waivers")
+        display <- pipeline_to_damages_format(results, sections, scenario_filter = "no waivers")
 
         # Filter out waiver metrics from no-waiver tab based on metric labels
         # (fallback for old spec without scenario column)
@@ -2558,7 +2558,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
                           rownames = FALSE, options = list(dom = 't')))
         }
 
-        display <- pipeline_to_damages_format(results, sections, scenario_filter = "all/waivers")
+        display <- pipeline_to_damages_format(results, sections, scenario_filter = "waivers")
 
         # Filter out no-waiver metrics from waiver tab based on metric labels
         # (fallback for old spec without scenario column)
@@ -2697,7 +2697,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
                           rownames = FALSE, options = list(dom = 't')))
         }
 
-        display <- pipeline_to_damages_format(results, sections, scenario_filter = "all/no waivers")
+        display <- pipeline_to_damages_format(results, sections, scenario_filter = "no waivers")
 
         # Filter out waiver metrics from no-waiver tab based on metric labels
         # (fallback for old spec without scenario column)
@@ -2802,7 +2802,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
                           rownames = FALSE, options = list(dom = 't')))
         }
 
-        display <- pipeline_to_damages_format(results, sections, scenario_filter = "all/waivers")
+        display <- pipeline_to_damages_format(results, sections, scenario_filter = "waivers")
 
         # Filter out no-waiver metrics from waiver tab based on metric labels
         # (fallback for old spec without scenario column)
@@ -3372,14 +3372,19 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
           incProgress(1 / total_sections, detail = "Initializing...")
           
           data <- filtered_data()
-          case_name <- "Wage & Hour Analysis"
+          report_case_name <- if (!is.null(case_name) && nzchar(case_name)) {
+            case_name
+          } else {
+            "Wage & Hour Analysis"
+          }
+          report_title <- paste0(report_case_name, " Report")
           
           html_content <- paste0('
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Wage & Hour Analysis Report</title>
+  <title>', report_title, '</title>
   <style>
     @page { size: legal landscape; margin: 0.25in; }
 
@@ -3455,7 +3460,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
   <table style="font-size: 10pt; margin-bottom: 30px; width: 60%;">
     <tr>
       <td class="metric-col" style="width: 40%; font-weight: bold;">Case Name</td>
-      <td class="value-col" style="text-align: left;">', case_name, '</td>
+      <td class="value-col" style="text-align: left;">', report_case_name, '</td>
     </tr>
     <tr>
       <td class="metric-col" style="font-weight: bold;">Case Number</td>
