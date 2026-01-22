@@ -2035,8 +2035,6 @@ server <- function(data_list, metric_spec, analysis_tables) {
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_rest, include_years = TRUE)
       create_dt_table(display)
-    })
-    
     }) |> shiny::bindCache(current_filters())
 
     output$table_pay_consolidated <- renderDT({
