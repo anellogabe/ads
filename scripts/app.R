@@ -3159,7 +3159,96 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
           if ("overview" %in% sections) {
             incProgress(1 / total_sections, detail = "Overview Statistics")
             html_content <- paste0(html_content, '
-  <h1>📊 Overview Statistics</h1>
+  <h1>📊 Case Overview</h1>')
+
+            # Data Comparison Section - moved to top of overview
+            if ("data_comparison" %in% sections) {
+              # Get unique employee IDs from each source
+              time_ids <- unique(data$shift_data1$ID)
+              pay_ids <- unique(data$pay1$Pay_ID)
+              class_ids <- if (!is.null(data$class1) && "Class_ID" %in% names(data$class1)) {
+                unique(data$class1$Class_ID)
+              } else {
+                character(0)
+              }
+
+              # Calculate overlaps
+              time_only <- setdiff(time_ids, union(pay_ids, class_ids))
+              pay_only <- setdiff(pay_ids, union(time_ids, class_ids))
+              class_only <- setdiff(class_ids, union(time_ids, pay_ids))
+
+              time_pay <- setdiff(intersect(time_ids, pay_ids), class_ids)
+              time_class <- setdiff(intersect(time_ids, class_ids), pay_ids)
+              pay_class <- setdiff(intersect(pay_ids, class_ids), time_ids)
+
+              all_three <- intersect(intersect(time_ids, pay_ids), class_ids)
+
+              html_content <- paste0(html_content, '
+  <h2>Data Comparison - Employee Overlap Analysis</h2>
+  <table style="font-size: 9pt; margin-bottom: 30px;">
+    <thead>
+      <tr>
+        <th>Category</th>
+        <th class="value-col">Employee Count</th>
+        <th class="value-col">Percentage</th>
+      </tr>
+    </thead>
+    <tbody>')
+
+              # Total unique employees
+              all_unique_ids <- unique(c(time_ids, pay_ids, class_ids))
+              total_unique <- length(all_unique_ids)
+
+              # All three sources
+              if (length(all_three) > 0 && length(class_ids) > 0) {
+                pct <- sprintf("%.1f%%", (length(all_three) / total_unique) * 100)
+                html_content <- paste0(html_content, '
+      <tr style="background-color: #d4edda;">
+        <td class="metric-col"><strong>All Three Sources</strong></td>
+        <td class="value-col">', format(length(all_three), big.mark = ","), '</td>
+        <td class="value-col">', pct, '</td>
+      </tr>')
+              }
+
+              # Two-source overlaps and single-source
+              if (length(time_pay) > 0) {
+                pct <- sprintf("%.1f%%", (length(time_pay) / total_unique) * 100)
+                html_content <- paste0(html_content, '
+      <tr>
+        <td class="metric-col">Time & Pay Only</td>
+        <td class="value-col">', format(length(time_pay), big.mark = ","), '</td>
+        <td class="value-col">', pct, '</td>
+      </tr>')
+              }
+
+              if (length(time_only) > 0) {
+                pct <- sprintf("%.1f%%", (length(time_only) / total_unique) * 100)
+                html_content <- paste0(html_content, '
+      <tr>
+        <td class="metric-col">Time Only</td>
+        <td class="value-col">', format(length(time_only), big.mark = ","), '</td>
+        <td class="value-col">', pct, '</td>
+      </tr>')
+              }
+
+              if (length(pay_only) > 0) {
+                pct <- sprintf("%.1f%%", (length(pay_only) / total_unique) * 100)
+                html_content <- paste0(html_content, '
+      <tr>
+        <td class="metric-col">Pay Only</td>
+        <td class="value-col">', format(length(pay_only), big.mark = ","), '</td>
+        <td class="value-col">', pct, '</td>
+      </tr>')
+              }
+
+              html_content <- paste0(html_content, '
+    </tbody>
+  </table>')
+            }
+
+            # Summary statistics
+            html_content <- paste0(html_content, '
+  <h2>Summary Statistics</h2>
   <div style="margin: 20px 0;">
     <div class="stat-box"><div class="stat-label">Employees (Time)</div><div class="stat-value">', format(uniqueN(data$shift_data1$ID), big.mark = ","), '</div></div>
     <div class="stat-box"><div class="stat-label">Employees (Pay)</div><div class="stat-value">',  format(uniqueN(data$pay1$Pay_ID), big.mark = ","), '</div></div>
@@ -3239,237 +3328,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
             html_content <- paste0(html_content, add_table(results, "Meal Violations (waivers)", "⚠️"))
           }
 
-          # Data Comparison Section
-          if ("data_comparison" %in% sections) {
-            # Get unique employee IDs from each source
-            time_ids <- unique(data$shift_data1$ID)
-            pay_ids <- unique(data$pay1$Pay_ID)
-            class_ids <- if (!is.null(data$class1) && "Class_ID" %in% names(data$class1)) {
-              unique(data$class1$Class_ID)
-            } else {
-              character(0)
-            }
-
-            # Calculate overlaps
-            time_only <- setdiff(time_ids, union(pay_ids, class_ids))
-          pay_only <- setdiff(pay_ids, union(time_ids, class_ids))
-          class_only <- setdiff(class_ids, union(time_ids, pay_ids))
-
-          time_pay <- setdiff(intersect(time_ids, pay_ids), class_ids)
-          time_class <- setdiff(intersect(time_ids, class_ids), pay_ids)
-          pay_class <- setdiff(intersect(pay_ids, class_ids), time_ids)
-
-          all_three <- intersect(intersect(time_ids, pay_ids), class_ids)
-
-          # Calculate pay periods and weeks for summary statistics
-          time_pay_periods <- uniqueN(data$shift_data1$ID_Period_End)
-          pay_pay_periods <- uniqueN(data$pay1$Pay_ID_Period_End)
-          total_weeks <- uniqueN(data$shift_data1$ID_Week_End)
-
-          html_content <- paste0(html_content, '<div class="page-break"></div>')
-          html_content <- paste0(html_content, '
-  <h1>📊 Data Comparison - Employee Data Overlap Analysis</h1>
-
-  <h2>Summary Statistics</h2>
-  <div style="margin: 20px 0;">
-    <div class="stat-box">
-      <div class="stat-label">Employees (Time)</div>
-      <div class="stat-value">', format(length(time_ids), big.mark = ","), '</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-label">Employees (Pay)</div>
-      <div class="stat-value">', format(length(pay_ids), big.mark = ","), '</div>
-    </div>')
-            
-            if (length(class_ids) > 0) {
-              html_content <- paste0(html_content, '
-    <div class="stat-box">
-      <div class="stat-label">Employees (Class)</div>
-      <div class="stat-value">', format(length(class_ids), big.mark = ","), '</div>
-    </div>')
-            }
-            
-            html_content <- paste0(html_content, '
-  </div>
-
-  <div style="margin: 20px 0;">
-    <div class="stat-box">
-      <div class="stat-label">Pay Periods (Time)</div>
-      <div class="stat-value">', format(time_pay_periods, big.mark = ","), '</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-label">Pay Periods (Pay)</div>
-      <div class="stat-value">', format(pay_pay_periods, big.mark = ","), '</div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-label">Weeks (Time)</div>
-      <div class="stat-value">', format(total_weeks, big.mark = ","), '</div>
-    </div>
-  </div>
-
-  <h2>Employee Coverage Over Time</h2>')
-
-          # Generate time series data for line graph
-          time_emp <- data$shift_data1[, .(
-            Time_Employees = uniqueN(ID)
-          ), by = .(Period = Period_End)]
-
-          pay_emp <- data$pay1[, .(
-            Pay_Employees = uniqueN(Pay_ID)
-          ), by = .(Period = Pay_Period_End)]
-
-          # Merge the two datasets
-          time_series <- merge(time_emp, pay_emp, by = "Period", all = TRUE)
-          time_series <- time_series[order(Period)]
-          time_series[is.na(Time_Employees), Time_Employees := 0]
-          time_series[is.na(Pay_Employees), Pay_Employees := 0]
-
-          # Create a table showing the time series (first 10 and last 10 periods)
-          html_content <- paste0(html_content, '
-  <div style="margin: 15px 0; padding: 12px; background-color: #e8f4f8; border-left: 4px solid #0066cc;">
-    <p style="margin: 0; font-size: 10pt;"><strong>📈 Time Series Data:</strong> The table below shows employee counts by pay period. For an interactive line graph visualization, view the "Data Comparison" tab in the dashboard.</p>
-  </div>
-
-  <table style="font-size: 8pt;">
-    <thead>
-      <tr>
-        <th>Pay Period End</th>
-        <th class="value-col">Time Employees</th>
-        <th class="value-col">Pay Employees</th>
-      </tr>
-    </thead>
-    <tbody>')
-
-          # Show sample of data (first 15 rows)
-          sample_rows <- min(15, nrow(time_series))
-          for(i in 1:sample_rows) {
-            row <- time_series[i]
-            html_content <- paste0(html_content, '
-      <tr>
-        <td>', format(row$Period, "%Y-%m-%d"), '</td>
-        <td class="value-col">', format(row$Time_Employees, big.mark = ","), '</td>
-        <td class="value-col">', format(row$Pay_Employees, big.mark = ","), '</td>
-      </tr>')
-          }
-
-          if (nrow(time_series) > sample_rows) {
-            html_content <- paste0(html_content, '
-      <tr>
-        <td colspan="3" style="text-align: center; font-style: italic;">... (', nrow(time_series) - sample_rows, ' more periods) ...</td>
-      </tr>')
-          }
-
-          html_content <- paste0(html_content, '
-    </tbody>
-  </table>
-
-
-  <h2>Overlap Analysis</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Category</th>
-        <th class="value-col">Employee Count</th>
-        <th class="value-col">Percentage</th>
-      </tr>
-    </thead>
-    <tbody>')
-            
-            # Total unique employees
-            all_unique_ids <- unique(c(time_ids, pay_ids, class_ids))
-            total_unique <- length(all_unique_ids)
-            
-            # All three sources
-            if (length(all_three) > 0 && length(class_ids) > 0) {
-              pct <- sprintf("%.1f%%", (length(all_three) / total_unique) * 100)
-              html_content <- paste0(html_content, '
-      <tr style="background-color: #d4edda;">
-        <td class="metric-col"><strong>All Three Sources</strong></td>
-        <td class="value-col">', format(length(all_three), big.mark = ","), '</td>
-        <td class="value-col">', pct, '</td>
-      </tr>')
-            }
-            
-            # Two-source overlaps
-            if (length(time_pay) > 0) {
-              pct <- sprintf("%.1f%%", (length(time_pay) / total_unique) * 100)
-              html_content <- paste0(html_content, '
-      <tr>
-        <td class="metric-col">Time & Pay Only</td>
-        <td class="value-col">', format(length(time_pay), big.mark = ","), '</td>
-        <td class="value-col">', pct, '</td>
-      </tr>')
-            }
-            
-            if (length(time_class) > 0 && length(class_ids) > 0) {
-              pct <- sprintf("%.1f%%", (length(time_class) / total_unique) * 100)
-              html_content <- paste0(html_content, '
-      <tr>
-        <td class="metric-col">Time & Class Only</td>
-        <td class="value-col">', format(length(time_class), big.mark = ","), '</td>
-        <td class="value-col">', pct, '</td>
-      </tr>')
-            }
-            
-            if (length(pay_class) > 0 && length(class_ids) > 0) {
-              pct <- sprintf("%.1f%%", (length(pay_class) / total_unique) * 100)
-              html_content <- paste0(html_content, '
-      <tr>
-        <td class="metric-col">Pay & Class Only</td>
-        <td class="value-col">', format(length(pay_class), big.mark = ","), '</td>
-        <td class="value-col">', pct, '</td>
-      </tr>')
-            }
-            
-            # Single-source only
-            if (length(time_only) > 0) {
-              pct <- sprintf("%.1f%%", (length(time_only) / total_unique) * 100)
-              html_content <- paste0(html_content, '
-      <tr>
-        <td class="metric-col">Time Data Only</td>
-        <td class="value-col">', format(length(time_only), big.mark = ","), '</td>
-        <td class="value-col">', pct, '</td>
-      </tr>')
-            }
-            
-            if (length(pay_only) > 0) {
-              pct <- sprintf("%.1f%%", (length(pay_only) / total_unique) * 100)
-              html_content <- paste0(html_content, '
-      <tr>
-        <td class="metric-col">Pay Data Only</td>
-        <td class="value-col">', format(length(pay_only), big.mark = ","), '</td>
-        <td class="value-col">', pct, '</td>
-      </tr>')
-            }
-            
-            if (length(class_only) > 0 && length(class_ids) > 0) {
-              pct <- sprintf("%.1f%%", (length(class_only) / total_unique) * 100)
-              html_content <- paste0(html_content, '
-      <tr>
-        <td class="metric-col">Class Data Only</td>
-        <td class="value-col">', format(length(class_only), big.mark = ","), '</td>
-        <td class="value-col">', pct, '</td>
-      </tr>')
-            }
-            
-            # Total row
-            html_content <- paste0(html_content, '
-      <tr style="background-color: #e9ecef; font-weight: bold;">
-        <td class="metric-col">Total Unique Employees</td>
-        <td class="value-col">', format(total_unique, big.mark = ","), '</td>
-        <td class="value-col">100.0%</td>
-      </tr>')
-            
-            html_content <- paste0(html_content, '
-    </tbody>
-  </table>
-
-  <div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-left: 4px solid #0066cc;">
-    <p style="margin: 0;"><strong>Note:</strong> This analysis shows how employee data overlaps across different data sources (Time records, Pay records, and Class Action list). Employees appearing in multiple sources indicate good data matching, while single-source employees may require verification.</p>
-  </div>
-')
-          }  # End data_comparison section
-
+          # Data Comparison Section - removed (now in overview section at top)
           # Close HTML
           incProgress(1 / total_sections, detail = "Finalizing report...")
           html_content <- paste0(html_content, "\n</body>\n</html>")
