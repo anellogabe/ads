@@ -105,13 +105,45 @@ load_data <- function() {
     }
   }
 
+  shift_data1 <- read_if_exists(DATA_DIR, SHIFT_DATA_FILE)
+  pay1 <- read_if_exists(DATA_DIR, PAY_DATA_FILE)
+  time1 <- read_if_exists(DATA_DIR, TIME_DATA_FILE)
+  class1 <- read_if_exists(PROCESSED_DIR, CLASS_DATA_FILE)
+  pp_data1 <- read_if_exists(DATA_DIR, PP_DATA_FILE)
+  ee_data1 <- read_if_exists(DATA_DIR, EE_DATA_FILE)
+
+  if (!is.null(shift_data1) && all(c("Date", "ID") %in% names(shift_data1))) {
+    setkeyv(shift_data1, c("Date", "ID"))
+  }
+  if (!is.null(pay1)) {
+    pay_date_col <- if ("Pay_Period_End" %in% names(pay1)) {
+      "Pay_Period_End"
+    } else if ("Pay_Date" %in% names(pay1)) {
+      "Pay_Date"
+    } else {
+      NULL
+    }
+    if (!is.null(pay_date_col) && "Pay_ID" %in% names(pay1)) {
+      setkeyv(pay1, c(pay_date_col, "Pay_ID"))
+    }
+  }
+  if (!is.null(pp_data1) && all(c("Period_End", "ID") %in% names(pp_data1))) {
+    setkeyv(pp_data1, c("Period_End", "ID"))
+  }
+  if (!is.null(ee_data1) && "ID" %in% names(ee_data1)) {
+    setkeyv(ee_data1, "ID")
+  }
+  if (!is.null(class1) && "Class_ID" %in% names(class1)) {
+    setkeyv(class1, "Class_ID")
+  }
+
   list(
-    shift_data1 = read_if_exists(DATA_DIR, SHIFT_DATA_FILE),   # required
-    pay1        = read_if_exists(DATA_DIR, PAY_DATA_FILE),     # required
-    time1       = read_if_exists(DATA_DIR, TIME_DATA_FILE),
-    class1      = read_if_exists(PROCESSED_DIR, CLASS_DATA_FILE),  # from clean_data.R
-    pp_data1    = read_if_exists(DATA_DIR, PP_DATA_FILE),
-    ee_data1    = read_if_exists(DATA_DIR, EE_DATA_FILE)
+    shift_data1 = shift_data1,   # required
+    pay1        = pay1,          # required
+    time1       = time1,
+    class1      = class1,
+    pp_data1    = pp_data1,
+    ee_data1    = ee_data1
   )
 }
 
@@ -1651,8 +1683,8 @@ server <- function(data_list, metric_spec, analysis_tables) {
     filtered_data <- reactive({
       filters <- current_filters()
       
-      shift_filtered <- copy(data_list$shift_data1)
-      pay_filtered   <- copy(data_list$pay1)
+      shift_filtered <- data_list$shift_data1
+      pay_filtered   <- data_list$pay1
       pay_date_col <- if ("Pay_Period_End" %in% names(pay_filtered)) {
         "Pay_Period_End"
       } else if ("Pay_Date" %in% names(pay_filtered)) {
@@ -1706,7 +1738,7 @@ server <- function(data_list, metric_spec, analysis_tables) {
       # pp_data1
       pp_filtered <- NULL
       if (!is.null(data_list$pp_data1)) {
-        pp_filtered <- copy(data_list$pp_data1)
+        pp_filtered <- data_list$pp_data1
         if (!is.null(filters$date_min) && "Period_End" %in% names(pp_filtered)) pp_filtered <- pp_filtered[Period_End >= filters$date_min]
         if (!is.null(filters$date_max) && "Period_End" %in% names(pp_filtered)) pp_filtered <- pp_filtered[Period_End <= filters$date_max]
         if (!is.null(filters$ID)       && "ID" %in% names(pp_filtered))        pp_filtered <- pp_filtered[ID %in% filters$ID]
@@ -1715,14 +1747,14 @@ server <- function(data_list, metric_spec, analysis_tables) {
       # ee_data1
       ee_filtered <- NULL
       if (!is.null(data_list$ee_data1)) {
-        ee_filtered <- copy(data_list$ee_data1)
+        ee_filtered <- data_list$ee_data1
         if (!is.null(filters$ID) && "ID" %in% names(ee_filtered)) ee_filtered <- ee_filtered[ID %in% filters$ID]
       }
       
       # class1
       class_filtered <- NULL
       if (!is.null(data_list$class1)) {
-        class_filtered <- copy(data_list$class1)
+        class_filtered <- data_list$class1
         
         if (!is.null(filters$ID) && "Class_ID" %in% names(class_filtered)) {
           class_filtered <- class_filtered[Class_ID %in% filters$ID]
