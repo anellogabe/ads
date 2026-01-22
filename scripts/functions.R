@@ -2849,7 +2849,7 @@ format_metrics_table <- function(results_dt) {
       metric_type == "date", as.character(as.Date(value, origin = "1970-01-01")),
       is.na(value), "0",
       is.nan(value), "0",
-      default = format(rounded_val, big.mark = ",", scientific = FALSE, trim = TRUE, nsmall = 0)
+      default = format(rounded_val, big.mark = ",", scientific = FALSE, nsmall = 0)
     )
     
     fv <- fifelse(is.na(digits) | digits == 0, gsub("\\.0+$", "", fv), fv)
@@ -2874,7 +2874,7 @@ format_metrics_table <- function(results_dt) {
         metric_type == "date", as.character(as.Date(extrap_value, origin = "1970-01-01")),
         is.na(extrap_value), "-",
         is.nan(extrap_value), "-",
-        default = format(rounded_val, big.mark = ",", scientific = FALSE, trim = TRUE, nsmall = 0)
+        default = format(rounded_val, big.mark = ",", scientific = FALSE, nsmall = 0)
       )
 
       fv <- fifelse(is.na(digits) | digits == 0, gsub("\\.0+$", "", fv), fv)
