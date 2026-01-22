@@ -1355,40 +1355,32 @@ ui <- function(data_list, metric_spec) {
     ),
     
     # =======================================================================
-    # TIME ANALYSIS TAB (CONSOLIDATED)
-    # =======================================================================
-    nav_panel(
-      title = "Time Analysis",
-      icon = icon("clock"),
-      
-      navset_card_underline(
-        nav_panel(
-          "Summary",
-          withSpinner(DTOutput("table_time_summary"), type = 6, color = "#2c3e50")
-        ),
-        nav_panel(
-          "Shift Hours Analysis",
-          withSpinner(DTOutput("table_shift_hours"), type = 6, color = "#2c3e50")
-        ),
-        nav_panel(
-          "Punch Rounding",
-          withSpinner(DTOutput("table_rounding_consolidated"), type = 6, color = "#2c3e50")
-        )
-      )
-    ),
-    
-    # =======================================================================
-    # MEAL & REST PERIODS
+    # TIME DATA STATISTICS
     # =======================================================================
     nav_menu(
-      title = "Meal & Rest",
-      icon = icon("utensils"),
-      
+      title = "Time Data Statistics",
+      icon = icon("clock"),
+
+      nav_panel(
+        "Summary",
+        withSpinner(DTOutput("table_time_summary"), type = 6, color = "#2c3e50")
+      ),
+
+      nav_panel(
+        "Shift Hours Analysis",
+        withSpinner(DTOutput("table_shift_hours"), type = 6, color = "#2c3e50")
+      ),
+
+      nav_panel(
+        "Punch Rounding",
+        withSpinner(DTOutput("table_rounding_consolidated"), type = 6, color = "#2c3e50")
+      ),
+
       nav_panel(
         "Meal Analysis",
         withSpinner(DTOutput("table_meal_consolidated"), type = 6, color = "#2c3e50")
       ),
-      
+
       nav_panel(
         "Meal Violations (no waivers)",
         navset_card_underline(
@@ -1406,7 +1398,7 @@ ui <- function(data_list, metric_spec) {
           )
         )
       ),
-      
+
       nav_panel(
         "Meal Violations (waivers)",
         navset_card_underline(
@@ -1424,7 +1416,7 @@ ui <- function(data_list, metric_spec) {
           )
         )
       ),
-      
+
       nav_panel(
         "Rest Periods",
         withSpinner(DTOutput("table_rest_consolidated"), type = 6, color = "#2c3e50")
@@ -1432,87 +1424,76 @@ ui <- function(data_list, metric_spec) {
     ),
     
     # =======================================================================
-    # PAY SUMMARY TAB (CONSOLIDATED)
+    # PAY DATA STATISTICS
     # =======================================================================
-    nav_panel(
-      title = "Pay Summary",
+    nav_menu(
+      title = "Pay Data Statistics",
       icon = icon("dollar-sign"),
-      
-      withSpinner(DTOutput("table_pay_consolidated"), type = 6, color = "#2c3e50")
+
+      nav_panel(
+        "Summary",
+        withSpinner(DTOutput("table_pay_consolidated"), type = 6, color = "#2c3e50")
+      ),
+
+      nav_panel(
+        "Regular Rate",
+        withSpinner(DTOutput("table_rrop_consolidated"), type = 6, color = "#2c3e50")
+      ),
+
+      nav_panel(
+        "Pay Codes",
+        withSpinner(DTOutput("table_pay_codes"), type = 6, color = "#2c3e50")
+      ),
+
+      nav_panel(
+        "Rate Type Analysis",
+        withSpinner(DTOutput("table_rate_type"), type = 6, color = "#2c3e50")
+      )
     ),
     
     # =======================================================================
-    # REGULAR RATE TAB (CONSOLIDATED)
+    # CLASS / INDIVIDUAL CLAIM DAMAGES
     # =======================================================================
-    nav_panel(
-      title = "Regular Rate",
-      icon = icon("calculator"),
-      
-      withSpinner(DTOutput("table_rrop_consolidated"), type = 6, color = "#2c3e50")
-    ),
-    
-    # =======================================================================
-    # PAY CODES TAB
-    # =======================================================================
-    nav_panel(
-      title = "Pay Codes",
-      icon = icon("tags"),
-      
-      withSpinner(DTOutput("table_pay_codes"), type = 6, color = "#2c3e50")
-    ),
-    
-    # =======================================================================
-    # RATE TYPE ANALYSIS TAB
-    # =======================================================================
-    nav_panel(
-      title = "Rate Type Analysis",
-      icon = icon("chart-bar"),
-      
-      withSpinner(DTOutput("table_rate_type"), type = 6, color = "#2c3e50")
-    ),
-    
-    # =======================================================================
-    # DAMAGES TAB
-    # =======================================================================
-    nav_panel(
-      title = "Damages",
+    nav_menu(
+      title = "Class / Individual Claim Damages",
       icon = icon("gavel"),
 
-      navset_card_underline(
-        nav_panel(
-          "Class Damages / Individ Claims",
-          navset_card_underline(
-            nav_panel(
-              "Overview",
-              withSpinner(DTOutput("table_damages_class_overview"), type = 6, color = "#2c3e50")
-            ),
-            nav_panel(
-              "No Waivers",
-              withSpinner(DTOutput("table_damages_class_no_waivers"), type = 6, color = "#2c3e50")
-            ),
-            nav_panel(
-              "Waivers",
-              withSpinner(DTOutput("table_damages_class_waivers"), type = 6, color = "#2c3e50")
-            )
-          )
-        ),
-        nav_panel(
-          "PAGA",
-          navset_card_underline(
-            nav_panel(
-              "Overview",
-              withSpinner(DTOutput("table_paga_overview"), type = 6, color = "#2c3e50")
-            ),
-            nav_panel(
-              "No Waivers",
-              withSpinner(DTOutput("table_paga_no_waivers"), type = 6, color = "#2c3e50")
-            ),
-            nav_panel(
-              "Waivers",
-              withSpinner(DTOutput("table_paga_waivers"), type = 6, color = "#2c3e50")
-            )
-          )
-        )
+      nav_panel(
+        "Overview",
+        withSpinner(DTOutput("table_damages_class_overview"), type = 6, color = "#2c3e50")
+      ),
+
+      nav_panel(
+        "No Waivers",
+        withSpinner(DTOutput("table_damages_class_no_waivers"), type = 6, color = "#2c3e50")
+      ),
+
+      nav_panel(
+        "Waivers",
+        withSpinner(DTOutput("table_damages_class_waivers"), type = 6, color = "#2c3e50")
+      )
+    ),
+
+    # =======================================================================
+    # PAGA DAMAGES
+    # =======================================================================
+    nav_menu(
+      title = "PAGA Damages",
+      icon = icon("balance-scale"),
+
+      nav_panel(
+        "Overview",
+        withSpinner(DTOutput("table_paga_overview"), type = 6, color = "#2c3e50")
+      ),
+
+      nav_panel(
+        "No Waivers",
+        withSpinner(DTOutput("table_paga_no_waivers"), type = 6, color = "#2c3e50")
+      ),
+
+      nav_panel(
+        "Waivers",
+        withSpinner(DTOutput("table_paga_waivers"), type = 6, color = "#2c3e50")
       )
     ),
     
@@ -2402,7 +2383,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         )
       }
 
-      display <- pipeline_to_damages_format(results, sections, scenario_filter = "no waivers")
+      display <- pipeline_to_damages_format(results, sections, scenario_filter = "all/no waivers")
 
       # Filter out waiver metrics from no-waiver tab based on metric labels
       # (fallback for old spec without scenario column)
@@ -2500,7 +2481,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         )
       }
 
-      display <- pipeline_to_damages_format(results, sections, scenario_filter = "waivers")
+      display <- pipeline_to_damages_format(results, sections, scenario_filter = "all/waivers")
 
       # Filter out no-waiver metrics from waiver tab based on metric labels
       # (fallback for old spec without scenario column)
@@ -2617,7 +2598,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         )
       }
 
-      display <- pipeline_to_damages_format(results, sections, scenario_filter = "no waivers")
+      display <- pipeline_to_damages_format(results, sections, scenario_filter = "all/no waivers")
 
       # Filter out waiver metrics from no-waiver tab based on metric labels
       # (fallback for old spec without scenario column)
@@ -2715,7 +2696,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         )
       }
 
-      display <- pipeline_to_damages_format(results, sections, scenario_filter = "waivers")
+      display <- pipeline_to_damages_format(results, sections, scenario_filter = "all/waivers")
 
       # Filter out no-waiver metrics from waiver tab based on metric labels
       # (fallback for old spec without scenario column)
