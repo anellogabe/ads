@@ -736,14 +736,28 @@ create_dt_table <- function(dt, metric_col = "Metric") {
   if (is.null(dt) || nrow(dt) == 0) {
     return(datatable(data.table(Message = "No data available"), rownames = FALSE, options = list(dom = 't')))
   }
-  
+
   # Replace underscores with spaces in column names
   formatted_names <- gsub("_", " ", names(dt))
-  
+
   # Determine which columns are metrics vs values
   metric_cols_idx <- which(names(dt) == metric_col) - 1  # 0-indexed for JS
   value_cols_idx <- setdiff(seq_along(names(dt)) - 1, metric_cols_idx)
-  
+
+  # Find Extrapolated column index (0-indexed for JS)
+  extrap_col_idx <- which(names(dt) == "Extrapolated") - 1
+
+  # Build columnDefs list
+  col_defs <- list(
+    list(className = 'dt-left dt-head-left', targets = metric_cols_idx),
+    list(className = 'dt-center dt-head-center', targets = value_cols_idx)
+  )
+
+  # Add extrap-col class to Extrapolated column if it exists
+  if (length(extrap_col_idx) > 0) {
+    col_defs[[length(col_defs) + 1]] <- list(className = 'extrap-col dt-center dt-head-center', targets = extrap_col_idx)
+  }
+
   datatable(
     dt,
     colnames = formatted_names,
@@ -752,10 +766,7 @@ create_dt_table <- function(dt, metric_col = "Metric") {
       scrollX = TRUE,
       scrollY = "600px",
       dom = 'frti',  # Removed 'p' for pagination
-      columnDefs = list(
-        list(className = 'dt-left dt-head-left', targets = metric_cols_idx),
-        list(className = 'dt-center dt-head-center', targets = value_cols_idx)
-      ),
+      columnDefs = col_defs,
       initComplete = JS(
         "function(settings, json) {",
         "$(this.api().table().header()).css({'background-color': '#2c3e50', 'color': '#fff'});",
@@ -897,32 +908,30 @@ filter_sidebar <- function(data_list) {
       multiple = TRUE,
       options = list(placeholder = "All key groups...")
     ),
-    
+
     hr(),
-    
-    checkboxInput("show_extrapolation", "Show Extrapolated Values", value = FALSE),
-    
-    hr(),
-    
+
     actionButton("apply_filters", "Apply Filters", class = "btn-primary w-100"),
     actionButton("reset_filters", "Reset All Filters", class = "btn-outline-secondary w-100 mt-2"),
-    
+
     hr(),
-    
+
+    # Toggle extrapolation columns
+    checkboxInput("toggle_extrap_cols", "Show Extrapolated Values", value = TRUE),
+
+    hr(),
+
     # Employee-Period Selection (for Example tab)
     h5("Select Employee-Period"),
-    div(
-      style = "max-height: 300px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 4px; padding: 5px;",
-      selectizeInput(
-        "example_period_select",
-        NULL,
-        choices = NULL,
-        options = list(
-          placeholder = "Type to search employee-period...",
-          maxOptions = 100,
-          closeAfterSelect = TRUE,
-          openOnFocus = TRUE
-        )
+    selectizeInput(
+      "example_period_select",
+      NULL,
+      choices = NULL,
+      options = list(
+        placeholder = "Type to search employee-period...",
+        maxOptions = 100,
+        closeAfterSelect = TRUE,
+        openOnFocus = TRUE
       )
     ),
     
@@ -943,9 +952,19 @@ filter_sidebar <- function(data_list) {
 # ---- UI ----
 
 ui <- function(data_list, metric_spec) {
-  
+
+  # Get current year for watermark
+  current_year <- format(Sys.Date(), "%Y")
+
+  # Version information
+  app_version <- "v1.0.0"
+
   page_navbar(
-    title = "Wage & Hour Compliance Dashboard",
+    title = div(
+      "Wage & Hour Compliance Dashboard",
+      br(),
+      tags$small(style = "font-size: 11px; color: #95a5a6; font-weight: normal;", "Confidential")
+    ),
     theme = bs_theme(
       version = 5,
       bootswatch = "flatly",
@@ -956,22 +975,10 @@ ui <- function(data_list, metric_spec) {
     header = tagList(
       # Initialize shinyjs
       useShinyjs(),
-      
-      # Filter status banner and custom CSS
+
+      # Custom CSS
       tags$head(
         tags$style(HTML("
-          #confidential_header {
-            background-color: #8B0000;
-            color: white;
-            padding: 8px 15px;
-            text-align: left;
-            font-weight: bold;
-            font-size: 14px;
-            position: sticky;
-            top: 0;
-            z-index: 1000;
-            border-bottom: 2px solid #660000;
-          }
           #filter_banner {
             display: none;
             background-color: #e74c3c;
@@ -1004,23 +1011,43 @@ ui <- function(data_list, metric_spec) {
             background-color: #27ae60 !important;
           }
 
-          /* Invisible watermark - bottom left */
-          .watermark {
+          /* Watermark and version - bottom center */
+          .footer-info {
             position: fixed;
-            bottom: 10px;
-            left: 10px;
+            bottom: 5px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
             font-size: 10px;
-            color: #f8f9fa;
-            opacity: 0.3;
+            color: #bdc3c7;
+            opacity: 0.5;
             z-index: 1;
             pointer-events: none;
           }
+
+          /* Hide extrapolated columns when toggle is off */
+          .hide-extrap-cols .extrap-col {
+            display: none !important;
+          }
+        ")),
+        tags$script(HTML("
+          // Toggle extrapolated columns visibility
+          $(document).on('shiny:connected', function() {
+            Shiny.addCustomMessageHandler('toggleExtrapCols', function(show) {
+              if (show) {
+                $('body').removeClass('hide-extrap-cols');
+              } else {
+                $('body').addClass('hide-extrap-cols');
+              }
+            });
+          });
         "))
       ),
-      
-      div(id = "confidential_header", "CONFIDENTIAL WORK PRODUCT"),
+
       div(id = "filter_banner", style = "display: none;", uiOutput("filter_banner_text")),
-      div(class = "watermark", "Anello Data Solutions LLC")
+      div(class = "footer-info", HTML(paste0(
+        "Anello Data Solutions LLC (", current_year, ") &middot; ", app_version
+      )))
     ),
     
     # =======================================================================
@@ -1680,7 +1707,12 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       updateCheckboxGroupInput(session, "pdf_sections_col4", selected = character(0))
       updateCheckboxInput(session, "pdf_include_appendix", value = FALSE)
     })
-    
+
+    # Toggle extrapolation columns
+    observeEvent(input$toggle_extrap_cols, {
+      session$sendCustomMessage('toggleExtrapCols', input$toggle_extrap_cols)
+    }, ignoreInit = FALSE)
+
     # Filtered data with precomputed metadata
     filtered_data <- reactive({
       filters <- current_filters()
