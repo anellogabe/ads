@@ -2717,8 +2717,15 @@ run_metrics_pipeline <- function(time_dt, pay_dt, spec,
   # Split spec: year-OK vs no-year groups
   # Use explicit no_year_breakdown column if available, otherwise fall back to pattern matching
   if ("no_year_breakdown" %in% names(spec)) {
-    # Convert to logical, treating empty/NA as FALSE
-    spec[, no_year_flag := fifelse(is.na(no_year_breakdown) | no_year_breakdown == "" | no_year_breakdown == "FALSE", FALSE, TRUE)]
+    # Convert to logical, treating empty/NA/"FALSE"/"0"/"no" as FALSE
+    spec[, no_year_flag := {
+      flag_val <- tolower(as.character(no_year_breakdown))
+      fifelse(
+        is.na(no_year_breakdown) | flag_val == "" | flag_val %in% c("false", "0", "no"),
+        FALSE,
+        TRUE
+      )
+    }]
     spec_no_year <- spec[no_year_flag == TRUE]
     spec_year_ok <- spec[no_year_flag == FALSE]
     spec[, no_year_flag := NULL]  # Clean up temp column
