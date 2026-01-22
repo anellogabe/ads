@@ -1624,7 +1624,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
             actionButton("pdf_deselect_all", "Deselect All", class = "btn-sm btn-outline-secondary", style = "margin-left: 10px;")
           ),
           div(
-            modalButton("Cancel", class = "btn-secondary"),
+            modalButton("Cancel"),
             actionButton("trigger_pdf_generation", "Generate PDF",
                         class = "btn-primary",
                         icon = icon("file-pdf"),
@@ -3757,23 +3757,23 @@ message("Pre-computing metric groups...")
 metric_groups <- unique(metric_spec$metric_group)
 metric_group_categories <- list(
   time_summary_groups   = metric_groups[grepl("^Summary - Time Data$", metric_groups)],
-  time_shift_groups     = metric_groups[grepl("^Time Shift Hours Analysis", metric_groups)],
+  time_shift_groups     = metric_groups[grepl("^Shift Hours Analysis", metric_groups)],
   time_rounding_groups  = metric_groups[grepl("^Time Punch Rounding", metric_groups)],
-  time_meal_analysis    = metric_groups[grepl("^Time Meal Period Analysis", metric_groups)],
+  time_meal_analysis    = metric_groups[grepl("^Meal Period Analysis", metric_groups)],
 
   # Meal violations - split into summary and detail groups
-  time_meal_violations_5_summary = metric_groups[grepl("^Time Meal Violations \\(no waivers\\)$", metric_groups)],
-  time_meal_violations_5_short   = metric_groups[grepl("^Time Meal Violations \\(no waivers\\) - Short Detail", metric_groups)],
-  time_meal_violations_5_late    = metric_groups[grepl("^Time Meal Violations \\(no waivers\\) - Late Detail", metric_groups)],
+  time_meal_violations_5_summary = metric_groups[grepl("^Meal Period Violations$", metric_groups)],
+  time_meal_violations_5_short   = metric_groups[grepl("^Meal Period Violations - Short Detail", metric_groups)],
+  time_meal_violations_5_late    = metric_groups[grepl("^Meal Period Violations - Late Detail", metric_groups)],
 
-  time_meal_violations_6_summary = metric_groups[grepl("^Time Meal Violations \\(waivers\\)$", metric_groups)],
-  time_meal_violations_6_short   = metric_groups[grepl("^Time Meal Violations \\(waivers\\) - Short Detail", metric_groups)],
-  time_meal_violations_6_late    = metric_groups[grepl("^Time Meal Violations \\(waivers\\) - Late Detail", metric_groups)],
+  time_meal_violations_6_summary = metric_groups[grepl("^Meal Period Violations$", metric_groups)],
+  time_meal_violations_6_short   = metric_groups[grepl("^Meal Period Violations - Short Detail", metric_groups)],
+  time_meal_violations_6_late    = metric_groups[grepl("^Meal Period Violations - Late Detail", metric_groups)],
 
-  time_rest = metric_groups[grepl("^Time Rest", metric_groups)],
+  time_rest = metric_groups[grepl("^Rest Period Analysis", metric_groups)],
 
   pay_summary_groups = metric_groups[grepl("^Summary - Pay Data$", metric_groups)],
-  pay_regular_rate = metric_groups[grepl("^Pay Regular Rate", metric_groups)],
+  pay_regular_rate = metric_groups[grepl("^Regular Rate", metric_groups)],
 
   # Damages metric groups (Class/Individual Claims)
   damages_summary_groups = metric_groups[grepl("^Damages - Summary$", metric_groups)],
