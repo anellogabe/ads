@@ -967,9 +967,7 @@ filter_sidebar <- function(data_list) {
                             font-weight: bold;
                             padding: 10px;
                             box-shadow: 0 4px 6px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.4);
-                            color: white;"),
-    # Hidden download button for PDF (triggered by modal)
-    shinyjs::hidden(downloadButton("download_pdf_hidden", "Hidden PDF"))
+                            color: white;")
   )
 }
 
@@ -1625,15 +1623,15 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
           ),
           div(
             modalButton("Cancel"),
-            actionButton("trigger_pdf_generation", "Generate PDF",
-                        class = "btn-primary",
-                        icon = icon("file-pdf"),
-                        style = "margin-left: 10px;
-                                 background: linear-gradient(135deg, #90EE90 0%, #3CB371 50%, #2E8B57 100%);
-                                 border: none;
-                                 font-weight: bold;
-                                 box-shadow: 0 4px 6px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.4);
-                                 color: white;")
+            downloadButton("download_pdf", "Generate PDF",
+                          class = "btn-primary",
+                          icon = icon("file-pdf"),
+                          style = "margin-left: 10px;
+                                   background: linear-gradient(135deg, #90EE90 0%, #3CB371 50%, #2E8B57 100%);
+                                   border: none;
+                                   font-weight: bold;
+                                   box-shadow: 0 4px 6px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.4);
+                                   color: white;")
           )
         ),
 
@@ -1757,8 +1755,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
               choices = c(
                 "Unreimbursed Expenses (2802)" = "paga_expenses",
                 "Recordkeeping (1174.1)" = "paga_recordkeeping",
-                "Waiting Time (203)" = "paga_waiting_time",
-                "PAGA Total" = "paga_total"
+                "Waiting Time (203)" = "paga_waiting_time"
               ),
               selected = c()
             )
@@ -1790,7 +1787,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       # PAGA sections
       all_paga_col1 <- c("paga_overview", "paga_meal", "paga_rest", "paga_rrop")
       all_paga_col2 <- c("paga_226", "paga_558", "paga_min_wage")
-      all_paga_col3 <- c("paga_expenses", "paga_recordkeeping", "paga_waiting_time", "paga_total")
+      all_paga_col3 <- c("paga_expenses", "paga_recordkeeping", "paga_waiting_time")
 
       updateCheckboxGroupInput(session, "pdf_sections_col1", selected = all_choices_col1)
       updateCheckboxGroupInput(session, "pdf_sections_col2", selected = all_choices_col2)
@@ -1824,12 +1821,6 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
 
       updateCheckboxInput(session, "pdf_include_appendix", value = FALSE)
       updateCheckboxInput(session, "pdf_include_data_comparison", value = FALSE)
-    })
-
-    # Trigger PDF generation from modal
-    observeEvent(input$trigger_pdf_generation, {
-      removeModal()
-      shinyjs::click("download_pdf_hidden")
     })
 
     # Toggle extrapolation columns
@@ -2576,7 +2567,6 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       expenses_split <- split_by_waiver(paga_expenses_groups)
       recordkeeping_split <- split_by_waiver(paga_recordkeeping_groups)
       waiting_time_split <- split_by_waiver(paga_waiting_time_groups)
-      total_split <- split_by_waiver(paga_total_groups)
 
       # Build section definitions for no-waiver metrics
       sections <- list()
@@ -2644,13 +2634,6 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         )
       }
 
-      if (length(total_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - TOTAL",
-          groups = total_split$no_waiver
-        )
-      }
-
       display <- pipeline_to_damages_format(results, sections, scenario_filter = "all/no waivers")
 
       # Filter out waiver metrics from no-waiver tab based on metric labels
@@ -2674,7 +2657,6 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       expenses_split <- split_by_waiver(paga_expenses_groups)
       recordkeeping_split <- split_by_waiver(paga_recordkeeping_groups)
       waiting_time_split <- split_by_waiver(paga_waiting_time_groups)
-      total_split <- split_by_waiver(paga_total_groups)
 
       # Build section definitions for waiver metrics
       sections <- list()
@@ -2739,13 +2721,6 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         sections[[length(sections) + 1]] <- list(
           section_name = "PAGA - WAITING TIME (203)",
           groups = waiting_time_split$waiver
-        )
-      }
-
-      if (length(total_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PAGA - TOTAL",
-          groups = total_split$waiver
         )
       }
 
@@ -3279,7 +3254,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       }
     )
     
-    output$download_pdf_hidden <- downloadHandler(
+    output$download_pdf <- downloadHandler(
       filename = function() paste0("Wage_Hour_Report_", format(Sys.Date(), "%Y%m%d"), ".html"),
       content = function(file) {
 
@@ -3724,12 +3699,6 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
             html_content <- paste0(html_content, add_table(results, "PAGA - Waiting Time (203)", "⏳"))
           }
 
-          if ("paga_total" %in% sections && length(paga_total_groups) > 0) {
-            html_content <- paste0(html_content, '<div class="page-break"></div>')
-            results <- calculate_group_metrics(data, metric_spec, paga_total_groups, current_filters(), extrap_factor())
-            html_content <- paste0(html_content, add_table(results, "PAGA - Total", "💰"))
-          }
-
           # Data Comparison Section - removed (now in overview section at top)
           # Close HTML
           incProgress(1 / total_sections, detail = "Finalizing report...")
@@ -3805,12 +3774,10 @@ metric_group_categories <- list(
   paga_226_groups  = metric_groups[grepl("^PAGA - Wage Statement", metric_groups)],
   paga_558_groups  = metric_groups[grepl("^PAGA - Unpaid Wages", metric_groups)],
 
-  paga_min_wage_groups      = metric_groups[grepl("^PAGA - Min Wage|^PAGA$", metric_groups)],
+  paga_min_wage_groups      = metric_groups[grepl("^PAGA - Min Wage", metric_groups)],
   paga_expenses_groups      = metric_groups[grepl("^PAGA - Unreimbursed Expenses", metric_groups)],
   paga_recordkeeping_groups = metric_groups[grepl("^PAGA - Recordkeeping", metric_groups)],
-  paga_waiting_time_groups  = metric_groups[grepl("^PAGA - Waiting Time", metric_groups)],
-
-  paga_total_groups = metric_groups[grepl("^PAGA - Total", metric_groups)]
+  paga_waiting_time_groups  = metric_groups[grepl("^PAGA - Waiting Time", metric_groups)]
 )
 
 message("Loading analysis tables...")
