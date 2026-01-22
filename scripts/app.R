@@ -2368,75 +2368,75 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         # Build section definitions for no-waiver metrics
         sections <- list()
 
-      if (length(meal_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "MEAL PERIOD DAMAGES",
-          groups = meal_split$no_waiver
-        )
-      }
+        if (length(meal_split$no_waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "MEAL PERIOD DAMAGES",
+            groups = meal_split$no_waiver
+          )
+        }
 
-      if (length(rest_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "REST PERIOD DAMAGES",
-          groups = rest_split$no_waiver
-        )
-      }
+        if (length(rest_split$no_waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "REST PERIOD DAMAGES",
+            groups = rest_split$no_waiver
+          )
+        }
 
-      if (length(rrop_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "RROP DAMAGES",
-          groups = rrop_split$no_waiver
-        )
-      }
+        if (length(rrop_split$no_waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "RROP DAMAGES",
+            groups = rrop_split$no_waiver
+          )
+        }
 
-      if (length(otc_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "OFF-THE-CLOCK DAMAGES",
-          groups = otc_split$no_waiver
-        )
-      }
+        if (length(otc_split$no_waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "OFF-THE-CLOCK DAMAGES",
+            groups = otc_split$no_waiver
+          )
+        }
 
-      if (length(unpaid_ot_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "UNPAID OT/DT DAMAGES",
-          groups = unpaid_ot_split$no_waiver
-        )
-      }
+        if (length(unpaid_ot_split$no_waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "UNPAID OT/DT DAMAGES",
+            groups = unpaid_ot_split$no_waiver
+          )
+        }
 
-      if (length(min_wage_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "UNPAID WAGES (MIN WAGE) DAMAGES",
-          groups = min_wage_split$no_waiver
-        )
-      }
+        if (length(min_wage_split$no_waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "UNPAID WAGES (MIN WAGE) DAMAGES",
+            groups = min_wage_split$no_waiver
+          )
+        }
 
-      if (length(expenses_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "UNREIMBURSED EXPENSES DAMAGES",
-          groups = expenses_split$no_waiver
-        )
-      }
+        if (length(expenses_split$no_waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "UNREIMBURSED EXPENSES DAMAGES",
+            groups = expenses_split$no_waiver
+          )
+        }
 
-      if (length(wsv_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "WAGE STATEMENT PENALTIES",
-          groups = wsv_split$no_waiver
-        )
-      }
+        if (length(wsv_split$no_waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "WAGE STATEMENT PENALTIES",
+            groups = wsv_split$no_waiver
+          )
+        }
 
-      if (length(wt_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "WAITING TIME PENALTIES",
-          groups = wt_split$no_waiver
-        )
-      }
+        if (length(wt_split$no_waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "WAITING TIME PENALTIES",
+            groups = wt_split$no_waiver
+          )
+        }
 
-      if (length(total_split$no_waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "TOTAL DAMAGES",
-          groups = total_split$no_waiver
-        )
-      }
+        if (length(total_split$no_waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "TOTAL DAMAGES",
+            groups = total_split$no_waiver
+          )
+        }
 
         if (length(sections) == 0) {
           return(datatable(data.table(Message = "No damages data available for no waivers scenario"),
@@ -2481,75 +2481,75 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         # Build section definitions for waiver metrics
         sections <- list()
 
-      if (length(meal_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "MEAL PERIOD DAMAGES",
-          groups = meal_split$waiver
-        )
-      }
+        if (length(meal_split$waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "MEAL PERIOD DAMAGES",
+            groups = meal_split$waiver
+          )
+        }
 
-      if (length(rest_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "REST PERIOD DAMAGES",
-          groups = rest_split$waiver
-        )
-      }
+        if (length(rest_split$waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "REST PERIOD DAMAGES",
+            groups = rest_split$waiver
+          )
+        }
 
-      if (length(rrop_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "RROP DAMAGES",
-          groups = rrop_split$waiver
-        )
-      }
+        if (length(rrop_split$waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "RROP DAMAGES",
+            groups = rrop_split$waiver
+          )
+        }
 
-      if (length(otc_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "OFF-THE-CLOCK DAMAGES",
-          groups = otc_split$waiver
-        )
-      }
+        if (length(otc_split$waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "OFF-THE-CLOCK DAMAGES",
+            groups = otc_split$waiver
+          )
+        }
 
-      if (length(unpaid_ot_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "UNPAID OT/DT DAMAGES",
-          groups = unpaid_ot_split$waiver
-        )
-      }
+        if (length(unpaid_ot_split$waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "UNPAID OT/DT DAMAGES",
+            groups = unpaid_ot_split$waiver
+          )
+        }
 
-      if (length(min_wage_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "UNPAID WAGES (MIN WAGE) DAMAGES",
-          groups = min_wage_split$waiver
-        )
-      }
+        if (length(min_wage_split$waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "UNPAID WAGES (MIN WAGE) DAMAGES",
+            groups = min_wage_split$waiver
+          )
+        }
 
-      if (length(expenses_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "UNREIMBURSED EXPENSES DAMAGES",
-          groups = expenses_split$waiver
-        )
-      }
+        if (length(expenses_split$waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "UNREIMBURSED EXPENSES DAMAGES",
+            groups = expenses_split$waiver
+          )
+        }
 
-      if (length(wsv_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "WAGE STATEMENT PENALTIES",
-          groups = wsv_split$waiver
-        )
-      }
+        if (length(wsv_split$waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "WAGE STATEMENT PENALTIES",
+            groups = wsv_split$waiver
+          )
+        }
 
-      if (length(wt_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "WAITING TIME PENALTIES",
-          groups = wt_split$waiver
-        )
-      }
+        if (length(wt_split$waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "WAITING TIME PENALTIES",
+            groups = wt_split$waiver
+          )
+        }
 
-      if (length(total_split$waiver) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "TOTAL DAMAGES",
-          groups = total_split$waiver
-        )
-      }
+        if (length(total_split$waiver) > 0) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "TOTAL DAMAGES",
+            groups = total_split$waiver
+          )
+        }
 
         if (length(sections) == 0) {
           return(datatable(data.table(Message = "No damages data available for waivers scenario"),
