@@ -458,7 +458,7 @@ pipeline_to_display_format <- function(pipeline_results, group_names = NULL, inc
 #' Format damages tables with section headers
 #' @param pipeline_results Raw output from run_metrics_pipeline()
 #' @param section_definitions List of lists with section_name and groups
-#' @param scenario_filter Optional: "all", "no waivers", or "waivers" (uses new spec column if available)
+#' @param scenario_filter Optional: scenario values to include (uses spec column if available)
 #' @return data.table formatted for display with section headers
 pipeline_to_damages_format <- function(pipeline_results, section_definitions, scenario_filter = NULL) {
   if (is.null(pipeline_results) || nrow(pipeline_results) == 0) return(data.table())
@@ -474,7 +474,11 @@ pipeline_to_damages_format <- function(pipeline_results, section_definitions, sc
 
     # If scenario column exists in spec, filter by it; otherwise use label-based filtering
     if (!is.null(scenario_filter) && "scenario" %in% names(dt)) {
-      dt <- dt[scenario %in% scenario_filter]
+      dt <- dt[
+        is.na(scenario) |
+          scenario == "" |
+          scenario %in% scenario_filter
+      ]
     }
 
     if (nrow(dt) == 0) return(NULL)
@@ -3341,6 +3345,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         clean_name <- gsub("[^A-Za-z0-9_-]", "_", case_name)
         paste0(clean_name, "_Wage_Hour_Report_", format(Sys.Date(), "%Y%m%d"), ".html")
       },
+      contentType = "text/html; charset=UTF-8",
       content = function(file) {
 
         withProgress(message = "Generating PDF Report", value = 0, {
