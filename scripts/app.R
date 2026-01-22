@@ -116,22 +116,21 @@ load_data <- function() {
 }
 
 load_metric_spec <- function() {
-  # Load from ADS engine repo (uses load_metrics_spec from functions.R)
-  spec <- load_metrics_spec()
+  metrics_spec_path <- file.path(paths$CASE_DIR, "scripts", "metrics_spec.csv")
+  if (!file.exists(metrics_spec_path)) stop("Missing metrics_spec.csv at: ", metrics_spec_path)
 
-  # Add metric_order if not present
+  spec <- fread(metrics_spec_path)
+  setDT(spec)
+
   if (!"metric_order" %in% names(spec)) {
     spec[, metric_order := .I]
   }
 
-  # Add metric_type column for proper formatting (used by format_metrics_table)
-  if (!"metric_type" %in% names(spec)) {
-    spec[, metric_type := fcase(
-      grepl("date", metric_label, ignore.case = TRUE), "date",
-      grepl("percent", metric_label, ignore.case = TRUE), "percent",
-      default = "value"
-    )]
-  }
+  spec[, metric_type := fcase(
+    grepl("date", metric_label, ignore.case = TRUE), "date",
+    grepl("percent", metric_label, ignore.case = TRUE), "percent",
+    default = "value"
+  )]
 
   spec
 }
