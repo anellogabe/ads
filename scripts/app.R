@@ -3754,6 +3754,31 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
             html_content <- paste0(html_content, add_table(results, "PAGA - Waiting Time (203)", "⏳"))
           }
 
+          # Appendix - Additional Analysis Tables
+          if (isTRUE(input$pdf_include_appendix)) {
+            html_content <- paste0(html_content, '<div class="page-break"></div><h1>📚 Appendix - Analysis Tables</h1>')
+
+            if (!is.null(analysis_tables$shift_hrs) && nrow(analysis_tables$shift_hrs) > 0) {
+              html_content <- paste0(html_content, add_table(analysis_tables$shift_hrs, "Shift Hours Distribution", "⏰"))
+            }
+
+            if (!is.null(analysis_tables$non_wrk_hrs) && nrow(analysis_tables$non_wrk_hrs) > 0) {
+              html_content <- paste0(html_content, add_table(analysis_tables$non_wrk_hrs, "Non-Work Hours Distribution", "📊"))
+            }
+
+            if (!is.null(analysis_tables$meal_period) && nrow(analysis_tables$meal_period) > 0) {
+              html_content <- paste0(html_content, add_table(analysis_tables$meal_period, "Meal Period Duration Distribution", "🍽️"))
+            }
+
+            if (!is.null(analysis_tables$meal_start_time) && nrow(analysis_tables$meal_start_time) > 0) {
+              html_content <- paste0(html_content, add_table(analysis_tables$meal_start_time, "Meal Start Time Distribution", "🕐"))
+            }
+
+            if (!is.null(analysis_tables$meal_quarter_hr) && nrow(analysis_tables$meal_quarter_hr) > 0) {
+              html_content <- paste0(html_content, add_table(analysis_tables$meal_quarter_hr, "Meal Quarter Hour Distribution", "⏱️"))
+            }
+          }
+
           # Data Comparison Section - removed (now in overview section at top)
           # Close HTML
           incProgress(1 / total_sections, detail = "Finalizing report...")
