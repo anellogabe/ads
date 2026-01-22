@@ -770,7 +770,7 @@ create_dt_table <- function(dt, metric_col = "Metric") {
     options = list(
       paging = FALSE,  # Remove pagination entirely
       scrollX = TRUE,
-      scrollY = "600px",
+      scrollY = "calc(100vh - 300px)",  # Dynamic height based on viewport
       dom = 'frti',  # Removed 'p' for pagination
       columnDefs = col_defs,
       initComplete = JS(
@@ -1616,8 +1616,9 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         size = "xl",
         easyClose = TRUE,
         footer = div(
-          style = "display: flex; justify-content: space-between; align-items: center;",
+          style = "display: flex; justify-content: space-between; align-items: center; padding-left: 0;",
           div(
+            style = "margin-left: 0;",
             actionButton("pdf_select_all", "Select All", class = "btn-sm btn-outline-primary"),
             actionButton("pdf_deselect_all", "Deselect All", class = "btn-sm btn-outline-secondary", style = "margin-left: 10px;")
           ),
@@ -2271,56 +2272,71 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
 
     # Class/Individual Claims - Overview
     output$table_damages_class_overview <- renderDT({
-      results <- pipeline_results()
+      tryCatch({
+        results <- pipeline_results()
 
-      # Build section definitions for overview (summary metrics)
-      sections <- list()
+        # Build section definitions for overview (summary metrics)
+        sections <- list()
 
-      if (length(damages_summary_groups) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "SUMMARY",
-          groups = damages_summary_groups
-        )
-      }
+        if (length(damages_summary_groups) > 0 && is.character(damages_summary_groups)) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "SUMMARY",
+            groups = as.character(damages_summary_groups)
+          )
+        }
 
-      if (length(damages_credits_groups) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "CREDITS OR OFFSETS",
-          groups = damages_credits_groups
-        )
-      }
+        if (length(damages_credits_groups) > 0 && is.character(damages_credits_groups)) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "CREDITS OR OFFSETS",
+            groups = as.character(damages_credits_groups)
+          )
+        }
 
-      if (length(damages_principal_groups) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "PRINCIPAL",
-          groups = damages_principal_groups
-        )
-      }
+        if (length(damages_principal_groups) > 0 && is.character(damages_principal_groups)) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "PRINCIPAL",
+            groups = as.character(damages_principal_groups)
+          )
+        }
 
-      if (length(damages_interest_groups) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "INTEREST",
-          groups = damages_interest_groups
-        )
-      }
+        if (length(damages_interest_groups) > 0 && is.character(damages_interest_groups)) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "INTEREST",
+            groups = as.character(damages_interest_groups)
+          )
+        }
 
-      if (length(damages_subtotal_groups) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "SUB-TOTAL (PRINCIPAL + INTEREST)",
-          groups = damages_subtotal_groups
-        )
-      }
+        if (length(damages_subtotal_groups) > 0 && is.character(damages_subtotal_groups)) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "SUB-TOTAL (PRINCIPAL + INTEREST)",
+            groups = as.character(damages_subtotal_groups)
+          )
+        }
 
-      if (length(damages_grand_total_groups) > 0) {
-        sections[[length(sections) + 1]] <- list(
-          section_name = "GRAND TOTAL (PRINCIPAL + INTEREST + PENALTIES)",
-          groups = damages_grand_total_groups
-        )
-      }
+        if (length(damages_grand_total_groups) > 0 && is.character(damages_grand_total_groups)) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "GRAND TOTAL (PRINCIPAL + INTEREST + PENALTIES)",
+            groups = as.character(damages_grand_total_groups)
+          )
+        }
 
-      display <- pipeline_to_damages_format(results, sections, scenario_filter = "all")
+        if (length(sections) == 0) {
+          return(datatable(data.table(Message = "No damages overview data available"),
+                          rownames = FALSE, options = list(dom = 't')))
+        }
 
-      create_dt_table(display)
+        display <- pipeline_to_damages_format(results, sections, scenario_filter = "all")
+
+        if (is.null(display) || nrow(display) == 0) {
+          return(datatable(data.table(Message = "No damages overview data available"),
+                          rownames = FALSE, options = list(dom = 't')))
+        }
+
+        create_dt_table(display)
+      }, error = function(e) {
+        datatable(data.table(Error = paste("Error rendering damages overview:", e$message)),
+                 rownames = FALSE, options = list(dom = 't'))
+      })
     })
 
     # Class/Individual Claims - No Waivers
@@ -3255,7 +3271,11 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     )
     
     output$download_pdf <- downloadHandler(
-      filename = function() paste0("Wage_Hour_Report_", format(Sys.Date(), "%Y%m%d"), ".html"),
+      filename = function() {
+        # Clean case name for filename (remove special characters)
+        clean_name <- gsub("[^A-Za-z0-9_-]", "_", case_name)
+        paste0(clean_name, "_Wage_Hour_Report_", format(Sys.Date(), "%Y%m%d"), ".html")
+      },
       content = function(file) {
 
         withProgress(message = "Generating PDF Report", value = 0, {
@@ -3358,7 +3378,32 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
           if ("overview" %in% sections) {
             incProgress(1 / total_sections, detail = "Overview Statistics")
             html_content <- paste0(html_content, '
-  <h1>📊 Case Overview</h1>')
+  <h1>📊 Case Overview</h1>
+
+  <h2>Case Information</h2>
+  <table style="font-size: 10pt; margin-bottom: 30px; width: 60%;">
+    <tr>
+      <td class="metric-col" style="width: 40%; font-weight: bold;">Case Name</td>
+      <td class="value-col" style="text-align: left;">', case_name, '</td>
+    </tr>
+    <tr>
+      <td class="metric-col" style="font-weight: bold;">Case Number</td>
+      <td class="value-col" style="text-align: left;">', if(exists("case_no")) case_no else "Not specified", '</td>
+    </tr>
+    <tr>
+      <td class="metric-col" style="font-weight: bold;">Date Filed</td>
+      <td class="value-col" style="text-align: left;">', if(exists("date_filed")) format(date_filed, "%B %d, %Y") else "Not specified", '</td>
+    </tr>
+    <tr>
+      <td class="metric-col" style="font-weight: bold;">Mediation Date</td>
+      <td class="value-col" style="text-align: left;">', if(exists("mediation_date")) format(mediation_date, "%B %d, %Y") else "Not specified", '</td>
+    </tr>
+    <tr>
+      <td class="metric-col" style="font-weight: bold;">Sample Size</td>
+      <td class="value-col" style="text-align: left;">', if(exists("sample_size")) sample_size else "Not specified", '</td>
+    </tr>
+  </table>
+')
 
             # Data Comparison Section - moved to top of overview
             if ("data_comparison" %in% sections) {
@@ -3543,6 +3588,16 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
             html_content <- paste0(html_content, '<div class="page-break"></div>')
             results <- calculate_group_metrics(data, metric_spec, pay_regular_rate, current_filters(), extrap_factor())
             html_content <- paste0(html_content, add_table(results, "Pay Analysis - Regular Rate of Pay", "📊"))
+          }
+
+          if ("pay_codes" %in% sections && !is.null(analysis_tables$pay_code_summary) && nrow(analysis_tables$pay_code_summary) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            html_content <- paste0(html_content, add_table(analysis_tables$pay_code_summary, "Pay Analysis - Pay Codes", "💳"))
+          }
+
+          if ("rate_type_analysis" %in% sections && !is.null(analysis_tables$rate_type_analysis) && nrow(analysis_tables$rate_type_analysis) > 0) {
+            html_content <- paste0(html_content, '<div class="page-break"></div>')
+            html_content <- paste0(html_content, add_table(analysis_tables$rate_type_analysis, "Pay Analysis - Rate Type", "📈"))
           }
 
           # Class Damages sections
