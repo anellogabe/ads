@@ -100,6 +100,58 @@ load_ads_engine <- function() {
 }
 
 
+# METRICS SPEC LOADER ------------------------------------------------------------------------------
+
+load_metrics_spec <- function(case_dir = NULL, spec_path = NULL, allow_fallback = TRUE) {
+  if (is.null(spec_path) || !nzchar(spec_path)) {
+    if (is.null(case_dir) || !nzchar(case_dir)) {
+      if (exists("CASE_DIR", inherits = TRUE)) {
+        case_dir <- get("CASE_DIR", inherits = TRUE)
+      } else {
+        case_dir <- Sys.getenv("ADS_CASE_DIR", unset = "")
+      }
+    }
+    if (nzchar(case_dir)) {
+      spec_path <- file.path(case_dir, "scripts", "metrics_spec.csv")
+    }
+  }
+
+  if (is.null(spec_path) || !nzchar(spec_path) || !file.exists(spec_path)) {
+    if (isTRUE(allow_fallback)) {
+      fallback_path <- file.path(ads_repo(), "templates", "metrics_spec.csv")
+      if (file.exists(fallback_path)) {
+        spec_path <- fallback_path
+      }
+    }
+  }
+
+  if (is.null(spec_path) || !nzchar(spec_path) || !file.exists(spec_path)) {
+    stop("Missing metrics_spec.csv. Provide spec_path or ensure it exists in <CASE_DIR>/scripts.")
+  }
+
+  spec <- data.table::fread(spec_path)
+  data.table::setDT(spec)
+
+  if (!"metric_order" %in% names(spec)) {
+    spec[, metric_order := .I]
+  }
+
+  if (!"metric_type" %in% names(spec)) {
+    spec[, metric_type := data.table::fcase(
+      grepl("date", metric_label, ignore.case = TRUE), "date",
+      grepl("percent", metric_label, ignore.case = TRUE), "percent",
+      default = "value"
+    )]
+  }
+
+  if ("no_year_breakdown" %in% names(spec)) {
+    spec[, no_year_breakdown := as.character(no_year_breakdown)]
+  }
+
+  spec
+}
+
+
 # SAFE CSV & RDS FILE WRITER ------------------------------------------------------------------------------
 
 write_csv_and_rds <- function(dt, out_path_csv) {
