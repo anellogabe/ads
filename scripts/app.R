@@ -3452,249 +3452,38 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     )
     output$download_pdf <- downloadHandler(
       filename = function() {
-        paste0(gsub("[^A-Za-z0-9_-]", "_", case_name), "_Report_", format(Sys.Date(), "%Y%m%d"), ".pdf")
+        paste0(gsub("[^A-Za-z0-9_-]", "_", case_name), "_Report_", Sys.Date(), ".pdf")
       },
       contentType = "application/pdf",
       content = function(file) {
         message("PDF export starting...")
         
-        data <- filtered_data()
-        results <- pipeline_results()
+        # Ultra minimal - just case info, no data processing
         rpt <- if (!is.null(case_name) && nzchar(case_name)) case_name else "Report"
-        cno <- if (exists("case_no") && !is.null(case_no) && nzchar(case_no)) paste0(" (", case_no, ")") else ""
         
-        # Collect selected sections
-        sections <- c(input$pdf_sections_col1, input$pdf_sections_col2, input$pdf_sections_col3,
-                      input$pdf_damages_class_col1, input$pdf_damages_class_col2, input$pdf_damages_class_col3,
-                      input$pdf_paga_col1, input$pdf_paga_col2, input$pdf_paga_col3)
-        if (isTRUE(input$pdf_include_data_comparison)) sections <- c(sections, "data_comparison")
-        
-        # HTML header with page headers/footers
         html <- paste0('<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
-@page { size: legal landscape; margin: 0.5in; 
-  @top-left { content: "', rpt, cno, '"; font-weight: bold; }
-  @top-right { content: "CONFIDENTIAL"; color: green; font-weight: bold; }
-  @bottom-left { content: "Printed: ', format(Sys.Date(), "%B %d, %Y"), '"; font-size: 8pt; color: gray; }
-  @bottom-right { content: "Page " counter(page); font-size: 8pt; }
-}
-body { font-family: Arial, sans-serif; font-size: 10pt; }
-h1 { color: #2c3e50; border-bottom: 2px solid #3498db; }
-h2 { color: #34495e; margin-top: 20px; }
-table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 9pt; }
-th { background: #2c3e50; color: white; padding: 6px; text-align: center; }
-th:first-child { text-align: left; }
-td { padding: 5px; border-bottom: 1px solid #ddd; text-align: center; }
-td:first-child { text-align: left; }
-tr:nth-child(even) { background: #f8f8f8; }
-.page-break { page-break-before: always; }
-.case-tbl { width: 50%; }
-.case-tbl td { text-align: left; }
-.case-tbl td:first-child { font-weight: bold; background: #f0f0f0; width: 40%; }
+body { font-family: Arial, sans-serif; }
+h1 { color: #2c3e50; }
+table { border-collapse: collapse; margin: 20px 0; }
+td { padding: 8px; border: 1px solid #ddd; }
 </style></head><body>
-')
-        
-        # ===== PAGE 1: CASE DETAILS =====
-        html <- paste0(html, '
-<h1>Case Details</h1>
-<table class="case-tbl">
-<tr><td>Case Name</td><td>', rpt, '</td></tr>
-<tr><td>Case Number</td><td>', if(exists("case_no") && !is.null(case_no)) case_no else "N/A", '</td></tr>
-<tr><td>Date Filed</td><td>', if(exists("date_filed") && !is.null(date_filed)) format(date_filed, "%B %d, %Y") else "N/A", '</td></tr>
-<tr><td>Mediation Date</td><td>', if(exists("mediation_date") && !is.null(mediation_date)) format(mediation_date, "%B %d, %Y") else "N/A", '</td></tr>
-<tr><td>Report Generated</td><td>', format(Sys.time(), "%B %d, %Y %I:%M %p"), '</td></tr>
+<h1>', rpt, '</h1>
+<p>Report generated: ', as.character(Sys.Date()), '</p>
+<table>
+<tr><td>Test Row 1</td><td>Value 1</td></tr>
+<tr><td>Test Row 2</td><td>Value 2</td></tr>
 </table>
-<h2>Data Summary</h2>
-<table class="case-tbl">
-<tr><td>Employees (Time)</td><td>', prettyNum(uniqueN(data$shift_data1$ID), big.mark=","), '</td></tr>
-<tr><td>Employees (Pay)</td><td>', prettyNum(uniqueN(data$pay1$Pay_ID), big.mark=","), '</td></tr>
-<tr><td>Total Shifts</td><td>', prettyNum(nrow(data$shift_data1), big.mark=","), '</td></tr>
-<tr><td>Pay Periods (Time)</td><td>', prettyNum(uniqueN(data$shift_data1$ID_Period_End), big.mark=","), '</td></tr>
-<tr><td>Pay Periods (Pay)</td><td>', prettyNum(uniqueN(data$pay1$Pay_ID_Period_End), big.mark=","), '</td></tr>
-<tr><td>Weeks</td><td>', prettyNum(uniqueN(data$shift_data1$ID_Week_End), big.mark=","), '</td></tr>
-</table>
-')
+</body></html>')
         
-        # Table helper function
-        add_tbl <- function(dt, title) {
-          if (is.null(dt) || nrow(dt) == 0) return("")
-          dt <- dt[1:min(nrow(dt), 300)]
-          cols <- names(dt)
-          hdr <- paste0("<th>", cols, "</th>", collapse = "")
-          rows <- sapply(1:nrow(dt), function(i) {
-            vals <- sapply(1:ncol(dt), function(j) {
-              v <- dt[[j]][i]
-              if (is.na(v)) "" else as.character(v)
-            })
-            paste0("<tr><td>", paste(vals, collapse = "</td><td>"), "</td></tr>")
-          })
-          paste0('<div class="page-break"></div><h2>', title, '</h2><table><tr>', hdr, '</tr>', paste(rows, collapse = ""), '</table>')
-        }
-        
-        # ===== DATA COMPARISON =====
-        if ("data_comparison" %in% sections) {
-          time_ids <- unique(data$shift_data1$ID)
-          pay_ids <- unique(data$pay1$Pay_ID)
-          total <- length(unique(c(time_ids, pay_ids)))
-          time_only <- length(setdiff(time_ids, pay_ids))
-          pay_only <- length(setdiff(pay_ids, time_ids))
-          both <- length(intersect(time_ids, pay_ids))
-          comp_dt <- data.table(
-            Category = c("Total Unique Employees", "Time Data Only", "Pay Data Only", "Time & Pay (Overlap)"),
-            Count = c(prettyNum(total, big.mark=","), prettyNum(time_only, big.mark=","), prettyNum(pay_only, big.mark=","), prettyNum(both, big.mark=",")),
-            Percent = c("100%", sprintf("%.1f%%", time_only/max(total,1)*100), sprintf("%.1f%%", pay_only/max(total,1)*100), sprintf("%.1f%%", both/max(total,1)*100))
-          )
-          html <- paste0(html, add_tbl(comp_dt, "Data Comparison"))
-        }
-        
-        # ===== TIME SECTIONS =====
-        if ("time_summary" %in% sections && length(time_summary_groups) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, time_summary_groups, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "Time Analysis - Summary"))
-        }
-        if ("time_shift_hours" %in% sections && length(time_shift_groups) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, time_shift_groups, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "Time Analysis - Shift Hours"))
-        }
-        if ("time_rounding" %in% sections && length(time_rounding_groups) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, time_rounding_groups, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "Time Analysis - Punch Rounding"))
-        }
-        if ("meal_analysis" %in% sections && length(time_meal_analysis) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, time_meal_analysis, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "Meal Period Analysis"))
-        }
-        if ("meal_5hr" %in% sections && length(time_meal_violations_5_summary) > 0) {
-          all_5 <- c(time_meal_violations_5_summary, time_meal_violations_5_short, time_meal_violations_5_late)
-          tbl <- calculate_group_metrics(data, metric_spec, all_5, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "Meal Period Violations (No Waivers)"))
-        }
-        if ("meal_6hr" %in% sections && length(time_meal_violations_6_summary) > 0) {
-          all_6 <- c(time_meal_violations_6_summary, time_meal_violations_6_short, time_meal_violations_6_late)
-          tbl <- calculate_group_metrics(data, metric_spec, all_6, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "Meal Period Violations (Waivers)"))
-        }
-        if ("rest_violations" %in% sections && length(time_rest_violations) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, time_rest_violations, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "Rest Period Violations"))
-        }
-        
-        # ===== PAY SECTIONS =====
-        if ("pay_summary" %in% sections && length(pay_summary_groups) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, pay_summary_groups, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "Pay Analysis - Summary"))
-        }
-        if ("pay_regular_rate" %in% sections && length(pay_regular_rate) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, pay_regular_rate, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "Pay Analysis - Regular Rate"))
-        }
-        if ("pay_codes" %in% sections && !is.null(analysis_tables$pay_code_summary)) {
-          html <- paste0(html, add_tbl(analysis_tables$pay_code_summary, "Pay Analysis - Pay Codes"))
-        }
-        if ("rate_type" %in% sections && !is.null(analysis_tables$rate_type_analysis)) {
-          html <- paste0(html, add_tbl(analysis_tables$rate_type_analysis, "Pay Analysis - Rate Type"))
-        }
-        
-        # ===== CLASS DAMAGES =====
-        if ("damages_class_overview" %in% sections) {
-          grps <- c(damages_summary_groups, damages_principal_groups, damages_credits_groups,
-                    damages_interest_groups, damages_subtotal_groups, damages_grand_total_groups)
-          if (length(grps) > 0) {
-            tbl <- calculate_group_metrics(data, metric_spec, grps, current_filters(), extrap_factor())
-            html <- paste0(html, add_tbl(tbl, "Class Damages - Overview"))
-          }
-        }
-        if ("damages_meal" %in% sections && length(damages_meal_groups) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, damages_meal_groups, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "Class Damages - Meal Premiums"))
-        }
-        if ("damages_rest" %in% sections && length(damages_rest_groups) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, damages_rest_groups, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "Class Damages - Rest Premiums"))
-        }
-        if ("damages_rrop" %in% sections && length(damages_rrop_groups) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, damages_rrop_groups, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "Class Damages - RROP"))
-        }
-        if ("damages_otc" %in% sections && length(damages_otc_groups) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, damages_otc_groups, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "Class Damages - Off-the-Clock"))
-        }
-        if ("damages_unpaid_ot" %in% sections && length(damages_unpaid_ot_groups) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, damages_unpaid_ot_groups, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "Class Damages - Unpaid OT/DT"))
-        }
-        if ("damages_min_wage" %in% sections && length(damages_min_wage_groups) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, damages_min_wage_groups, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "Class Damages - Minimum Wage"))
-        }
-        if ("damages_expenses" %in% sections && length(damages_expenses_groups) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, damages_expenses_groups, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "Class Damages - Expenses"))
-        }
-        if ("damages_wsv" %in% sections && length(damages_wsv_groups) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, damages_wsv_groups, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "Class Damages - Wage Statement"))
-        }
-        if ("damages_wt" %in% sections && length(damages_wt_groups) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, damages_wt_groups, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "Class Damages - Waiting Time"))
-        }
-        
-        # ===== PAGA =====
-        if ("paga_overview" %in% sections && length(paga_summary_groups) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, paga_summary_groups, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "PAGA - Summary"))
-        }
-        if ("paga_meal" %in% sections && length(paga_meal_groups) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, paga_meal_groups, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "PAGA - Meal Periods"))
-        }
-        if ("paga_rest" %in% sections && length(paga_rest_groups) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, paga_rest_groups, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "PAGA - Rest Periods"))
-        }
-        if ("paga_rrop" %in% sections && length(paga_rrop_groups) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, paga_rrop_groups, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "PAGA - RROP"))
-        }
-        if ("paga_226" %in% sections && length(paga_226_groups) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, paga_226_groups, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "PAGA - Wage Statement (226)"))
-        }
-        if ("paga_558" %in% sections && length(paga_558_groups) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, paga_558_groups, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "PAGA - Unpaid Wages (558)"))
-        }
-        if ("paga_min_wage" %in% sections && length(paga_min_wage_groups) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, paga_min_wage_groups, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "PAGA - Minimum Wage"))
-        }
-        if ("paga_expenses" %in% sections && length(paga_expenses_groups) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, paga_expenses_groups, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "PAGA - Expenses"))
-        }
-        if ("paga_recordkeeping" %in% sections && length(paga_recordkeeping_groups) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, paga_recordkeeping_groups, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "PAGA - Recordkeeping"))
-        }
-        if ("paga_waiting_time" %in% sections && length(paga_waiting_time_groups) > 0) {
-          tbl <- calculate_group_metrics(data, metric_spec, paga_waiting_time_groups, current_filters(), extrap_factor())
-          html <- paste0(html, add_tbl(tbl, "PAGA - Waiting Time"))
-        }
-        
-        # Close HTML and write
-        html <- paste0(html, "</body></html>")
         tmp <- tempfile(fileext = ".html")
         writeLines(html, tmp)
-        message("HTML written: ", file.info(tmp)$size, " bytes")
+        message("HTML written")
         
         pagedown::chrome_print(input = tmp, output = file, verbose = 0,
-                               options = list(landscape = TRUE, paperWidth = 14, paperHeight = 8.5,
-                                              marginTop = 0.5, marginBottom = 0.5, marginLeft = 0.25, marginRight = 0.25,
-                                              printBackground = TRUE))
+                               options = list(landscape = TRUE, paperWidth = 14, paperHeight = 8.5))
         
-        message("PDF written: ", file.info(file)$size, " bytes")
+        message("PDF complete")
         unlink(tmp)
       }
     )
