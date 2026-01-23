@@ -13,45 +13,43 @@ library(stringr)
 library(purrr)
 
 # DEV SWITCHES
-RUN_CLEAN_DATA_FIRST <- FALSE
+RUN_CLEAN_DATA_FIRST <- TRUE
 STOP_AFTER_CLEAN     <- FALSE
 
-# Load ADS engine + paths
-ADS_REPO <- normalizePath(Sys.getenv("ADS_REPO"), winslash = "/", mustWork = TRUE)
-source(file.path(ADS_REPO, "scripts", "functions.R"), local = FALSE)
+# Load ADS engine
+ADS_REPO <- Sys.getenv("ADS_REPO", unset = "")
+if (!nzchar(ADS_REPO)) stop("ADS_REPO not set. On Windows: setx ADS_REPO \"C:/Users/Gabe/Documents/GitHub/ads\"")
+ADS_REPO <- normalizePath(ADS_REPO, winslash = "/", mustWork = TRUE)
 
-# Detects the folder where this specific script is saved
-if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
-  current_path <- rstudioapi::getActiveDocumentContext()$path
-} else {
-  current_path <- substitute(expect_true(is.character(get_script_path()))) # Fallback
+source(file.path(ADS_REPO, "scripts", "functions.R"), local = FALSE, chdir = FALSE)
+
+# --- Resolve case paths (ADS_CASE_DIR is the source of truth) ---
+if (!nzchar(Sys.getenv("ADS_CASE_DIR", unset = ""))) {
+  stop("ADS_CASE_DIR not set. Set it first (e.g., via run_analysis.R or set_case_dir()).")
 }
 
-# Set CASE_DIR to the parent directory of the 'scripts' folder
-CASE_DIR <- dirname(dirname(normalizePath(current_path, winslash = "/")))
-assign("CASE_DIR", CASE_DIR, envir = .GlobalEnv)
+paths <- resolve_case_paths()  # will validate globals vs env using your improved function
 
-# Now initialize the paths using the detected CASE_DIR
-paths <- init_case_paths(case_dir = CASE_DIR, set_globals = TRUE)
+# Optional: print resolved dirs (super useful)
+message("CASE_DIR      = ", paths$CASE_DIR)
+message("PROCESSED_DIR = ", paths$PROCESSED_DIR)
+message("OUT_DIR       = ", paths$OUT_DIR)
 
-# Optional: run clean_data.R (dev convenience)
-clean_script <- file.path(CASE_DIR, "scripts", "clean_data.R")
+# Optional: run clean_data.R (dev convenience) using resolved CASE_DIR
+clean_script <- file.path(paths$CASE_DIR, "scripts", "clean_data.R")
 
 if (RUN_CLEAN_DATA_FIRST) {
   if (!file.exists(clean_script)) stop("clean_data.R not found at: ", clean_script)
-  
   message("↻ RUN_CLEAN_DATA_FIRST=TRUE: sourcing ", clean_script)
-  source(clean_script, local = FALSE)
+  source(clean_script, local = FALSE, chdir = FALSE)
   
-  if (STOP_AFTER_CLEAN) {
-    stop("Stopped after clean_data.R (STOP_AFTER_CLEAN=TRUE)")
-  }
+  if (STOP_AFTER_CLEAN) stop("Stopped after clean_data.R (STOP_AFTER_CLEAN=TRUE)")
 }
 
 # Load processed data (always load from disk for deterministic analysis)
-time_rds  <- file.path(PROCESSED_DIR, "time_processed.rds")
-pay_rds   <- file.path(PROCESSED_DIR, "pay_processed.rds")
-class_rds <- file.path(PROCESSED_DIR, "class_processed.rds")
+time_rds  <- file.path(paths$PROCESSED_DIR, "time_processed.rds")
+pay_rds   <- file.path(paths$PROCESSED_DIR, "pay_processed.rds")
+class_rds <- file.path(paths$PROCESSED_DIR, "class_processed.rds")
 
 if (!file.exists(time_rds))  stop("Missing: ", time_rds)
 if (!file.exists(pay_rds))   stop("Missing: ", pay_rds)
@@ -61,7 +59,7 @@ time1  <- readRDS(time_rds)
 pay1   <- readRDS(pay_rds)
 class1 <- readRDS(class_rds)
 
-message("✓ loaded processed data from: ", PROCESSED_DIR)
+message("✓ loaded processed data from: ", paths$PROCESSED_DIR)
 
 
 # # Merge time1 with class1 (if needed in order to get key information from Class List)
@@ -90,8 +88,8 @@ SEED_VAL    <- 99999
 # This prioritizes TEST_IDS if provided. To use random sampling, set TEST_IDS <- NULL.
 # The intersect() ensures only filter to IDs that exist, with a warning if some are missing.
 TEST_N      <- NA
-TEST_PCT    <- 1
-TEST_IDS    <- NULL #c(561405, 421424)  # specific IDs to keep (numeric or character)
+TEST_PCT    <- .03
+TEST_IDS    <- NULL # e.g NULL or c(561405, 421424) specific IDs to keep (numeric or character)
 
 if (TEST_SUBSET) {
   
@@ -118,8 +116,7 @@ if (TEST_SUBSET) {
     
     pay1   <- pay1[Pay_ID %in% ids_to_keep]
     time1  <- time1[ID %in% ids_to_keep]
-    class1 <- class1[Class_ID %in% ids_to_keep]
-    
+
     message(sprintf("Filtered to %d specified ID(s): %s", 
                     length(ids_to_keep), 
                     paste(ids_to_keep, collapse = ", ")))
@@ -129,7 +126,6 @@ if (TEST_SUBSET) {
       all_ids  = all_ids,
       pay1     = pay1,
       time1    = time1,
-      class1   = class1,
       test_n   = TEST_N,
       test_pct = TEST_PCT,
       seed_val = SEED_VAL
@@ -137,7 +133,6 @@ if (TEST_SUBSET) {
     
     pay1   <- tmp$pay1
     time1  <- tmp$time1
-    class1 <- tmp$class1
   }
 }
 
@@ -1339,6 +1334,9 @@ time1[, shift_hrs := sum(hrs_wkd), by = ID_Shift]
 time1[, mp_hrs := fifelse(mp == 1, hrs_from_prev, 0)]
 
 # Meal period length flags
+time1[, mp_one_min := fifelse(mp == 1 & mp_hrs > 0 & mp_hrs <= (2/60), 1L, 0L)]
+sum(time1$mp_one_min, na.rm = TRUE)
+
 time1[, mp_lt_twenty := fifelse(mp == 1 & mp_hrs > 0 & mp_hrs < (20/60), 1L, 0L)]
 time1[, mp_lt_thirty := fifelse(mp == 1 & mp_hrs > 0 & mp_hrs < 0.5, 1L, 0L)]
 time1[, mp_thirty     := fifelse(mp == 1 & mp_hrs == 0.5, 1L, 0L)]
@@ -3437,24 +3435,25 @@ build_paga_for_scenario <- function(sc) {
                      get(flag_203) * initial_pp_penalty,
                      0)]
   
-  # ---------------- HAS ANY PAGA PENALTIES ----------------
-  has_paga <- paste0("has_PAGA_penalties", suf)
+  # ---------------- HAS ANY PAGA (PAY PERIOD LEVEL) ----------------
   
-  pp_data1[, (has_paga) :=
+  paga_flag_cols <- c(
+    "PAGA_meal_flag",
+    "PAGA_rest_flag",
+    "PAGA_rrop_flag",
+    "PAGA_226_flag",
+    "PAGA_558_flag",
+    "PAGA_1197_1_flag",
+    "PAGA_2802_flag"
+  )
+  
+  pp_data1[, has_paga_penalties :=
              as.integer(
-               paga_ee_flag == 1L &
-                 (
-                   fcoalesce(get(dmg_meal), 0) +
-                     fcoalesce(get(dmg_rest), 0) +
-                     fcoalesce(get(dmg_rrop), 0) +
-                     fcoalesce(get(dmg_226), 0) +
-                     fcoalesce(get(dmg_558), 0) +
-                     fcoalesce(get(dmg_1197), 0) +
-                     fcoalesce(get(dmg_1174), 0) +
-                     fcoalesce(get(dmg_2802), 0) +
-                     fcoalesce(get(dmg_203), 0)
-                 ) > 0
-             )]
+               in_PAGA_period == 1L &
+                 rowSums(.SD, na.rm = TRUE) > 0
+             ),
+           .SDcols = paga_flag_cols
+  ]
   
   # ---------------- PAGA TOTAL ----------------
   paga_tot <- paste0("PAGA_tot", suf)
@@ -4232,17 +4231,27 @@ custom_filters <- setNames(lapply(unique_groups, function(g) {
     )
 }), unique_groups)
 
-# Run + format + export (CSV + RDS into OUT_DIR/output)
+extrap_env <- list(
+  class_ees = extrap_class_ees,
+  class_pps = extrap_class_pps,
+  wsv_ees   = extrap_wsv_ees,
+  wsv_pps   = extrap_wsv_pps,
+  class_dmgs_start_date = class_dmgs_start_date
+)
+
 raw_results <- run_metrics_pipeline(
   time_dt = shift_data1,
   pay_dt  = pay1,
   pp_dt   = pp_data1,
+  ee_dt   = ee_data1,
   spec    = metrics_spec,
-  custom_filters = custom_filters
+  custom_filters = custom_filters,
+  extrap_env = extrap_env,
+  globals_env = .GlobalEnv
 )
 
 final_table <- format_metrics_table(raw_results)
-export_metrics(final_table, base_name = "Analysis")   # writes: <OUT_DIR>/Analysis.csv + .rds
+export_metrics(final_table, base_name = "Analysis")
 
 
 # ----- END  -----------------------------------------

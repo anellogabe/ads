@@ -1,4 +1,4 @@
-# ----- ALL DATA:                Load Packages & Data --------------------------
+# ----- ALL DATA:   Load Packages & Data --------------------------
 
 library(data.table)
 library(dplyr)
@@ -10,22 +10,22 @@ library(openxlsx)
 library(stringr)
 library(purrr)
 
+# Source ADS engine / repository FIRST (so set_case_dir exists)
+ADS_REPO <- Sys.getenv("ADS_REPO", unset = "")
+if (!nzchar(ADS_REPO)) stop("ADS_REPO not set. On Windows: setx ADS_REPO \"C:/Users/Gabe/Documents/GitHub/ads\"")
+ADS_REPO <- normalizePath(ADS_REPO, winslash = "/", mustWork = TRUE)
+source(file.path(ADS_REPO, "scripts", "functions.R"), local = FALSE, chdir = FALSE)
+
 # SET YOUR CASE DIRECTORY (ONCE PER CASE / USER)
 set_case_dir("C:/Users/Gabe/OneDrive - anellodatasolutions.com/Documents/0. ADS/MWS/National Express/Analysis/MWS_NE")
 
-# Source ADS engine / repository
-ADS_REPO <- normalizePath(Sys.getenv("ADS_REPO", unset = ""), winslash = "/", mustWork = TRUE)
-source(file.path(ADS_REPO, "scripts", "functions.R"), local = FALSE, chdir = FALSE)
-
-# Require case dir (absolute)
-CASE_DIR <- Sys.getenv("ADS_CASE_DIR", unset = "")
-if (!nzchar(CASE_DIR)) stop("ADS_CASE_DIR not set. In R: set_case_dir(\"C:/.../YourCaseFolder\")")
-paths <- init_case_paths(case_dir = CASE_DIR, set_globals = TRUE)
+# Resolve paths (consistent)
+paths <- resolve_case_paths()
 
 # Case-specific input filenames only
-time_path  <- file.path(RAW_DIR, "Cardona Time.xlsx")
-pay_path   <- file.path(RAW_DIR, "Cardona Pay.xlsx")
-class_path <- file.path(RAW_DIR, "Cardona Class List.xlsx")
+time_path  <- file.path(paths$RAW_DIR, "Cardona Time.xlsx")
+pay_path   <- file.path(paths$RAW_DIR, "Cardona Pay.xlsx")
+class_path <- file.path(paths$RAW_DIR, "Cardona Class List.xlsx")
 stopifnot(file.exists(time_path), file.exists(pay_path), file.exists(class_path))
 
 Cardona_TimePart1 <- read_excel(time_path,  sheet = "Time")
@@ -719,6 +719,7 @@ if(length(existing_cols) > 0) {
 
 case_name <- "Cardona v Durham D&M, LLC" 
 case_no <- "CIVSB2309217"
+date_filed <- "?"
 sample_size <- "100% or 25% sample (see filters)" # Use as text field
 sample_size_val <- 1 #e.g., 1 = 100%
 separate_key_gps <- FALSE # Set to TRUE if key groups should be separated from a anonymized random sample

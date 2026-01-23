@@ -8,7 +8,6 @@ ads_repo <- function() {
 
 ads_path <- function(...) file.path(ads_repo(), ...)
 
-
 # CASE PATH INITIALIZER ------------------------------------------------------------------------------
 
 init_case_paths <- function(case_dir = Sys.getenv("ADS_CASE_DIR", unset = ""),
@@ -49,20 +48,39 @@ set_case_dir <- function(case_dir, set_globals = TRUE) {
 }
 
 resolve_case_paths <- function() {
-  # Prefer globals if already initialized
-  if (exists("CASE_DIR", inherits = TRUE) &&
+  
+  env_case <- Sys.getenv("ADS_CASE_DIR", unset = "")
+  env_case <- if (nzchar(env_case)) normalizePath(env_case, winslash = "/", mustWork = FALSE) else ""
+  
+  globals_ok <- (
+    exists("CASE_DIR", inherits = TRUE) &&
       exists("RAW_DIR", inherits = TRUE) &&
       exists("PROCESSED_DIR", inherits = TRUE) &&
-      exists("OUT_DIR", inherits = TRUE)) {
-    return(list(
-      CASE_DIR      = get("CASE_DIR", inherits = TRUE),
-      RAW_DIR       = get("RAW_DIR", inherits = TRUE),
-      PROCESSED_DIR = get("PROCESSED_DIR", inherits = TRUE),
-      OUT_DIR       = get("OUT_DIR", inherits = TRUE)
-    ))
+      exists("OUT_DIR", inherits = TRUE)
+  )
+  
+  if (globals_ok) {
+    g_case <- normalizePath(get("CASE_DIR", inherits = TRUE), winslash = "/", mustWork = FALSE)
+    
+    # Trust globals only if:
+    # 1) ADS_CASE_DIR is blank OR matches CASE_DIR
+    # AND
+    # 2) directory structure exists under CASE_DIR
+    structure_ok <- dir.exists(file.path(g_case, "data")) && dir.exists(file.path(g_case, "output"))
+    
+    same_as_env <- (!nzchar(env_case)) || identical(g_case, env_case)
+    
+    if (structure_ok && same_as_env) {
+      return(list(
+        CASE_DIR      = get("CASE_DIR", inherits = TRUE),
+        RAW_DIR       = get("RAW_DIR", inherits = TRUE),
+        PROCESSED_DIR = get("PROCESSED_DIR", inherits = TRUE),
+        OUT_DIR       = get("OUT_DIR", inherits = TRUE)
+      ))
+    }
   }
   
-  # Otherwise rely on ADS_CASE_DIR (strict)
+  # Fall back to ADS_CASE_DIR (strict)
   init_case_paths()
 }
 
@@ -2468,10 +2486,10 @@ generate_metadata <- function(data, file_name,
 
 # Unified Metrics Pipeline
 # Requires: data.table, lubridate
-# Uses: resolve_out_dir(), resolve_processed_dir(), write_csv_and_rds() (from your engine helpers)
+# Uses: resolve_out_dir(), write_csv_and_rds() (from your engine helpers)
 
-# Denominator definitions
-# Time data denominators (shift-level)
+# ---------------- DENOMINATORS ----------------
+
 denom_functions_time <- list(
   shifts_all              = function(dt) dt[, uniqueN(ID_Shift, na.rm = TRUE)],
   shifts_gt_3_5           = function(dt) dt[shift_hrs > 3.5, uniqueN(ID_Shift, na.rm = TRUE)],
@@ -2516,76 +2534,135 @@ denom_functions_pp <- list(
 
 denom_functions <- c(denom_functions_time, denom_functions_pay, denom_functions_pp)
 
-# Core evaluation function
-#' Evaluate a single metric expression against a data.table
-#' @param dt data.table to evaluate against
-#' @param expr_str character string of the R expression
-#' @param digits number of decimal places (NA for no rounding)
-#' @return numeric or Date result
-eval_metric <- function(dt, expr_str, digits = NA) {
-  if (is.null(dt) || nrow(dt) == 0) return(NA_real_)
-  
-  result <- tryCatch(
-    dt[, eval(parse(text = expr_str))],
-    error = function(e) NA_real_
-  )
-  
-  if (inherits(result, c("Date", "POSIXct", "POSIXlt", "IDate"))) {
-    result <- as.numeric(as.Date(result))
-  }
-  
-  if (!is.numeric(result)) {
-    result <- tryCatch(as.numeric(result), error = function(e) NA_real_)
-  }
-  
-  digits_num <- suppressWarnings(as.numeric(digits))
-  if (!is.na(digits_num) && is.numeric(result) && length(result) == 1 && !is.na(result)) {
-    result <- round(result, digits_num)
-  }
-  
-  as.numeric(result)
-}
-
-eval_denom <- function(dt, denom_name, source) {
+eval_denom <- function(dt, denom_name) {
   if (is.null(dt) || nrow(dt) == 0 || is.na(denom_name) || denom_name == "") return(NA_real_)
   denom_fn <- denom_functions[[denom_name]]
   if (is.null(denom_fn)) return(NA_real_)
-  tryCatch(denom_fn(dt), error = function(e) NA_real_)
+  tryCatch(as.numeric(denom_fn(dt)), error = function(e) NA_real_)
 }
 
+# ---------------- SAFE EVALUATION (dt cols + globals) ----------------
+# Key fix: do NOT use dt[, eval(parse())] for expressions that can reference global objects.
+# Instead, build an environment with dt columns and parent = globals env.
 
-# 4. Calculate all metrics for a given data list
-#' Calculate all metrics from spec for given data
-#' @param data_list list with 'shift_data1', 'pay1', 'pp_data1', 'ee_data1' data.tables
-#' @param spec data.table of metric specifications
-#' @return data.table with columns: metric_group, metric_label, metric_type, value, denom_value, pct
-calculate_metrics <- function(data_list, spec) {
+make_eval_env <- function(dt, globals_env = .GlobalEnv, extra = list()) {
+  # dt columns first, then extra overrides, then globals fallback
+  env <- list2env(as.list(dt), parent = globals_env)
+  if (length(extra)) {
+    for (nm in names(extra)) assign(nm, extra[[nm]], envir = env)
+  }
+  env
+}
+
+eval_expr_safe <- function(dt, expr_str, globals_env = .GlobalEnv, extra = list()) {
+  if (is.null(dt) || nrow(dt) == 0) return(NA_real_)
+  if (is.na(expr_str) || !nzchar(trimws(expr_str))) return(NA_real_)
+  env <- make_eval_env(dt, globals_env = globals_env, extra = extra)
+  tryCatch(eval(parse(text = expr_str), envir = env), error = function(e) NA_real_)
+}
+
+coerce_metric_result <- function(result, digits = NA) {
+  # Date-ish -> numeric date
+  if (inherits(result, c("Date", "POSIXct", "POSIXlt", "IDate"))) {
+    result <- as.numeric(as.Date(result))
+  }
+  # scalar numeric coercion
+  if (!is.numeric(result)) {
+    result <- tryCatch(as.numeric(result), error = function(e) NA_real_)
+  }
+  digits_num <- suppressWarnings(as.numeric(digits))
+  if (!is.na(digits_num) && length(result) == 1 && is.numeric(result) && !is.na(result)) {
+    result <- round(result, digits_num)
+  }
+  as.numeric(result)
+}
+
+eval_metric <- function(dt, expr_str, digits = NA, globals_env = .GlobalEnv) {
+  res <- eval_expr_safe(dt, expr_str, globals_env = globals_env)
+  coerce_metric_result(res, digits)
+}
+
+eval_extrap <- function(dt, extrap_expr_str, digits = NA, globals_env = .GlobalEnv, extrap_env = list()) {
+  # extrap_env is optional named list; it will be visible to the expression
+  res <- eval_expr_safe(dt, extrap_expr_str, globals_env = globals_env, extra = extrap_env)
+  coerce_metric_result(res, digits)
+}
+
+# ---------------- CALCULATE METRICS ----------------
+
+calculate_metrics <- function(data_list, spec, extrap_env = list(), globals_env = .GlobalEnv) {
+  
+  # cache denom values per dt so you don't recompute for every metric row
+  denom_cache <- new.env(parent = emptyenv())
+  
+  get_all_denoms_for_dt <- function(dt) {
+    if (is.null(dt) || nrow(dt) == 0) return(list())
+    # key by object address (good enough for this pipeline)
+    key <- sprintf("%s_%s", nrow(dt), ncol(dt))
+    if (exists(key, envir = denom_cache, inherits = FALSE)) {
+      return(get(key, envir = denom_cache, inherits = FALSE))
+    }
+    denoms <- lapply(names(denom_functions), function(nm) eval_denom(dt, nm))
+    names(denoms) <- names(denom_functions)
+    assign(key, denoms, envir = denom_cache)
+    denoms
+  }
+  
   results <- lapply(seq_len(nrow(spec)), function(i) {
-    src <- spec$source[i]
-    dt <- data_list[[src]]
-    denom_name <- spec$denom[i]
-    digits_val <- suppressWarnings(as.numeric(spec$digits[i]))
     
-    val <- eval_metric(dt, spec$expr[i], digits_val)
-    denom_val <- eval_denom(dt, denom_name, src)
+    src <- spec$source[i]
+    dt  <- data_list[[src]]
+    
+    digits_val <- suppressWarnings(as.numeric(spec$digits[i]))
+    denom_name <- spec$denom[i]
+    
+    # metric value + pct denom
+    val       <- eval_metric(dt, spec$expr[i], digits_val, globals_env = globals_env)
+    denom_val <- eval_denom(dt, denom_name)
     
     pct <- if (!is.na(val) && !is.na(denom_val) && denom_val > 0) val / denom_val else NA_real_
     
-    list(
-      metric_order = spec$metric_order[i],
+    # extrap: expose extrap_env + ALL denom values
+    extrap_val <- NA_real_
+    if ("extrap_expr" %in% names(spec)) {
+      ex <- spec$extrap_expr[i]
+      if (!is.na(ex) && nzchar(trimws(ex))) {
+        denom_env <- get_all_denoms_for_dt(dt)
+        extra_env <- c(extrap_env, denom_env)   # <- this is the big fix
+        extrap_val <- eval_extrap(
+          dt,
+          ex,
+          digits_val,
+          globals_env = globals_env,
+          extrap_env  = extra_env
+        )
+      }
+    }
+    
+    out <- list(
+      metric_order = if ("metric_order" %in% names(spec)) spec$metric_order[i] else i,
       metric_group = spec$metric_group[i],
       metric_label = spec$metric_label[i],
-      metric_type  = spec$metric_type[i],
+      metric_type  = if ("metric_type" %in% names(spec)) spec$metric_type[i] else "value",
       digits       = digits_val,
       value        = val,
       denom_value  = denom_val,
-      pct          = pct
+      pct          = pct,
+      extrap_value = extrap_val
     )
+    
+    if ("scenario" %in% names(spec)) out$scenario <- spec$scenario[i]
+    if ("no_year_breakdown" %in% names(spec)) out$no_year_breakdown <- spec$no_year_breakdown[i]
+    
+    out
   })
-  rbindlist(results)
+  
+  data.table::rbindlist(results, fill = TRUE)
 }
 
-# Filtering helpers
+
+# ---------------- FILTERING HELPERS ----------------
+
 filter_data <- function(dt, filter_expr = NULL) {
   if (is.null(dt)) return(NULL)
   if (is.null(filter_expr)) return(dt)
@@ -2603,10 +2680,8 @@ create_filtered_data <- function(time_dt, pay_dt, pp_dt = NULL, ee_dt = NULL,
   )
 }
 
-# 6. Build filter configurations
 build_filter_configs <- function(time_dt, pay_dt, pp_dt = NULL, ee_dt = NULL, custom_filters = list()) {
   configs <- list()
-  
   configs[["All Data"]] <- list(time_filter = NULL, pay_filter = NULL, pp_filter = NULL, ee_filter = NULL)
   
   time_years <- if (!is.null(time_dt) && "Period_End" %in% names(time_dt))
@@ -2631,68 +2706,50 @@ build_filter_configs <- function(time_dt, pay_dt, pp_dt = NULL, ee_dt = NULL, cu
   configs
 }
 
+# ---------------- PIPELINE ----------------
+
 run_metrics_pipeline <- function(time_dt, pay_dt, spec,
                                  pp_dt = NULL, ee_dt = NULL,
-                                 custom_filters = list()) {
+                                 custom_filters = list(),
+                                 extrap_env = list(),
+                                 globals_env = .GlobalEnv) {
   
   if (!is.null(time_dt)) setDT(time_dt)
   if (!is.null(pay_dt))  setDT(pay_dt)
   if (!is.null(pp_dt))   setDT(pp_dt)
   if (!is.null(ee_dt))   setDT(ee_dt)
   
-  filter_configs <- build_filter_configs(time_dt, pay_dt, pp_dt, ee_dt, custom_filters)
-  
-  results_list <- lapply(names(filter_configs), function(filter_name) {
-    cfg <- filter_configs[[filter_name]]
-    
-    filtered_data <- create_filtered_data(
-      time_dt, pay_dt, pp_dt, ee_dt,
-      cfg$time_filter, cfg$pay_filter, cfg$pp_filter, cfg$ee_filter
-    )
-    
-    metrics <- calculate_metrics(filtered_data, spec)
-    metrics[, filter_name := filter_name]
-    metrics
-  })
-  
-  rbindlist(results_list)
-}
-
-# 7. Main calculation pipeline
-
-#' Run full metrics calculation across all filters
-#' @param time_dt shift-level time data (shift_data1)
-#' @param pay_dt pay record-level pay data (pay1)
-#' @param spec metric specification data.table
-#' @param pp_dt pay period-level merged data (pp_data1), optional
-#' @param ee_dt employee-level merged data (ee_data1), optional
-#' @param custom_filters list of custom filter configurations, optional
-#' @return data.table of all metrics across all filters
-run_metrics_pipeline <- function(time_dt, pay_dt, spec, 
-                                 pp_dt = NULL, ee_dt = NULL, 
-                                 custom_filters = list()) {
-  
-  if (!is.null(time_dt)) setDT(time_dt)
-  if (!is.null(pay_dt))  setDT(pay_dt)
-  if (!is.null(pp_dt))   setDT(pp_dt)
-  if (!is.null(ee_dt))   setDT(ee_dt)
+  # normalize extrap_expr blanks -> NA
+  if ("extrap_expr" %in% names(spec)) {
+    spec[, extrap_expr := as.character(extrap_expr)]
+    spec[trimws(extrap_expr) == "", extrap_expr := NA_character_]
+  }
   
   # Split spec: year-OK vs no-year groups
-  is_no_year <- function(x) {
-    grepl("^Damages", x, ignore.case = TRUE) | grepl("^PAGA", x, ignore.case = TRUE)
+  if ("no_year_breakdown" %in% names(spec)) {
+    # robust logical parse (handles TRUE/FALSE/1/0/"TRUE"/"FALSE"/blank)
+    spec[, no_year_flag := {
+      x <- no_year_breakdown
+      if (is.logical(x)) x else {
+        x <- tolower(trimws(as.character(x)))
+        x %chin% c("true","t","1","yes","y")
+      }
+    }]
+    spec_no_year <- spec[no_year_flag == TRUE]
+    spec_year_ok <- spec[no_year_flag == FALSE]
+    spec[, no_year_flag := NULL]
+  } else {
+    is_no_year <- function(x) grepl("^Damages", x, ignore.case = TRUE) | grepl("^PAGA", x, ignore.case = TRUE)
+    spec_no_year <- spec[is_no_year(metric_group)]
+    spec_year_ok <- spec[!is_no_year(metric_group)]
   }
-  spec_no_year <- spec[is_no_year(metric_group)]
-  spec_year_ok <- spec[!is_no_year(metric_group)]
   
-  # Build ALL filter configs (All Data + Years + Custom)
   filter_configs_all <- build_filter_configs(time_dt, pay_dt, pp_dt, ee_dt, custom_filters)
   
-  # Build NO-YEAR filter configs: All Data + Custom only (drop year-only configs)
   keep_nm <- names(filter_configs_all)
   is_year_nm <- grepl("^\\d{4}$", keep_nm)
   filter_configs_no_year <- filter_configs_all[!is_year_nm]
   
-  # ---- Pass 1: year-OK metrics over ALL filters ----
   res1 <- if (nrow(spec_year_ok) > 0) {
     rbindlist(lapply(names(filter_configs_all), function(filter_name) {
       cfg <- filter_configs_all[[filter_name]]
@@ -2700,15 +2757,12 @@ run_metrics_pipeline <- function(time_dt, pay_dt, spec,
         time_dt, pay_dt, pp_dt, ee_dt,
         cfg$time_filter, cfg$pay_filter, cfg$pp_filter, cfg$ee_filter
       )
-      metrics <- calculate_metrics(filtered_data, spec_year_ok)
+      metrics <- calculate_metrics(filtered_data, spec_year_ok, extrap_env = extrap_env, globals_env = globals_env)
       metrics[, filter_name := filter_name]
       metrics
-    }))
-  } else {
-    NULL
-  }
+    }), fill = TRUE)
+  } else NULL
   
-  # ---- Pass 2: no-year metrics over NO-YEAR filters only ----
   res2 <- if (nrow(spec_no_year) > 0) {
     rbindlist(lapply(names(filter_configs_no_year), function(filter_name) {
       cfg <- filter_configs_no_year[[filter_name]]
@@ -2716,26 +2770,32 @@ run_metrics_pipeline <- function(time_dt, pay_dt, spec,
         time_dt, pay_dt, pp_dt, ee_dt,
         cfg$time_filter, cfg$pay_filter, cfg$pp_filter, cfg$ee_filter
       )
-      metrics <- calculate_metrics(filtered_data, spec_no_year)
+      metrics <- calculate_metrics(filtered_data, spec_no_year, extrap_env = extrap_env, globals_env = globals_env)
       metrics[, filter_name := filter_name]
       metrics
-    }))
-  } else {
-    NULL
-  }
+    }), fill = TRUE)
+  } else NULL
   
   rbindlist(list(res1, res2), fill = TRUE)
 }
 
-# 8. Format output table
+# ---------------- FORMAT OUTPUT ----------------
 
-#' Format the raw metrics results into a wide table
-#' @param results_dt data.table from run_metrics_pipeline
-#' @return formatted data.table ready for export
 format_metrics_table <- function(results_dt) {
   dt <- copy(results_dt)
+  setDT(dt)
+  
   dt[, digits := suppressWarnings(as.numeric(digits))]
   
+  # Helper function to safely format numbers with commas
+  safe_format_num <- function(x) {
+    sapply(x, function(v) {
+      if (is.na(v) || is.nan(v)) return(NA_character_)
+      prettyNum(v, big.mark = ",")
+    })
+  }
+  
+  # base formatted value (with pct appended for percent metrics)
   dt[, formatted_value := {
     rounded_val <- fifelse(is.na(digits) | is.na(value), value, round(value, digits))
     
@@ -2743,7 +2803,7 @@ format_metrics_table <- function(results_dt) {
       metric_type == "date", as.character(as.Date(value, origin = "1970-01-01")),
       is.na(value), "0",
       is.nan(value), "0",
-      default = format(rounded_val, big.mark = ",", scientific = FALSE, trim = TRUE, nsmall = 0)
+      default = safe_format_num(rounded_val)
     )
     
     fv <- fifelse(is.na(digits) | digits == 0, gsub("\\.0+$", "", fv), fv)
@@ -2759,20 +2819,69 @@ format_metrics_table <- function(results_dt) {
   dt[formatted_value == "NaN", formatted_value := "0"]
   dt[grepl("NaN", formatted_value), formatted_value := gsub(" \\(NaN%\\)", "", formatted_value)]
   
-  wide_dt <- dcast(dt, metric_order + metric_group + metric_label ~ filter_name,
-                               value.var = "formatted_value")
+  # formatted extrap (append pct like other columns)
+  dt[, formatted_extrap := {
+    rounded_val <- fifelse(is.na(digits) | is.na(extrap_value), extrap_value, round(extrap_value, digits))
+    
+    fv <- fcase(
+      metric_type == "date", as.character(as.Date(extrap_value, origin = "1970-01-01")),
+      is.na(extrap_value), "-",
+      is.nan(extrap_value), "-",
+      default = safe_format_num(rounded_val)
+    )
+    
+    fv <- fifelse(is.na(digits) | digits == 0, gsub("\\.0+$", "", fv), fv)
+    fv <- gsub("^\\s+|\\s+$", "", fv)
+    
+    # Append the SAME pct used for the base metric (sample proportion),
+    # so Extrapolated reads like: "1,234 (12.3%)"
+    fifelse(
+      metric_type != "date" & !is.na(pct) & !is.nan(pct) & fv != "-" & fv != "",
+      paste0(fv, " (", round(pct * 100, 1), "%)"),
+      fv
+    )
+  }]
+  
+  dt[formatted_extrap == "NaN", formatted_extrap := "-"]
+  
+  # IMPORTANT: use a unique key for casting & merging (metric_order alone is NOT safe)
+  id_cols <- c("metric_order","metric_group","metric_label","scenario","metric_type","digits","no_year_breakdown")
+  
+  # wide values
+  wide_dt <- dcast(
+    dt,
+    formula   = as.formula(paste(paste(id_cols, collapse = " + "), "~ filter_name")),
+    value.var = "formatted_value"
+  )
   
   setorder(wide_dt, metric_order)
   
+  # Extrapolated column should be per-metric key (not just metric_order)
+  extrap_col <- dt[filter_name == "All Data",
+                   c(id_cols, "formatted_extrap"),
+                   with = FALSE]
+  setnames(extrap_col, "formatted_extrap", "Extrapolated")
+  
+  wide_dt <- merge(wide_dt, extrap_col, by = id_cols, all.x = TRUE)
+  
+  # If All Data missing, fall back to first non-NA per id
+  if (all(is.na(wide_dt$Extrapolated))) {
+    extrap_col2 <- dt[, .(Extrapolated = first(formatted_extrap[!is.na(formatted_extrap)])),
+                      by = id_cols]
+    wide_dt[, Extrapolated := NULL]
+    wide_dt <- merge(wide_dt, extrap_col2, by = id_cols, all.x = TRUE)
+  }
+  
   all_cols <- names(wide_dt)
   year_cols <- sort(all_cols[grepl("^\\d{4}$", all_cols)])
-  other_cols <- setdiff(all_cols, c("metric_order", "metric_group", "metric_label", "All Data", year_cols))
+  other_cols <- setdiff(all_cols, c(id_cols, "Extrapolated", "All Data", year_cols))
   
-  col_order <- c("metric_group", "metric_label", "All Data", year_cols, other_cols)
+  # final column order
+  col_order <- c("metric_group", "metric_label", "scenario", "Extrapolated", "All Data", year_cols, other_cols)
   col_order <- col_order[col_order %in% all_cols]
-  
   setcolorder(wide_dt, col_order)
-  wide_dt[, metric_order := NULL]
+  
+  wide_dt[, c("metric_order","metric_type","digits","no_year_breakdown") := NULL]
   wide_dt
 }
 
@@ -2782,16 +2891,3 @@ export_metrics <- function(wide_dt, base_name = "Metrics_Table", out_dir = NULL)
   write_csv_and_rds(wide_dt, out_csv)
   invisible(list(csv = out_csv, rds = sub("\\.csv$", ".rds", out_csv)))
 }
-
-# USAGE EXAMPLE
-
-# Example: Standard run (All Data + Year tabs) and export
-# metrics_raw  <- run_metrics_pipeline(
-#   time_dt = shift_data1,
-#   pay_dt  = pay1,
-#   pp_dt   = pp_data1,
-#   ee_dt   = ee_data1,
-#   spec    = metrics_spec
-# )
-# metrics_wide <- format_metrics_table(metrics_raw)
-# export_metrics(metrics_wide, base_name = "Metrics_Table")
