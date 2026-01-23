@@ -152,44 +152,34 @@ write_csv_and_rds <- function(dt, out_path_csv) {
 
 # DEV / TEST SUBSET ------------------------------------------------------------------------------
 
-TEST_SUBSET <- FALSE      # flip to FALSE for full data
-SEED_VAL    <- 99999     # repeatable sample
-
-# Choose ONE of these (leave the other as NA)
-TEST_N      <- NA        # e.g., 500 employees
-TEST_PCT    <- 0.05      # e.g., 0.20 = 20%
-
-run_test_sample_from_all_ids <- function(all_ids, pay1, time1, class1,
+run_test_sample_from_all_ids <- function(all_ids, pay1, time1,
                                          test_n = NA, test_pct = NA,
                                          seed_val = 99999,
-                                         id_col_all = "ID",
+                                         id_col_all  = "ID",
                                          id_col_time = "ID",
                                          id_col_pay  = "Pay_ID",
-                                         id_col_class = "Class_ID",
                                          require_cols_all = c("Time_Present","Pay_Present","Class_Present"),
                                          verbose = TRUE) {
   
-  setDT(all_ids)
-  setDT(pay1)
-  setDT(time1)
-  setDT(class1)
+  data.table::setDT(all_ids)
+  data.table::setDT(pay1)
+  data.table::setDT(time1)
   
   # Validate selector params
   if (!is.na(test_n) && !is.na(test_pct)) stop("Set ONLY one of test_n or test_pct, not both.")
   if (is.na(test_n) && is.na(test_pct))   stop("Set either test_n or test_pct (one must be non-NA).")
   
-  # Validate required columns exist
+  # Required cols exist
   if (!id_col_all %in% names(all_ids)) stop("all_ids missing id column: ", id_col_all)
   missing_req <- setdiff(require_cols_all, names(all_ids))
   if (length(missing_req) > 0) stop("all_ids missing required columns: ", paste(missing_req, collapse = ", "))
   
-  # Build eligible universe: IDs present in all three
+  # Eligible universe: present in Time + Pay + Class (as recorded in all_ids)
   eligible <- all_ids[Time_Present == 1L & Pay_Present == 1L & Class_Present == 1L, unique(get(id_col_all))]
   eligible <- eligible[!is.na(eligible)]
-  
   if (length(eligible) == 0) stop("No eligible IDs found in all_ids with Time+Pay+Class present.")
   
-  # Determine sample size
+  # Sample size
   n_keep <- if (!is.na(test_n)) {
     min(as.integer(test_n), length(eligible))
   } else {
@@ -200,25 +190,22 @@ run_test_sample_from_all_ids <- function(all_ids, pay1, time1, class1,
   set.seed(seed_val)
   test_ids <- sample(eligible, n_keep)
   
-  # Filter all 3 tables consistently
-  time1_sub  <- time1[get(id_col_time) %in% test_ids]
-  pay1_sub   <- pay1[get(id_col_pay)   %in% test_ids]
-  class1_sub <- class1[get(id_col_class) %in% test_ids]
+  # Filter only time + pay
+  time1_sub <- time1[get(id_col_time) %in% test_ids]
+  pay1_sub  <- pay1[get(id_col_pay)  %in% test_ids]
   
   if (verbose) {
-    message("⚠ DEV MODE: Random test subset (from all_ids where Time+Pay+Class present)")
+    message("⚠ DEV MODE: Random test subset (eligible = Time+Pay+Class present per all_ids)")
     message("  • Seed: ", seed_val)
     message("  • Eligible IDs: ", format(length(eligible), big.mark = ","))
     message("  • Sample IDs kept: ", format(n_keep, big.mark = ","))
     message("  • time1 rows:  ", format(nrow(time1_sub), big.mark = ","))
     message("  • pay1 rows:   ", format(nrow(pay1_sub), big.mark = ","))
-    message("  • class1 rows: ", format(nrow(class1_sub), big.mark = ","))
   }
   
   invisible(list(
     pay1 = pay1_sub,
     time1 = time1_sub,
-    class1 = class1_sub,
     test_ids = test_ids,
     eligible_ids = eligible,
     n_keep = n_keep,
