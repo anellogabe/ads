@@ -2491,19 +2491,121 @@ pp_data1[, .(
 pp_data1[, `:=`(
   ID         = fcoalesce(ID, Pay_ID),
   Key_Gps    = fcoalesce(Key_Gps, Pay_Key_Gps),
-  Period_End = fcoalesce(Period_End, Pay_Period_End),
-  RROP       = fcoalesce(RROP, i.RROP),
-  Base_Rate  = fcoalesce(Base_Rate_Avg, pp_Base_Rate)
+  Period_End = fcoalesce(Period_End, Pay_Period_End)
 )]
 
 # Remove the now-redundant columns
-pp_data1[, c("Pay_ID", "Pay_Key_Gps", "Pay_Period_End", "i.RROP", "Base_Rate_Avg", "pp_Base_Rate") := NULL]
+pp_data1[, c("Pay_ID", "Pay_Key_Gps", "Pay_Period_End") := NULL]
 
 # EE flag
 setDT(pp_data1)
 setorder(pp_data1, ID, Period_End, Pay_Date, ID_Period_End)
 
 pp_data1[, ee_flag := as.integer(rowid(ID) == 1L)]
+
+# Fill Base_Rate and RROP to rows coming in from time data.
+setorder(pp_data1, ID, ID_Period_End)
+
+fill_cols <- c(
+  "pp_Base_Rate",
+  "RROP",
+  "double_CA_min_wage",
+  "CA_min_wage",
+  "Name",
+  "Pay_Name"
+)
+fill_cols <- intersect(fill_cols, names(pp_data1))
+
+# Split cols by type
+is_num <- vapply(pp_data1[, ..fill_cols], is.numeric, logical(1)) |
+  vapply(pp_data1[, ..fill_cols], is.integer, logical(1))
+
+num_cols  <- fill_cols[is_num]
+char_cols <- setdiff(fill_cols, num_cols)
+
+# Numeric: data.table nafill
+if (length(num_cols)) {
+  pp_data1[, (num_cols) := lapply(.SD, \(x) {
+    x <- data.table::nafill(x, type = "locf")  # down
+    data.table::nafill(x, type = "nocb")      # up
+  }), by = ID, .SDcols = num_cols]
+}
+
+# Character/factor: zoo::na.locf
+if (length(char_cols)) {
+  if (!requireNamespace("zoo", quietly = TRUE)) install.packages("zoo")
+  
+  pp_data1[, (char_cols) := lapply(.SD, \(x) {
+    # normalize factors to character to avoid weirdness
+    if (is.factor(x)) x <- as.character(x)
+    x <- zoo::na.locf(x, na.rm = FALSE)                     # down
+    zoo::na.locf(x, fromLast = TRUE, na.rm = FALSE)         # up
+  }), by = ID, .SDcols = char_cols]
+}
+
+# Fill remaining numeric NAs with overall mean of everyone else (excluding NAs)
+for (cc in num_cols) {
+  mu <- pp_data1[!is.na(get(cc)), mean(get(cc), na.rm = TRUE)]
+  pp_data1[is.na(get(cc)), (cc) := mu]
+}
+
+if ("pp_Base_Rate" %in% names(pp_data1)) setnames(pp_data1, "pp_Base_Rate", "Base_Rate")
+
+# Apply upper and lower rate bounds (Base_Rate and RROP)
+setDT(pp_data1)
+
+rate_min <- 7.25
+rate_max <- 1000
+
+fix_rate_with_ca_min <- function(dt, col, id_col = "ID",
+                                 ca_col = "CA_min_wage",
+                                 min_rate = rate_min,
+                                 max_rate = rate_max) {
+  
+  req_cols <- c(col, id_col, ca_col)
+  if (!all(req_cols %in% names(dt))) {
+    stop("Missing required columns: ",
+         paste(setdiff(req_cols, names(dt)), collapse = ", "))
+  }
+  
+  id_mean <- paste0(col, "_id_mean")
+  
+  # Employee-level mean using ONLY valid in-range rates
+  dt[, (id_mean) := {
+    v <- get(col)
+    v_ok <- v[!is.na(v) & v >= min_rate & v <= max_rate]
+    if (length(v_ok) == 0) NA_real_ else mean(v_ok)
+  }, by = id_col]
+  
+  # Rows that need replacement
+  bad_rows <- is.na(dt[[col]]) |
+    dt[[col]] < min_rate |
+    dt[[col]] > max_rate
+  
+  # Hard stop if CA_min_wage missing where required
+  if (any(bad_rows & is.na(dt[[ca_col]]))) {
+    stop(
+      "CA_min_wage is NA for rows requiring rate replacement in column: ",
+      col
+    )
+  }
+  
+  # Replace invalid values
+  dt[bad_rows, (col) := fifelse(
+    !is.na(get(id_mean)), get(id_mean),
+    get(ca_col)
+  )]
+  
+  dt[, (id_mean) := NULL]
+  invisible(NULL)
+}
+
+# Apply to both
+fix_rate_with_ca_min(pp_data1, "Base_Rate")
+fix_rate_with_ca_min(pp_data1, "RROP")
+
+# Ensure RROP always as much or more than Base_Rate
+pp_data1[, RROP := pmax(RROP, Base_Rate, na.rm = TRUE)]
 
 
 # ----- ALL DATA (BY PP):        Principal damages -----------------------------------------

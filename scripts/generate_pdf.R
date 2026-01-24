@@ -49,25 +49,26 @@ generate_report <- function(
   
   local_sections <- sections
   
-  total_steps <- 5
+  # Count steps more accurately based on new section structure
+  total_steps <- 5  # Base: loading data, spec, analysis tables, generating PDF, final
   current_step <- 0
   
-  if ("time" %in% local_sections) total_steps <- total_steps + 7
-  if ("pay" %in% local_sections) total_steps <- total_steps + 2
-  if ("class" %in% local_sections) total_steps <- total_steps + 10
-  if ("paga" %in% local_sections) total_steps <- total_steps + 10
+  if ("time" %in% local_sections) total_steps <- total_steps + 30  # summaries, meal analysis, violations, rest, rounding
+  if ("pay" %in% local_sections) total_steps <- total_steps + 5   # summary, regular rate sections
+  if ("class" %in% local_sections) total_steps <- total_steps + 15 # damages overview + breakdowns
+  if ("paga" %in% local_sections) total_steps <- total_steps + 12  # summary + all PAGA sections
   if ("analysis" %in% local_sections) total_steps <- total_steps + 2
-  if (include_appendix) total_steps <- total_steps + 5
+  if (include_appendix) total_steps <- total_steps + 12  # shift hours + distributions
   if (include_data_comparison) total_steps <- total_steps + 1
   
   progress <- function(msg) {
     current_step <<- current_step + 1
     if (verbose) {
-      pct <- round(current_step / max(total_steps, 1) * 100)
-      filled <- round(pct / 100 * 30)
+      pct <- min(100, round(current_step / max(total_steps, 1) * 100))
+      filled <- min(30, max(0, round(pct / 100 * 30)))
       bar <- paste0("[", strrep("=", filled), strrep(" ", 30 - filled), "]")
       cat(sprintf("\r%s %3d%% | %s", bar, pct, msg))
-      if (current_step == total_steps) cat("\n")
+      if (current_step >= total_steps) cat("\n")
       flush.console()
     }
   }
@@ -141,47 +142,76 @@ generate_report <- function(
   
   metric_groups <- unique(metric_spec$metric_group)
   
-  time_summary_groups <- metric_groups[grepl("^Summary - Time Data$", metric_groups)]
-  time_shift_groups <- metric_groups[grepl("^Shift Hours Analysis", metric_groups)]
-  time_rounding_groups <- metric_groups[grepl("^Time Punch Rounding", metric_groups)]
-  time_meal_analysis <- metric_groups[grepl("^Meal Period Analysis", metric_groups)]
-  time_meal_violations_5_summary <- metric_groups[grepl("^Meal Period Violations$", metric_groups)]
-  time_meal_violations_5_short <- metric_groups[grepl("^Meal Period Violations - Short Detail", metric_groups)]
-  time_meal_violations_5_late <- metric_groups[grepl("^Meal Period Violations - Late Detail", metric_groups)]
-  time_meal_violations_6_summary <- metric_groups[grepl("^Meal Period Violations \\(6", metric_groups)]
-  time_meal_violations_6_short <- metric_groups[grepl("^Meal Period Violations \\(6.*Short", metric_groups)]
-  time_meal_violations_6_late <- metric_groups[grepl("^Meal Period Violations \\(6.*Late", metric_groups)]
-  time_rest <- metric_groups[grepl("^Rest Period Analysis", metric_groups)]
+  # Match exact metric_group names from metric spec
+  # TIME
+  time_summary <- metric_groups[grepl("^Summary - Time Data$", metric_groups)]
+  pay_summary <- metric_groups[grepl("^Summary - Pay Data$", metric_groups)]
   
-  pay_summary_groups <- metric_groups[grepl("^Summary - Pay Data$", metric_groups)]
-  pay_regular_rate <- metric_groups[grepl("^Regular Rate", metric_groups)]
+  # Meal Period Analysis
+  meal_analysis <- metric_groups[grepl("^Meal Period Analysis$", metric_groups)]
+  meal_analysis_punches <- metric_groups[grepl("^Meal Period Analysis - Meal Periods with Time Punches$", metric_groups)]
+  meal_analysis_punches_rounded <- metric_groups[grepl("^Meal Period Analysis - Meal Periods with Time Punches \\(rounded", metric_groups)]
+  meal_analysis_no_punches <- metric_groups[grepl("^Meal Period Analysis - Meal Periods w/o Time Punches", metric_groups)]
   
-  damages_summary_groups <- metric_groups[grepl("^Damages Summary", metric_groups)]
-  damages_principal_groups <- metric_groups[grepl("^Damages - Principal", metric_groups)]
-  damages_credits_groups <- metric_groups[grepl("^Damages - Credits", metric_groups)]
-  damages_interest_groups <- metric_groups[grepl("^Damages - Interest", metric_groups)]
-  damages_subtotal_groups <- metric_groups[grepl("^Damages - Subtotal", metric_groups)]
-  damages_grand_total_groups <- metric_groups[grepl("^Damages - Grand Total", metric_groups)]
-  damages_meal_groups <- metric_groups[grepl("^Class Damages.*Meal", metric_groups)]
-  damages_rest_groups <- metric_groups[grepl("^Class Damages.*Rest", metric_groups)]
-  damages_rrop_groups <- metric_groups[grepl("^Class Damages.*RROP|Regular Rate", metric_groups)]
-  damages_otc_groups <- metric_groups[grepl("^Class Damages.*Off.the.Clock|OTC", metric_groups)]
-  damages_unpaid_ot_groups <- metric_groups[grepl("^Class Damages.*Unpaid OT|Overtime", metric_groups)]
-  damages_min_wage_groups <- metric_groups[grepl("^Class Damages.*Min.*Wage", metric_groups)]
-  damages_expenses_groups <- metric_groups[grepl("^Class Damages.*Expense", metric_groups)]
-  damages_wsv_groups <- metric_groups[grepl("^Class Damages.*Wage Statement|WSV", metric_groups)]
-  damages_wt_groups <- metric_groups[grepl("^Class Damages.*Waiting Time|WT", metric_groups)]
+  # Meal Period Violations
+  meal_violations_summary <- metric_groups[grepl("^Meal Period Violations$", metric_groups)]
+  meal_violations_late <- metric_groups[grepl("^Meal Period Violations - Late Detail", metric_groups)]
+  meal_violations_short <- metric_groups[grepl("^Meal Period Violations - Short Detail", metric_groups)]
   
-  paga_summary_groups <- metric_groups[grepl("^PAGA Summary|^PAGA Overview", metric_groups)]
-  paga_meal_groups <- metric_groups[grepl("^PAGA.*Meal", metric_groups)]
-  paga_rest_groups <- metric_groups[grepl("^PAGA.*Rest", metric_groups)]
-  paga_rrop_groups <- metric_groups[grepl("^PAGA.*RROP|^PAGA.*Regular Rate", metric_groups)]
-  paga_226_groups <- metric_groups[grepl("^PAGA.*226|^PAGA.*Wage Statement", metric_groups)]
-  paga_558_groups <- metric_groups[grepl("^PAGA.*558|^PAGA.*Unpaid", metric_groups)]
-  paga_min_wage_groups <- metric_groups[grepl("^PAGA.*Min.*Wage", metric_groups)]
-  paga_expenses_groups <- metric_groups[grepl("^PAGA.*Expense", metric_groups)]
-  paga_recordkeeping_groups <- metric_groups[grepl("^PAGA.*Recordkeeping|^PAGA.*Record", metric_groups)]
-  paga_waiting_time_groups <- metric_groups[grepl("^PAGA.*Waiting", metric_groups)]
+  # Rest Period
+  rest_analysis <- metric_groups[grepl("^Rest Period Analysis", metric_groups)]
+  
+  # Shift Hours Analysis
+  shift_employee <- metric_groups[grepl("^Shift Hours Analysis - Employee Level", metric_groups)]
+  shift_shift <- metric_groups[grepl("^Shift Hours Analysis - Shift Level", metric_groups)]
+  shift_week <- metric_groups[grepl("^Shift Hours Analysis - Week Level", metric_groups)]
+  shift_pp <- metric_groups[grepl("^Shift Hours Analysis - Pay Period Level", metric_groups)]
+  shift_total <- metric_groups[grepl("^Shift Hours Analysis - Total Hours", metric_groups)]
+  
+  # Time Punch Rounding
+  rounding_employee <- metric_groups[grepl("^Time Punch Rounding - Employee Level", metric_groups)]
+  rounding_shift <- metric_groups[grepl("^Time Punch Rounding - Shift Level", metric_groups)]
+  rounding_week <- metric_groups[grepl("^Time Punch Rounding - Week Level", metric_groups)]
+  rounding_pp <- metric_groups[grepl("^Time Punch Rounding - Pay Period Level", metric_groups)]
+  rounding_preshift_in <- metric_groups[grepl("^Time Punch Rounding - Pre-Shift In", metric_groups)]
+  rounding_detail_preshift <- metric_groups[grepl("^Time Punch Detail Rounding - Pre-Shift In", metric_groups)]
+  rounding_detail_midshift_out <- metric_groups[grepl("^Time Punch Detail Rounding - Mid-Shift Out", metric_groups)]
+  rounding_detail_midshift_in <- metric_groups[grepl("^Time Punch Detail Rounding - Mid-Shift In", metric_groups)]
+  rounding_detail_postshift <- metric_groups[grepl("^Time Punch Detail Rounding - Post-Shift Out", metric_groups)]
+  rounding_total <- metric_groups[grepl("^Time Punch Rounding - Total Hours", metric_groups)]
+  
+  # Regular Rate - split by Bonuses, Differentials, RROP
+  regular_rate_bonuses <- metric_groups[grepl("^Regular Rate - Bonuses", metric_groups)]
+  regular_rate_differentials <- metric_groups[grepl("^Regular Rate - Differentials", metric_groups)]
+  regular_rate_rrop <- metric_groups[grepl("^Regular Rate - RROP", metric_groups)]
+  
+  # Damages
+  damages_summary <- metric_groups[grepl("^Damages - Summary$", metric_groups)]
+  damages_principal <- metric_groups[grepl("^Damages - Principal$", metric_groups)]
+  damages_interest <- metric_groups[grepl("^Damages - Interest$", metric_groups)]
+  damages_subtotal <- metric_groups[grepl("^Damages - Sub-Total", metric_groups)]
+  damages_wsv <- metric_groups[grepl("^Damages - Wage Statement Penalties", metric_groups)]
+  damages_wt <- metric_groups[grepl("^Damages - Waiting Time Penalties", metric_groups)]
+  damages_grand_total <- metric_groups[grepl("^Damages - Grand Total", metric_groups)]
+  damages_meal <- metric_groups[grepl("^Damages - Meal Premiums", metric_groups)]
+  damages_rest <- metric_groups[grepl("^Damages - Rest Premiums", metric_groups)]
+  damages_rrop <- metric_groups[grepl("^Damages - Regular Rate of Pay$", metric_groups)]
+  damages_otc <- metric_groups[grepl("^Damages - Off-the-Clock", metric_groups)]
+  damages_expenses <- metric_groups[grepl("^Damages - Unreimbursed Expenses", metric_groups)]
+  damages_unpaid_ot <- metric_groups[grepl("^Damages - Unpaid OT", metric_groups)]
+  damages_min_wage <- metric_groups[grepl("^Damages - Unpaid Wages.*Min", metric_groups)]
+  
+  # PAGA
+  paga_summary <- metric_groups[grepl("^PAGA - Summary$", metric_groups)]
+  paga_meal <- metric_groups[grepl("^PAGA - Meal Periods", metric_groups)]
+  paga_rest <- metric_groups[grepl("^PAGA - Rest Periods", metric_groups)]
+  paga_rrop <- metric_groups[grepl("^PAGA - Regular Rate of Pay", metric_groups)]
+  paga_558 <- metric_groups[grepl("^PAGA - Unpaid Wages \\(558\\)", metric_groups)]
+  paga_226 <- metric_groups[grepl("^PAGA - Wage Statement \\(226\\)", metric_groups)]
+  paga_waiting <- metric_groups[grepl("^PAGA - Waiting Time \\(203\\)", metric_groups)]
+  paga_recordkeeping <- metric_groups[grepl("^PAGA - Recordkeeping", metric_groups)]
+  paga_min_wage <- metric_groups[grepl("^PAGA - Min Wage", metric_groups)]
+  paga_expenses <- metric_groups[grepl("^PAGA - Unreimbursed Expenses", metric_groups)]
   
   progress("Loading analysis tables")
   analysis_tables <- list(
@@ -196,15 +226,29 @@ generate_report <- function(
   
   # Helper functions
   
-  # Filter results_table by metric groups
-  get_group_data <- function(group_names) {
+  # Filter results_table by metric groups and optionally by scenario
+  # scenario can be: "no waivers", "waivers", "all", or NULL (no filter)
+  get_group_data <- function(group_names, scenario_filter = NULL) {
     if (length(group_names) == 0) return(data.table())
     if (!"metric_group" %in% names(results_table)) return(data.table())
     
     dt <- results_table[metric_group %in% group_names]
     if (nrow(dt) == 0) return(data.table())
     
-    # Remove metric_group column for display, rename metric_label to Metric
+    # Filter by scenario if specified
+    if (!is.null(scenario_filter) && "scenario" %in% names(dt)) {
+      if (scenario_filter == "no waivers") {
+        # Keep "no waivers" and "all" scenarios
+        dt <- dt[tolower(scenario) %in% c("no waivers", "all", "no waiver", "")]
+      } else if (scenario_filter == "waivers") {
+        # Keep "waivers" and "all" scenarios
+        dt <- dt[tolower(scenario) %in% c("waivers", "waiver", "all", "")]
+      }
+    }
+    
+    if (nrow(dt) == 0) return(data.table())
+    
+    # Remove metric_group and scenario columns for display, rename metric_label to Metric
     display_cols <- setdiff(names(dt), c("metric_group", "scenario"))
     dt <- dt[, ..display_cols]
     if ("metric_label" %in% names(dt)) setnames(dt, "metric_label", "Metric")
@@ -223,9 +267,16 @@ generate_report <- function(
     as.character(val)
   }
   
-  add_tbl <- function(dt, title) {
+  add_tbl <- function(dt, title, compact = FALSE, no_page_break = FALSE, hide_years = FALSE) {
     if (is.null(dt) || nrow(dt) == 0) return("")
     if (!include_extrap && "Extrapolated" %in% names(dt)) dt <- dt[, !names(dt) %in% "Extrapolated", with = FALSE]
+    
+    # Hide year columns if requested (columns that are just 4-digit years)
+    if (hide_years) {
+      year_cols <- names(dt)[grepl("^[0-9]{4}$", names(dt))]
+      if (length(year_cols) > 0) dt <- dt[, !names(dt) %in% year_cols, with = FALSE]
+    }
+    
     cols <- names(dt)
     value_cols <- setdiff(cols, cols[1])
     if (length(value_cols) > 0) {
@@ -240,15 +291,27 @@ generate_report <- function(
       if (is_dollar) paste0("<tr style=\"font-weight:bold;\"><td>", paste(vals, collapse = "</td><td>"), "</td></tr>")
       else paste0("<tr><td>", paste(vals, collapse = "</td><td>"), "</td></tr>")
     })
-    paste0('<div class="page-break"></div><h2>', title, '</h2><table><thead><tr>', hdr, '</tr></thead><tbody>', paste(rows, collapse = ""), '</tbody></table>')
+    tbl_class <- if (compact) ' class="compact"' else ''
+    page_break <- if (no_page_break) '' else '<div class="page-break"></div>'
+    paste0(page_break, '<h2>', title, '</h2><table', tbl_class, '><thead><tr>', hdr, '</tr></thead><tbody>', paste(rows, collapse = ""), '</tbody></table>')
   }
   
-  add_simple_tbl <- function(dt, title) {
+  add_simple_tbl <- function(dt, title, compact = FALSE) {
     if (is.null(dt) || nrow(dt) == 0) return("")
     cols <- names(dt)
     hdr <- paste0("<th>", format_col(cols), "</th>", collapse = "")
     rows <- sapply(1:nrow(dt), function(i) paste0("<tr><td>", paste(sapply(cols, function(col) if (is.na(dt[[col]][i])) "" else as.character(dt[[col]][i])), collapse = "</td><td>"), "</td></tr>"))
-    paste0('<div class="page-break"></div><h2>', title, '</h2><table><thead><tr>', hdr, '</tr></thead><tbody>', paste(rows, collapse = ""), '</tbody></table>')
+    tbl_class <- if (compact) ' class="compact"' else ''
+    paste0('<div class="page-break"></div><h2>', title, '</h2><table', tbl_class, '><thead><tr>', hdr, '</tr></thead><tbody>', paste(rows, collapse = ""), '</tbody></table>')
+  }
+  
+  # Filter RROP to only show totals and summary rows (no longer used but kept for reference)
+  filter_rrop_summary <- function(dt) {
+    if (is.null(dt) || nrow(dt) == 0) return(dt)
+    metric_col <- names(dt)[1]
+    keep_patterns <- c("Total.*Underpayment", "Gross", "Net", "Employees", "Pay Periods", "RROP.*\\$")
+    keep <- sapply(dt[[metric_col]], function(m) any(sapply(keep_patterns, function(p) grepl(p, m, ignore.case = TRUE))))
+    dt[keep, ]
   }
   
   # Build HTML
@@ -288,6 +351,8 @@ tr:nth-child(even) { background: #f8f8f8; }
 .case-tbl { width: 60%; }
 .case-tbl td { text-align: left; padding: 6px 10px; }
 .case-tbl td:first-child { font-weight: bold; background: linear-gradient(to right, #e8f5e9, #f5f5f5); width: 40%; }
+table.compact th { padding: 3px 5px; font-size: 8pt; }
+table.compact td { padding: 2px 5px; font-size: 8pt; line-height: 1.2; }
 </style></head><body>
 <h1>', rpt, '</h1>
 <h2>Case Information</h2>
@@ -310,67 +375,155 @@ tr:nth-child(even) { background: #f8f8f8; }
 <tr><td>Shifts (Time)</td><td>', n_shifts, '</td></tr>
 </table>')
   
-  # TIME
+  # ==========================================================================
+  # BUILD SECTIONS IN METRIC_GROUP ORDER
+  # ==========================================================================
+  
+  # Helper to add section with scenario filter
+  add_section <- function(groups, title, scenario = NULL, compact = FALSE, hide_years = FALSE) {
+    if (length(groups) == 0) return("")
+    dt <- get_group_data(groups, scenario)
+    if (nrow(dt) == 0) return("")
+    progress(title)
+    add_tbl(dt, title, compact = compact, hide_years = hide_years)
+  }
+  
+  # ----- SUMMARY - TIME & PAY -----
   if ("time" %in% local_sections) {
-    if (length(time_summary_groups) > 0) { progress("Time Summary"); html <- paste0(html, add_tbl(get_group_data(time_summary_groups), "Time Summary")) }
-    if (length(time_shift_groups) > 0) { progress("Shift Hours"); html <- paste0(html, add_tbl(get_group_data(time_shift_groups), "Shift Hours")) }
-    if (length(time_rounding_groups) > 0) { progress("Punch Rounding"); html <- paste0(html, add_tbl(get_group_data(time_rounding_groups), "Punch Rounding")) }
-    if (length(time_meal_analysis) > 0) { progress("Meal Analysis"); html <- paste0(html, add_tbl(get_group_data(time_meal_analysis), "Meal Analysis")) }
-    meal_5 <- c(time_meal_violations_5_summary, time_meal_violations_5_short, time_meal_violations_5_late)
-    if (length(meal_5) > 0) { progress("Meal Violations (No Waivers)"); html <- paste0(html, add_tbl(get_group_data(meal_5), "Meal Violations (No Waivers)")) }
-    meal_6 <- c(time_meal_violations_6_summary, time_meal_violations_6_short, time_meal_violations_6_late)
-    if (length(meal_6) > 0) { progress("Meal Violations (Waivers)"); html <- paste0(html, add_tbl(get_group_data(meal_6), "Meal Violations (Waivers)")) }
-    if (length(time_rest) > 0) { progress("Rest Violations"); html <- paste0(html, add_tbl(get_group_data(time_rest), "Rest Violations")) }
+    html <- paste0(html, add_section(time_summary, "Summary - Time Data"))
   }
-  
-  # PAY
   if ("pay" %in% local_sections) {
-    if (length(pay_summary_groups) > 0) { progress("Pay Summary"); html <- paste0(html, add_tbl(get_group_data(pay_summary_groups), "Pay Summary")) }
-    if (length(pay_regular_rate) > 0) { progress("Regular Rate"); html <- paste0(html, add_tbl(get_group_data(pay_regular_rate), "Regular Rate")) }
+    html <- paste0(html, add_section(pay_summary, "Summary - Pay Data"))
   }
   
-  # CLASS
+  # ----- MEAL PERIOD ANALYSIS (merged into one page) -----
+  if ("time" %in% local_sections) {
+    # Combine all meal analysis groups into one table
+    all_meal_analysis <- c(meal_analysis, meal_analysis_punches, meal_analysis_punches_rounded, meal_analysis_no_punches)
+    if (length(all_meal_analysis) > 0) {
+      meal_data <- get_group_data(all_meal_analysis)
+      if (nrow(meal_data) > 0) {
+        progress("Meal Period Analysis")
+        html <- paste0(html, add_tbl(meal_data, "Meal Period Analysis"))
+      }
+    }
+    
+    # ----- MEAL PERIOD VIOLATIONS (split by waiver scenario) -----
+    # No Waivers
+    html <- paste0(html, add_section(meal_violations_summary, "Meal Period Violations (No Waivers)", "no waivers"))
+    html <- paste0(html, add_section(meal_violations_late, "Meal Period Violations - Late Detail (No Waivers)", "no waivers", compact = TRUE))
+    html <- paste0(html, add_section(meal_violations_short, "Meal Period Violations - Short Detail (No Waivers)", "no waivers", compact = TRUE))
+    
+    # Waivers
+    html <- paste0(html, add_section(meal_violations_summary, "Meal Period Violations (Waivers)", "waivers"))
+    html <- paste0(html, add_section(meal_violations_late, "Meal Period Violations - Late Detail (Waivers)", "waivers", compact = TRUE))
+    html <- paste0(html, add_section(meal_violations_short, "Meal Period Violations - Short Detail (Waivers)", "waivers", compact = TRUE))
+    
+    # ----- REST PERIOD ANALYSIS -----
+    html <- paste0(html, add_section(rest_analysis, "Rest Period Analysis & Violations"))
+    
+    # ----- SHIFT HOURS ANALYSIS (all levels combined into one page) -----
+    all_shift_groups <- c(shift_employee, shift_shift, shift_week, shift_pp, shift_total)
+    if (length(all_shift_groups) > 0) {
+      shift_data <- get_group_data(all_shift_groups)
+      if (nrow(shift_data) > 0) {
+        progress("Shift Hours Analysis")
+        html <- paste0(html, add_tbl(shift_data, "Shift Hours Analysis"))
+      }
+    }
+    
+    # ----- TIME PUNCH ROUNDING (all levels combined into one page) -----
+    all_rounding_groups <- c(rounding_employee, rounding_shift, rounding_week, rounding_pp, 
+                             rounding_preshift_in, rounding_detail_preshift, rounding_detail_midshift_out, 
+                             rounding_detail_midshift_in, rounding_detail_postshift, rounding_total)
+    if (length(all_rounding_groups) > 0) {
+      rounding_data <- get_group_data(all_rounding_groups)
+      if (nrow(rounding_data) > 0) {
+        progress("Time Punch Rounding")
+        html <- paste0(html, add_tbl(rounding_data, "Time Punch Rounding"))
+      }
+    }
+  }
+  
+  # ----- REGULAR RATE (split by Bonuses, Differentials, RROP) -----
+  if ("pay" %in% local_sections) {
+    html <- paste0(html, add_section(regular_rate_bonuses, "Regular Rate - Bonuses"))
+    html <- paste0(html, add_section(regular_rate_differentials, "Regular Rate - Differentials"))
+    html <- paste0(html, add_section(regular_rate_rrop, "Regular Rate - RROP"))
+  }
+  
+  # ----- CLASS DAMAGES -----
   if ("class" %in% local_sections) {
-    class_ov <- c(damages_summary_groups, damages_principal_groups, damages_credits_groups, damages_interest_groups, damages_subtotal_groups, damages_grand_total_groups)
-    if (length(class_ov) > 0) { progress("Class Overview"); html <- paste0(html, add_tbl(get_group_data(class_ov), "Class Damages Overview")) }
-    if (length(damages_meal_groups) > 0) { progress("Class - Meal"); html <- paste0(html, add_tbl(get_group_data(damages_meal_groups), "Class - Meal Premiums")) }
-    if (length(damages_rest_groups) > 0) { progress("Class - Rest"); html <- paste0(html, add_tbl(get_group_data(damages_rest_groups), "Class - Rest Premiums")) }
-    if (length(damages_rrop_groups) > 0) { progress("Class - RROP"); html <- paste0(html, add_tbl(get_group_data(damages_rrop_groups), "Class - RROP")) }
-    if (length(damages_otc_groups) > 0) { progress("Class - OTC"); html <- paste0(html, add_tbl(get_group_data(damages_otc_groups), "Class - Off-the-Clock")) }
-    if (length(damages_unpaid_ot_groups) > 0) { progress("Class - Unpaid OT"); html <- paste0(html, add_tbl(get_group_data(damages_unpaid_ot_groups), "Class - Unpaid OT/DT")) }
-    if (length(damages_min_wage_groups) > 0) { progress("Class - Min Wage"); html <- paste0(html, add_tbl(get_group_data(damages_min_wage_groups), "Class - Minimum Wage")) }
-    if (length(damages_expenses_groups) > 0) { progress("Class - Expenses"); html <- paste0(html, add_tbl(get_group_data(damages_expenses_groups), "Class - Expenses")) }
-    if (length(damages_wsv_groups) > 0) { progress("Class - Wage Stmt"); html <- paste0(html, add_tbl(get_group_data(damages_wsv_groups), "Class - Wage Statement")) }
-    if (length(damages_wt_groups) > 0) { progress("Class - Waiting Time"); html <- paste0(html, add_tbl(get_group_data(damages_wt_groups), "Class - Waiting Time")) }
+    # Part 1: Summary through Sub-Total
+    damages_part1 <- c(damages_summary, damages_principal, damages_interest, damages_subtotal)
+    # Part 2: Wage Statement Penalties, Waiting Time Penalties, Grand Total (new page)
+    damages_part2 <- c(damages_wsv, damages_wt, damages_grand_total)
+    
+    # No Waivers
+    progress("Class Damages (No Waivers)")
+    nw_part1 <- get_group_data(damages_part1, "no waivers")
+    nw_part2 <- get_group_data(damages_part2, "no waivers")
+    if (nrow(nw_part1) > 0) {
+      html <- paste0(html, add_tbl(nw_part1, "Class Damages (No Waivers)", hide_years = TRUE))
+    }
+    if (nrow(nw_part2) > 0) {
+      html <- paste0(html, add_tbl(nw_part2, "Class Damages (No Waivers) - Penalties", hide_years = TRUE))
+    }
+    
+    # Waivers
+    progress("Class Damages (Waivers)")
+    w_part1 <- get_group_data(damages_part1, "waivers")
+    w_part2 <- get_group_data(damages_part2, "waivers")
+    if (nrow(w_part1) > 0) {
+      html <- paste0(html, add_tbl(w_part1, "Class Damages (Waivers)", hide_years = TRUE))
+    }
+    if (nrow(w_part2) > 0) {
+      html <- paste0(html, add_tbl(w_part2, "Class Damages (Waivers) - Penalties", hide_years = TRUE))
+    }
+    
+    # Breakdown by claim type
+    html <- paste0(html, add_section(damages_meal, "Damages - Meal Premiums (No Waivers)", "no waivers", hide_years = TRUE))
+    html <- paste0(html, add_section(damages_meal, "Damages - Meal Premiums (Waivers)", "waivers", hide_years = TRUE))
+    html <- paste0(html, add_section(damages_rest, "Damages - Rest Premiums (No Waivers)", "no waivers", hide_years = TRUE))
+    html <- paste0(html, add_section(damages_rest, "Damages - Rest Premiums (Waivers)", "waivers", hide_years = TRUE))
+    html <- paste0(html, add_section(damages_rrop, "Damages - Regular Rate of Pay", hide_years = TRUE))
+    html <- paste0(html, add_section(damages_otc, "Damages - Off-the-Clock", hide_years = TRUE))
+    html <- paste0(html, add_section(damages_expenses, "Damages - Unreimbursed Expenses", hide_years = TRUE))
+    html <- paste0(html, add_section(damages_unpaid_ot, "Damages - Unpaid OT/DT", hide_years = TRUE))
+    html <- paste0(html, add_section(damages_min_wage, "Damages - Unpaid Wages (Min Wage)", hide_years = TRUE))
   }
   
-  # PAGA
+  # ----- PAGA PENALTIES -----
   if ("paga" %in% local_sections) {
-    if (length(paga_summary_groups) > 0) { progress("PAGA Summary"); html <- paste0(html, add_tbl(get_group_data(paga_summary_groups), "PAGA Summary")) }
-    if (length(paga_meal_groups) > 0) { progress("PAGA - Meal"); html <- paste0(html, add_tbl(get_group_data(paga_meal_groups), "PAGA - Meal")) }
-    if (length(paga_rest_groups) > 0) { progress("PAGA - Rest"); html <- paste0(html, add_tbl(get_group_data(paga_rest_groups), "PAGA - Rest")) }
-    if (length(paga_rrop_groups) > 0) { progress("PAGA - RROP"); html <- paste0(html, add_tbl(get_group_data(paga_rrop_groups), "PAGA - RROP")) }
-    if (length(paga_226_groups) > 0) { progress("PAGA - 226"); html <- paste0(html, add_tbl(get_group_data(paga_226_groups), "PAGA - Wage Statement (226)")) }
-    if (length(paga_558_groups) > 0) { progress("PAGA - 558"); html <- paste0(html, add_tbl(get_group_data(paga_558_groups), "PAGA - Unpaid Wages (558)")) }
-    if (length(paga_min_wage_groups) > 0) { progress("PAGA - Min Wage"); html <- paste0(html, add_tbl(get_group_data(paga_min_wage_groups), "PAGA - Minimum Wage")) }
-    if (length(paga_expenses_groups) > 0) { progress("PAGA - Expenses"); html <- paste0(html, add_tbl(get_group_data(paga_expenses_groups), "PAGA - Expenses")) }
-    if (length(paga_recordkeeping_groups) > 0) { progress("PAGA - Recordkeeping"); html <- paste0(html, add_tbl(get_group_data(paga_recordkeeping_groups), "PAGA - Recordkeeping")) }
-    if (length(paga_waiting_time_groups) > 0) { progress("PAGA - Waiting Time"); html <- paste0(html, add_tbl(get_group_data(paga_waiting_time_groups), "PAGA - Waiting Time")) }
+    # PAGA Summary - all scenarios together
+    html <- paste0(html, add_section(paga_summary, "PAGA - Summary", hide_years = TRUE))
+    
+    # PAGA breakdowns
+    html <- paste0(html, add_section(paga_meal, "PAGA - Meal Periods", hide_years = TRUE))
+    html <- paste0(html, add_section(paga_rest, "PAGA - Rest Periods", hide_years = TRUE))
+    html <- paste0(html, add_section(paga_rrop, "PAGA - Regular Rate of Pay (RROP)", hide_years = TRUE))
+    html <- paste0(html, add_section(paga_558, "PAGA - Unpaid Wages (558)", hide_years = TRUE))
+    html <- paste0(html, add_section(paga_226, "PAGA - Wage Statement (226)", hide_years = TRUE))
+    html <- paste0(html, add_section(paga_waiting, "PAGA - Waiting Time (203)", hide_years = TRUE))
+    html <- paste0(html, add_section(paga_recordkeeping, "PAGA - Recordkeeping (1174.1)", hide_years = TRUE))
+    html <- paste0(html, add_section(paga_min_wage, "PAGA - Min Wage (1197.1)", hide_years = TRUE))
+    html <- paste0(html, add_section(paga_expenses, "PAGA - Unreimbursed Expenses (2802)", hide_years = TRUE))
   }
   
-  # ANALYSIS
+  # ANALYSIS - use compact styling
   if ("analysis" %in% local_sections) {
-    if (!is.null(analysis_tables$pay_code_summary) && nrow(analysis_tables$pay_code_summary) > 0) { progress("Pay Codes"); html <- paste0(html, add_simple_tbl(analysis_tables$pay_code_summary, "Pay Analysis - Pay Codes")) }
-    if (!is.null(analysis_tables$rate_type_analysis) && nrow(analysis_tables$rate_type_analysis) > 0) { progress("Rate Type"); html <- paste0(html, add_simple_tbl(analysis_tables$rate_type_analysis, "Pay Analysis - Rate Type")) }
+    if (!is.null(analysis_tables$pay_code_summary) && nrow(analysis_tables$pay_code_summary) > 0) { progress("Pay Codes"); html <- paste0(html, add_simple_tbl(analysis_tables$pay_code_summary, "Pay Analysis - Pay Codes", compact = TRUE)) }
+    if (!is.null(analysis_tables$rate_type_analysis) && nrow(analysis_tables$rate_type_analysis) > 0) { progress("Rate Type"); html <- paste0(html, add_simple_tbl(analysis_tables$rate_type_analysis, "Pay Analysis - Rate Type", compact = TRUE)) }
   }
   
-  # APPENDIX
+  # APPENDIX - Distribution tables only (Shift Hours Analysis is now in main TIME section)
   if (include_appendix) {
-    if (!is.null(analysis_tables$shift_hrs) && nrow(analysis_tables$shift_hrs) > 0) { progress("Appendix - Shift Hrs"); html <- paste0(html, add_simple_tbl(analysis_tables$shift_hrs, "Appendix - Shift Hours Distribution")) }
-    if (!is.null(analysis_tables$non_wrk_hrs) && nrow(analysis_tables$non_wrk_hrs) > 0) { progress("Appendix - Non-Work Hrs"); html <- paste0(html, add_simple_tbl(analysis_tables$non_wrk_hrs, "Appendix - Non-Work Hours Distribution")) }
-    if (!is.null(analysis_tables$meal_period) && nrow(analysis_tables$meal_period) > 0) { progress("Appendix - Meal Period"); html <- paste0(html, add_simple_tbl(analysis_tables$meal_period, "Appendix - Meal Period Distribution")) }
-    if (!is.null(analysis_tables$meal_start_time) && nrow(analysis_tables$meal_start_time) > 0) { progress("Appendix - Meal Start"); html <- paste0(html, add_simple_tbl(analysis_tables$meal_start_time, "Appendix - Meal Start Time Distribution")) }
-    if (!is.null(analysis_tables$meal_quarter_hr) && nrow(analysis_tables$meal_quarter_hr) > 0) { progress("Appendix - Meal Qtr Hr"); html <- paste0(html, add_simple_tbl(analysis_tables$meal_quarter_hr, "Appendix - Meal Quarter Hour Analysis")) }
+    # Distribution tables
+    if (!is.null(analysis_tables$shift_hrs) && nrow(analysis_tables$shift_hrs) > 0) { progress("Appendix - Shift Hrs Dist"); html <- paste0(html, add_simple_tbl(analysis_tables$shift_hrs, "Appendix - Shift Hours Distribution", compact = TRUE)) }
+    if (!is.null(analysis_tables$non_wrk_hrs) && nrow(analysis_tables$non_wrk_hrs) > 0) { progress("Appendix - Non-Work Hrs"); html <- paste0(html, add_simple_tbl(analysis_tables$non_wrk_hrs, "Appendix - Non-Work Hours Distribution", compact = TRUE)) }
+    if (!is.null(analysis_tables$meal_period) && nrow(analysis_tables$meal_period) > 0) { progress("Appendix - Meal Period"); html <- paste0(html, add_simple_tbl(analysis_tables$meal_period, "Appendix - Meal Period Distribution", compact = TRUE)) }
+    if (!is.null(analysis_tables$meal_start_time) && nrow(analysis_tables$meal_start_time) > 0) { progress("Appendix - Meal Start"); html <- paste0(html, add_simple_tbl(analysis_tables$meal_start_time, "Appendix - Meal Start Time Distribution", compact = TRUE)) }
+    if (!is.null(analysis_tables$meal_quarter_hr) && nrow(analysis_tables$meal_quarter_hr) > 0) { progress("Appendix - Meal Qtr Hr"); html <- paste0(html, add_simple_tbl(analysis_tables$meal_quarter_hr, "Appendix - Meal Quarter Hour Analysis", compact = TRUE)) }
   }
   
   html <- paste0(html, '</body></html>')
@@ -400,14 +553,30 @@ tr:nth-child(even) { background: #f8f8f8; }
 }
 
 # Shortcuts
-generate_full_report <- function(output_file = NULL) generate_report(output_file = output_file, sections = c("time", "pay", "class", "paga", "analysis"), include_appendix = TRUE, include_data_comparison = TRUE)
-generate_time_report <- function(output_file = NULL) generate_report(output_file = output_file, sections = "time")
-generate_pay_report <- function(output_file = NULL) generate_report(output_file = output_file, sections = "pay")
-generate_time_pay_report <- function(output_file = NULL) generate_report(output_file = output_file, sections = c("time", "pay", "analysis"))
-generate_class_report <- function(output_file = NULL) generate_report(output_file = output_file, sections = "class")
-generate_paga_report <- function(output_file = NULL) generate_report(output_file = output_file, sections = "paga")
-generate_damages_report <- function(output_file = NULL) generate_report(output_file = output_file, sections = c("class", "paga"))
-generate_no_damages_report <- function(output_file = NULL) generate_report(output_file = output_file, sections = c("time", "pay", "analysis"))
+generate_full_report <- function(output_file = NULL, include_extrap = TRUE, include_appendix = TRUE, include_data_comparison = TRUE) {
+  generate_report(output_file = output_file, sections = c("time", "pay", "class", "paga", "analysis"), include_extrap = include_extrap, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
+}
+generate_time_report <- function(output_file = NULL, include_extrap = FALSE, include_appendix = FALSE, include_data_comparison = FALSE) {
+  generate_report(output_file = output_file, sections = "time", include_extrap = include_extrap, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
+}
+generate_pay_report <- function(output_file = NULL, include_extrap = FALSE, include_appendix = FALSE, include_data_comparison = FALSE) {
+  generate_report(output_file = output_file, sections = "pay", include_extrap = include_extrap, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
+}
+generate_time_pay_report <- function(output_file = NULL, include_extrap = FALSE, include_appendix = FALSE, include_data_comparison = FALSE) {
+  generate_report(output_file = output_file, sections = c("time", "pay", "analysis"), include_extrap = include_extrap, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
+}
+generate_class_report <- function(output_file = NULL, include_extrap = TRUE, include_appendix = TRUE, include_data_comparison = TRUE) {
+  generate_report(output_file = output_file, sections = c("time", "pay", "class", "analysis"), include_extrap = include_extrap, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
+}
+generate_paga_report <- function(output_file = NULL, include_extrap = TRUE, include_appendix = TRUE, include_data_comparison = TRUE) {
+  generate_report(output_file = output_file, sections = c("time", "pay", "paga", "analysis"), include_extrap = include_extrap, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
+}
+generate_damages_report <- function(output_file = NULL, include_extrap = FALSE, include_appendix = FALSE, include_data_comparison = FALSE) {
+  generate_report(output_file = output_file, sections = c("class", "paga"), include_extrap = include_extrap, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
+}
+generate_no_damages_report <- function(output_file = NULL, include_extrap = FALSE, include_appendix = FALSE, include_data_comparison = FALSE) {
+  generate_report(output_file = output_file, sections = c("time", "pay", "analysis"), include_extrap = include_extrap, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
+}
 
 cat("\n==================================================\n")
 cat("      STANDALONE PDF GENERATOR LOADED\n")
@@ -415,12 +584,16 @@ cat("==================================================\n\n")
 cat("Usage:\n")
 cat("  generate_report()                     # All sections\n")
 cat("  generate_report(sections = 'time')    # Time only\n")
-cat("  generate_report(sections = 'class')   # Class only\n")
-cat("  generate_report(sections = 'paga')    # PAGA only\n\n")
+cat("  generate_report(sections = 'class')   # Class damages only\n")
+cat("  generate_report(sections = 'paga')    # PAGA penalties only\n\n")
 cat("Shortcuts:\n")
-cat("  generate_full_report()       generate_time_report()\n")
-cat("  generate_pay_report()        generate_time_pay_report()\n")
-cat("  generate_class_report()      generate_paga_report()\n")
-cat("  generate_damages_report()    generate_no_damages_report()\n\n")
+cat("  generate_full_report()       # Everything (Class + PAGA)\n")
+cat("  generate_class_report()      # All except PAGA penalties\n")
+cat("  generate_paga_report()       # All except Class damages\n")
+cat("  generate_damages_report()    # Class + PAGA only (no time/pay)\n")
+cat("  generate_no_damages_report() # Time + Pay only (no damages)\n")
+cat("  generate_time_report()       # Time section only\n")
+cat("  generate_pay_report()        # Pay section only\n")
+cat("  generate_time_pay_report()   # Time + Pay + Analysis\n\n")
 cat("Sections: time, pay, class, paga, analysis\n")
 cat("==================================================\n")
