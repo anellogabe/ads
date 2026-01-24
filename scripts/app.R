@@ -1114,6 +1114,7 @@ ui <- function(data_list, metric_spec) {
       
       div(id = "filter_banner", style = "display: none;", uiOutput("filter_banner_text")),
       div(class = "footer-info", HTML(paste0(
+        if (exists("contract_footer") && !is.na(contract_footer) && nzchar(contract_footer)) paste0(contract_footer, " &middot; ") else "",
         "Anello Data Solutions LLC (", current_year, ") &middot; ", app_version
       )))
     ),
@@ -3601,6 +3602,12 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
                  '</tbody></table>')
         }
         
+        # Build footer text with optional contract_footer
+        footer_text <- paste0(
+          if (exists("contract_footer") && !is.na(contract_footer) && nzchar(contract_footer)) paste0(contract_footer, " | ") else "",
+          "Anello Data Solutions LLC | v", app_version, " | Generated: ", report_timestamp
+        )
+        
         # Bright metallic green styling with repeating headers
         html <- paste0('<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
@@ -3609,7 +3616,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
   margin: 0.5in;
   @top-left { content: "', rpt, cno, '"; font-weight: bold; font-size: 10pt; }
   @top-right { content: "CONFIDENTIAL - WORK PRODUCT"; color: #8B0000; font-weight: bold; font-size: 10pt; }
-  @bottom-left { content: "Anello Data Solutions LLC | v', app_version, ' | Generated: ', report_timestamp, '"; font-size: 7pt; color: #aaa; }
+  @bottom-left { content: "', footer_text, '"; font-size: 7pt; color: #aaa; }
   @bottom-right { content: ""; }
 }
 body { font-family: Arial, sans-serif; font-size: 10pt; }

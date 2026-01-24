@@ -11,6 +11,7 @@ library(readxl)
 library(openxlsx)
 library(stringr)
 library(purrr)
+library(zoo)
 
 # Load processed data (always load from disk for deterministic analysis)
 time_rds  <- file.path(paths$PROCESSED_DIR, "time_processed.rds")
@@ -674,12 +675,28 @@ if(length(bon_underpay_cols) > 0) {
 
 setDT(pay1)
 
-# Calculate overall RROP
-pay1[, RROP := fifelse(
+# Calculate RROP with grouped fallback
+pay1[, RROP := ifelse(
   pp_Hrs_Wkd > 0,
   (pp_Straight_Time_Amt + pp_Oth_RROP_Amt) / pp_Hrs_Wkd,
-  Base_Rate1
-)]
+  {
+    r <- c(Base_Rate1, Base_Rate2, Base_Rate3)
+    if (all(is.na(r))) NA_real_ else mean(r, na.rm = TRUE)
+  }
+), by = Pay_ID_Period_End]
+
+# avg base rate per Pay_ID_Period_End (row-level mean of Base_Rate1-3, then group mean)
+pay1[, base_rate_avg := rowMeans(.SD, na.rm = TRUE), .SDcols = c("Base_Rate1","Base_Rate2","Base_Rate3")]
+
+pay1[, base_rate_pp_avg := {
+  x <- base_rate_avg
+  if (all(is.na(x))) NA_real_ else mean(x, na.rm = TRUE)
+}, by = Pay_ID_Period_End]
+
+# Replace RROP if it's below that avg (only when both are non-missing)
+pay1[!is.na(RROP) & !is.na(base_rate_pp_avg) & RROP < base_rate_pp_avg, RROP := base_rate_pp_avg]
+
+pay1[, c("base_rate_avg","base_rate_pp_avg") := NULL]
 
 # Calculate expected vs actual wages
 pay1[, `:=`(
@@ -2437,7 +2454,8 @@ pp_shift_data1 <- remove_suffixes(
   suffixes = c("_sum", "_max", "_min", "_mean", "_median")
 )
 
-# --- Full outer join: keep all shift rows + all pay-period rows (1 row per ID_Period_End) ---
+# --- join and reconcile ----
+
 setDT(pp_shift_data1)
 setDT(pp_pay1)
 
@@ -2481,7 +2499,7 @@ pp_data1[, `:=`(
 # Remove the now-redundant columns
 pp_data1[, c("Pay_ID", "Pay_Key_Gps", "Pay_Period_End", "i.RROP", "Base_Rate_Avg", "pp_Base_Rate") := NULL]
 
-# EE FLAG (one row per employee) ---
+# EE flag
 setDT(pp_data1)
 setorder(pp_data1, ID, Period_End, Pay_Date, ID_Period_End)
 
@@ -3952,74 +3970,50 @@ message(sprintf(" | Extrap EEs = %s | Extrap PPs = %s | Extrap Wks = %s | Extrap
                 format(extrap_paga_pps, big.mark = ",")))
 
 
-
-
 # ----- ALL DATA:                Write CSVs & Metadata Files  -----------------------------------------
 
-setDT(pp_data1)
-
-# Generate metadata csv files used to map column types from R to PowerQuery Editor (see Functions.R)
-generate_metadata(ee_data1, "ee_metadata.csv")
-generate_metadata(pp_data1, "pp_metadata.csv")
-generate_metadata(shift_data1, "time_shift_metadata.csv")
-generate_metadata(time1, "time_punch_metadata.csv")
-generate_metadata(pay1, "pay_metadata.csv")
-
-OUT_DIR <- resolve_out_dir()
-
-# Toggle per table: TRUE = write Key_Gps filtered, FALSE = write full
-write_key_gps_time  <- TRUE
+# Toggle per table: TRUE = write CSV filtered to Key_Gps; FALSE = write full CSV
+write_key_gps_time  <- FALSE
 write_key_gps_shift <- FALSE
 write_key_gps_pay   <- FALSE
 
-# Helper: build *_p subset (returns NULL if Key_Gps missing)
-make_keygps_p <- function(dt, key_col = "Key_Gps", everyone_else = "Everyone Else") {
-  if (!is.data.table(dt)) dt <- as.data.table(dt)
-  if (!key_col %in% names(dt)) return(NULL)
-  dt[!is.na(get(key_col)) & get(key_col) != everyone_else]
+OUT_DIR <- resolve_out_dir()
+
+# Helper: return filtered dt for CSV (or original dt if toggle off / key col missing / empty result)
+filter_for_csv <- function(dt, write_key_gps = FALSE, everyone_else = "Everyone Else") {
+  setDT(dt)
+  
+  if (!isTRUE(write_key_gps)) return(dt)
+  
+  # pick correct key col
+  key_col <- if ("Pay_Key_Gps" %in% names(dt)) "Pay_Key_Gps" else if ("Key_Gps" %in% names(dt)) "Key_Gps" else NA_character_
+  if (is.na(key_col)) return(dt)
+  
+  dt_f <- dt[
+    !is.na(get(key_col)) &
+      get(key_col) != "" &
+      tolower(get(key_col)) != tolower(everyone_else)
+  ]
+  
+  if (nrow(dt_f) == 0) dt else dt_f
 }
 
-# Always create *_p objects (so they're available regardless of writing choice)
-time1_p       <- make_keygps_p(time1)
-pay1_p        <- make_keygps_p(pay1)
-shift_data1_p <- make_keygps_p(shift_data1)
+# --- ALWAYS WRITE RDS UNFILTERED (full tables) ---
+saveRDS(time1,       file.path(OUT_DIR, "Time Punch Data.rds"))
+saveRDS(shift_data1, file.path(OUT_DIR, "Time Shift Data.rds"))
+saveRDS(pay1,        file.path(OUT_DIR, "Pay Data.rds"))
+saveRDS(pp_data1,    file.path(OUT_DIR, "Pay Period Level Data.rds"))
+saveRDS(ee_data1,    file.path(OUT_DIR, "Employee Level Data.rds"))
 
-# Always write these full outputs
-write_csv_and_rds(ee_data1, file.path(OUT_DIR, "Employee Level Data.csv"))
-write_csv_and_rds(pp_data1, file.path(OUT_DIR, "Pay Period Level Data.csv"))
+# --- CSVs (may be filtered depending on toggles) ---
+fwrite(filter_for_csv(time1,       write_key_gps_time),  file.path(OUT_DIR, "Time Punch Data.csv"), bom = TRUE)
+fwrite(filter_for_csv(shift_data1, write_key_gps_shift), file.path(OUT_DIR, "Time Shift Data.csv"), bom = TRUE)
+fwrite(filter_for_csv(pay1,        write_key_gps_pay),   file.path(OUT_DIR, "Pay Data.csv"), bom = TRUE)
 
-# Time Punch Data
-if (isTRUE(write_key_gps_time) && !is.null(time1_p) && nrow(time1_p) > 0) {
-  write_csv_and_rds(time1_p, file.path(OUT_DIR, "Time Punch Data.csv"))
-  message("Time Punch Data: Key_Gps filtered")
-} else if (isTRUE(write_key_gps_time)) {
-  message("Time Punch Data: Key_Gps filter requested but missing/empty; writing full")
-  write_csv_and_rds(time1, file.path(OUT_DIR, "Time Punch Data.csv"))
-} else {
-  write_csv_and_rds(time1, file.path(OUT_DIR, "Time Punch Data.csv"))
-}
+# Always full for these (no filtering)
+fwrite(pp_data1, file.path(OUT_DIR, "Pay Period Level Data.csv"), bom = TRUE)
+fwrite(ee_data1, file.path(OUT_DIR, "Employee Level Data.csv"), bom = TRUE)
 
-# Time Shift Data
-if (isTRUE(write_key_gps_shift) && !is.null(shift_data1_p) && nrow(shift_data1_p) > 0) {
-  write_csv_and_rds(shift_data1_p, file.path(OUT_DIR, "Time Shift Data.csv"))
-  message("Time Shift Data: Key_Gps filtered")
-} else if (isTRUE(write_key_gps_shift)) {
-  message("Time Shift Data: Key_Gps filter requested but missing/empty; writing full")
-  write_csv_and_rds(shift_data1, file.path(OUT_DIR, "Time Shift Data.csv"))
-} else {
-  write_csv_and_rds(shift_data1, file.path(OUT_DIR, "Time Shift Data.csv"))
-}
-
-# Pay Data
-if (isTRUE(write_key_gps_pay) && !is.null(pay1_p) && nrow(pay1_p) > 0) {
-  write_csv_and_rds(pay1_p, file.path(OUT_DIR, "Pay Data.csv"))
-  message("Pay Data: Key_Gps filtered")
-} else if (isTRUE(write_key_gps_pay)) {
-  message("Pay Data: Key_Gps filter requested but missing/empty; writing full")
-  write_csv_and_rds(pay1, file.path(OUT_DIR, "Pay Data.csv"))
-} else {
-  write_csv_and_rds(pay1, file.path(OUT_DIR, "Pay Data.csv"))
-}
 
 # ----- ALL DATA:                Final Analysis Table-------------------------------------------------------------
 
@@ -4053,7 +4047,7 @@ custom_filters <- setNames(lapply(unique_groups, function(g) {
     time_filter = bquote(Key_Gps == .(g)),
     pay_filter  = bquote(Pay_Key_Gps == .(g)),
     pp_filter   = bquote(Key_Gps == .(g))
-    )
+  )
 }), unique_groups)
 
 extrap_env <- list(
@@ -4077,6 +4071,33 @@ raw_results <- run_metrics_pipeline(
 
 final_table <- format_metrics_table(raw_results)
 export_metrics(final_table, base_name = "Analysis")
+
+
+# ----- ALL DATA:                Generate PDF report -------------------------------------------------------------
+
+# STANDALONE PDF REPORT GENERATOR
+# Run this script directly without launching the dashboard
+#
+# Usage:
+source(file.path(ADS_REPO, "scripts", "generate_pdf.R"), local = FALSE, chdir = FALSE)
+generate_report()
+
+#   generate_report(sections = "time")                   
+#   generate_report(sections = c("time", "pay"))         
+#   generate_report(include_extrap = TRUE)               
+#   generate_report(include_appendix = TRUE)             
+#   generate_report(include_data_comparison = TRUE)      
+#   generate_report(output_file = "My_Report.pdf")     
+
+# generate_report()                     # All sections\n")
+# generate_report(sections = 'time')    # Time only\n")
+# generate_report(sections = 'class')   # Class only\n")
+# generate_report(sections = 'paga')    # PAGA only\n\n")
+
+# generate_full_report()                # generate_time_report()\n")
+# generate_pay_report()                 # generate_time_pay_report()\n")
+# generate_class_report()               # generate_paga_report()\n")
+# generate_damages_report()             # generate_no_damages_report()\n\n")
 
 
 # ----- END  -----------------------------------------

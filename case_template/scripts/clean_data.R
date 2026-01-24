@@ -631,6 +631,7 @@ if(length(existing_cols) > 0) {
 
 # ----- ALL DATA:   Set Parameters for Case  --------------------------------------------------------------------------
 
+contract_footer <- NA # NA for ADS cases, else "Employment Research Corporation" for ERC cases
 case_name <- "CASE_NAME" 
 case_no <- "CASE_NUMBER"
 date_filed <- "?"
