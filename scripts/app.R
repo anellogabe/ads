@@ -960,6 +960,26 @@ filter_sidebar <- function(data_list) {
       multiple = TRUE,
       options = list(placeholder = "All key groups...")
     ),
+
+    hr(),
+    
+    checkboxInput("show_extrapolation", "Show Extrapolated Values", value = FALSE),
+    
+    hr(),
+    
+    actionButton("apply_filters", "Apply Filters", class = "btn-primary w-100"),
+    actionButton("reset_filters", "Reset All Filters", class = "btn-outline-secondary w-100 mt-2"),
+    
+    hr(),
+    
+    hr(),
+    
+    checkboxInput("show_extrapolation", "Show Extrapolated Values", value = FALSE),
+    
+    hr(),
+    
+    actionButton("apply_filters", "Apply Filters", class = "btn-primary w-100"),
+    actionButton("reset_filters", "Reset All Filters", class = "btn-outline-secondary w-100 mt-2"),
     
     hr(),
     
@@ -1558,6 +1578,19 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       max(if (!is.null(pay_date_col)) data_list$pay1[[pay_date_col]] else as.Date(NA), na.rm = TRUE),
       na.rm = TRUE
     )
+    original_date_max <- max(
+      max(data_list$shift_data1$Date, na.rm = TRUE),
+      max(if (!is.null(pay_date_col)) data_list$pay1[[pay_date_col]] else as.Date(NA), na.rm = TRUE),
+      na.rm = TRUE
+    )
+    
+    # Server-side selectize for employee filter
+    all_employee_ids <- c(data_list$shift_data1$ID, data_list$pay1$Pay_ID)
+    if (!is.null(data_list$class1) && "Class_ID" %in% names(data_list$class1)) {
+      all_employee_ids <- c(all_employee_ids, data_list$class1$Class_ID)
+    }
+    all_employee_ids <- sort(unique(all_employee_ids))
+    updateSelectizeInput(session, "employee_filter", choices = all_employee_ids)
     
     # Server-side selectize for employee filter
     all_employee_ids <- c(data_list$shift_data1$ID, data_list$pay1$Pay_ID)
@@ -1628,6 +1661,19 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         filters$Class_Key_Gps <- input$key_groups_filter
       }
       
+      # Subclass filter
+      if (!is.null(input$subclass_filter) && input$subclass_filter != "all") {
+        filters$Subclass <- input$subclass_filter
+        filters$Pay_Subclass <- input$subclass_filter
+      }
+
+      # Key Groups filter
+      if (length(input$key_groups_filter) > 0) {
+        filters$Key_Gps <- input$key_groups_filter
+        filters$Pay_Key_Gps <- input$key_groups_filter
+        filters$Class_Key_Gps <- input$key_groups_filter
+      }
+
       current_filters(filters)
     })
     
@@ -1925,6 +1971,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       if (!is.null(filters$Sample) && "Pay_Sample" %in% names(pay_filtered)) {
         pay_filtered <- pay_filtered[Pay_Sample == filters$Sample]
       }
+      if (!is.null(filters$Pay_ID))   pay_filtered <- pay_filtered[Pay_ID %in% filters$Pay_ID]
       
       if (!is.null(filters$Pay_Subclass) && "Pay_Subclass" %in% names(pay_filtered)) {
         pay_filtered <- pay_filtered[grepl(filters$Pay_Subclass, Pay_Subclass, ignore.case = TRUE)]
@@ -2146,6 +2193,34 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     
     output$employee_coverage_plot <- renderPlotly({
       data <- filtered_data()
+      format(uniqueN(data$shift_data1$ID_Week_End), big.mark = ",")
+    })
+
+    output$employee_coverage_plot <- renderPlotly({
+      data <- filtered_data()
+
+      # Aggregate by pay period for smooth line graph
+      time_emp <- data$shift_data1[, .(
+        Employees = uniqueN(ID),
+        Type = "Time Data"
+      ), by = .(Period = Period_End)]
+
+      pay_date_col <- if ("Pay_Period_End" %in% names(data$pay1)) {
+        "Pay_Period_End"
+      } else if ("Pay_Date" %in% names(data$pay1)) {
+        "Pay_Date"
+      } else {
+        NULL
+      }
+
+      pay_emp <- if (!is.null(pay_date_col)) {
+        data$pay1[, .(
+          Employees = uniqueN(Pay_ID),
+          Type = "Pay Data"
+        ), by = .(Period = get(pay_date_col))]
+      } else {
+        data.table(Period = as.Date(character()), Employees = integer(), Type = character())
+      }
       
       # Aggregate by pay period for smooth line graph
       time_emp <- data$shift_data1[, .(
@@ -3462,6 +3537,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       content = function(file) {
         message("PDF export starting...")
         
+        # Generate full report CSV
         data <- filtered_data()
         message("Got filtered data")
         
@@ -3897,7 +3973,6 @@ tr:nth-child(even) { background: #f8f8f8; }
         unlink(main_pdf)
       }
     )
-  }
 }
 
 # ---- RUN APP ----

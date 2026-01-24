@@ -909,6 +909,7 @@ run_data_comparison <- function(
     
     message("Files saved to: ", output_dir)
   }
+  output_dir <- normalizePath(output_dir, winslash = "/", mustWork = FALSE)
   
   if (isTRUE(return_data)) {
     return(invisible(comparison_dt))
@@ -2201,6 +2202,11 @@ generate_random_sample <- function(
 #   results$sample_list, results$full_list, results$samplesize,
 #   results$sample_file, results$full_file, etc.
 
+# GENERATE RANDOM SAMPLE PRODUCTION FILES (if needed) ------------------------------------------------------------------------------
+#   - time/pay: filtered to sample + filtered to class_dmgs_start_date
+#   - class list: NEVER filtered (full class1), but includes Class_Anon_ID if you want it
+#   - outputs: .xlsx files saved to <OUT_DIR>/prod (absolute) by default
+#   - headers: underscores -> spaces, Proper Case; Pay_/Class_ removed in pay/class exports
 
 # GENERATE RANDOM SAMPLE PRODUCTION FILES (if needed) ------------------------------------------------------------------------------
 #   - time/pay: filtered to sample + filtered to class_dmgs_start_date
@@ -2786,7 +2792,7 @@ format_metrics_table <- function(results_dt) {
   dt[, formatted_value := {
     rounded_val <- fifelse(is.na(digits) | is.na(value), value, round(value, digits))
     
-    fv <- fcase(
+    fv <- data.table::fcase(
       metric_type == "date", as.character(as.Date(value, origin = "1970-01-01")),
       is.na(value), "0",
       is.nan(value), "0",
