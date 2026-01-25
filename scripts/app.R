@@ -1,3 +1,12 @@
+# ==============================================================================
+# PROPRIETARY AND CONFIDENTIAL
+# Anello Data Solutions LLC
+#
+# This file contains proprietary information and trade secrets.
+# Unauthorized copying, distribution, or use is strictly prohibited.
+# For authorized use by ANELLO DATA SOLUTIONS LLC contracted analysts only.
+# ==============================================================================
+
 # ---- Wage & Hour Compliance Dashboard ----
 
 library(shiny)
@@ -52,31 +61,56 @@ if (!nzchar(Sys.getenv("CHROME", ""))) {
   }
 }
 
-# ---- CONFIGURATION - engine repo + case paths ----
+# ---- LOAD ADS FUNCTIONS ----
 
-# ADS engine repo (required to source helpers)
-ADS_REPO <- Sys.getenv("ADS_REPO", unset = "")
-if (!nzchar(ADS_REPO)) stop("ADS_REPO env var not set (use setx ADS_REPO on Windows).")
-ADS_REPO <- normalizePath(ADS_REPO, winslash = "/", mustWork = TRUE)
+# Check if environment is already set up (from clean_data.R)
+if (!exists("paths") || !exists("init_case_paths")) {
 
-FN_PATH <- file.path(ADS_REPO, "scripts", "functions.R")
-if (!file.exists(FN_PATH)) stop("functions.R not found at: ", FN_PATH)
-source(FN_PATH, local = FALSE)
-message("✓ functions.R loaded")
+  message("Setting up ADS environment...")
 
-# Case directory setup
-# When app.R is run from scripts folder (via runApp('path/to/scripts')),
-# we need to go up one level to get the true case directory
-case_dir <- Sys.getenv("ADS_CASE_DIR", unset = "")
-if (!nzchar(case_dir)) {
-  case_dir <- getwd()
-  # If we're in a 'scripts' folder, use parent as case directory
-  if (basename(case_dir) == "scripts") {
-    case_dir <- dirname(case_dir)
+  # Source ADS functions from shared OneDrive location
+  ADS_SHARED <- Sys.getenv("ADS_SHARED",
+    unset = "C:/Users/Gabe/OneDrive - anellodatasolutions.com/Documents/0. ADS/ADS_Shared")
+
+  if (!dir.exists(ADS_SHARED)) {
+    stop("\n\nERROR: Cannot find ADS_Shared folder at:\n  ", ADS_SHARED,
+         "\n\nPlease either:",
+         "\n  1. Update the ADS_SHARED path above (line 72) to match your OneDrive location",
+         "\n  2. Set the ADS_SHARED environment variable",
+         "\n  3. Run clean_data.R first to set up environment\n\n")
   }
+
+  FN_PATH <- file.path(ADS_SHARED, "scripts", "functions.R")
+  if (!file.exists(FN_PATH)) stop("functions.R not found at: ", FN_PATH)
+
+  source(FN_PATH, local = FALSE, chdir = FALSE)
+  message("✓ functions.R loaded from ADS_Shared")
+
+} else {
+  message("✓ ADS environment already initialized (clean_data.R was run)")
 }
 
-paths <- init_case_paths(case_dir = case_dir, set_globals = TRUE)
+# ---- CASE DIRECTORY SETUP ----
+
+# Check if paths already set up (from clean_data.R)
+if (!exists("paths")) {
+  # Set up case directory
+  # When app.R is run from scripts folder (via runApp('path/to/scripts')),
+  # we need to go up one level to get the true case directory
+  case_dir <- Sys.getenv("ADS_CASE_DIR", unset = "")
+  if (!nzchar(case_dir)) {
+    case_dir <- getwd()
+    # If we're in a 'scripts' folder, use parent as case directory
+    if (basename(case_dir) == "scripts") {
+      case_dir <- dirname(case_dir)
+    }
+  }
+
+  paths <- init_case_paths(case_dir = case_dir, set_globals = TRUE)
+  message("✓ Case paths initialized")
+} else {
+  message("✓ Case paths already set (clean_data.R was run)")
+}
 
 # Canonical dirs (case folders)
 DATA_DIR    <- paths$OUT_DIR           # dashboard reads analysis outputs from /output

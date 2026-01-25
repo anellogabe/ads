@@ -1,5 +1,14 @@
 # ==============================================================================
-# CLEAN DATA SCRIPT - CASE TEMPLATE
+# PROPRIETARY AND CONFIDENTIAL
+# Anello Data Solutions LLC
+#
+# This file contains proprietary information and trade secrets.
+# Unauthorized copying, distribution, or use is strictly prohibited.
+# For authorized use by ANELLO DATA SOLUTIONS LLC contracted analysts only.
+# ==============================================================================
+
+# ==============================================================================
+# CLEAN DATA SCRIPT
 # ==============================================================================
 # This script MUST be run first for every case.
 # It sets up the ADS environment, paths, and cleans raw data.
@@ -7,9 +16,9 @@
 # After running this script, you can run analysis.R
 # ==============================================================================
 
-start.time <- Sys.time()
+# ----- ALL DATA:   Load Packages & Repositories --------------------------
 
-# ----- STEP 1: Load Required Packages -----------------------------------------
+start.time <- Sys.time()
 
 library(data.table)
 library(dplyr)
@@ -21,25 +30,20 @@ library(openxlsx)
 library(stringr)
 library(purrr)
 
-cat("\n==============================================================================\n")
-cat("                    ADS CASE DATA CLEANING\n")
-cat("==============================================================================\n\n")
-
-# ----- STEP 2: Source ADS Shared Functions (OneDrive) ------------------------
+# --- Source ADS Shared Functions (OneDrive) ---
 
 # IMPORTANT: Update this path to match YOUR OneDrive location
-# Default paths:
-#   - Gabriel:  C:/Users/Gabe/OneDrive - anellodatasolutions.com/Documents/0. ADS/ADS_Shared
-#   - Analysts: C:/Users/[USERNAME]/OneDrive - anellodatasolutions.com/Documents/0. ADS/ADS_Shared
+# Default path:
+# C:/Users/[USERNAME]/OneDrive - anellodatasolutions.com/Documents/0. ADS/ADS_Shared
 
 ADS_SHARED <- Sys.getenv("ADS_SHARED",
-  unset = "C:/Users/Gabe/OneDrive - anellodatasolutions.com/Documents/0. ADS/ADS_Shared")
+                         unset = "C:/Users/Gabe/OneDrive - anellodatasolutions.com/Documents/0. ADS/ADS_Shared")
 
 # Verify ADS_Shared folder exists
 if (!dir.exists(ADS_SHARED)) {
   stop("\n\nERROR: Cannot find ADS_Shared folder at:\n  ", ADS_SHARED,
        "\n\nPlease either:",
-       "\n  1. Update the ADS_SHARED path above (line 28) to match your OneDrive location",
+       "\n  1. Update the ADS_SHARED path above to match your OneDrive location",
        "\n  2. Set the ADS_SHARED environment variable",
        "\n\nCheck OneDrive sync status if the folder should exist.\n")
 }
@@ -49,16 +53,15 @@ cat("Loading ADS functions from:\n  ", ADS_SHARED, "\n")
 source(file.path(ADS_SHARED, "scripts", "functions.R"), local = FALSE, chdir = FALSE)
 cat("✓ ADS functions loaded successfully\n\n")
 
-# ----- STEP 3: Set Case Directory ---------------------------------------------
+# --- Set Case Directory ---
 
 # IMPORTANT: Update this path for EACH case
 # This should be the root folder for THIS case (contains data/ and output/ folders)
 #
 # Examples:
-#   set_case_dir("C:/Users/Gabe/Cases/Case_001_ClientName")
-#   set_case_dir("C:/Users/Analyst1/Cases/Case_002_AnotherClient")
+#   set_case_dir("C:/Users/[USERNAME]/OneDrive/Cases/[CASE_NAME]/Analysis/CASE_R")
 
-set_case_dir("C:/Users/[USERNAME]/Cases/[CASE_NAME]")
+set_case_dir("C:/Users/[USERNAME]/OneDrive/Cases/[CASE_NAME]/Analysis/CASE_R")
 
 # Initialize case paths (creates data/raw, data/processed, output folders if needed)
 paths <- init_case_paths(set_globals = TRUE)

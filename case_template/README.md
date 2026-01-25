@@ -4,6 +4,11 @@
 
 This template provides a standardized workflow for wage & hour compliance analysis cases. It connects to the ADS shared function library (via OneDrive) and provides clean, reproducible case analysis.
 
+> **⚠️ IMPORTANT WORKFLOW RULE:**
+> **ALWAYS run `clean_data.R` first!**
+> This script sets up the ADS environment that all other scripts depend on.
+> No other script will work without it.
+
 ## Prerequisites
 
 ### 1. OneDrive Access
@@ -65,19 +70,35 @@ class1 <- read_excel("data/raw/class_list.xlsx")
 
 ## Workflow
 
+### ⚠️ CRITICAL: ALWAYS Run clean_data.R First
+
+**clean_data.R is the single entry point for every case.** It sets up the entire environment:
+- Sources ADS functions from shared OneDrive
+- Initializes case directory paths
+- Makes functions available to all other scripts
+
+All other scripts (analysis.R, app.R) depend on this setup.
+
 ### Standard Workflow (Run in Order)
 
-1. **clean_data.R** - ALWAYS run this first
-   - Loads ADS functions from OneDrive
-   - Sets up case directory structure
+1. **clean_data.R** - MUST run this first, every time
+   - Sources ADS functions from OneDrive ADS_Shared folder
+   - Sets up case directory structure (data/raw, data/processed, output)
    - Loads and cleans raw data
    - Saves processed data to `data/processed/`
+   - **Makes environment ready for all other scripts**
 
 2. **analysis.R** - Run after clean_data.R
-   - Loads processed data
+   - Verifies clean_data.R was run (checks for paths and functions)
+   - Loads processed data from `data/processed/`
    - Runs metrics calculations
    - Generates output files
    - Exports to `output/` folder
+
+3. **app.R** (Optional) - Launch dashboard
+   - Can run after clean_data.R to use existing environment
+   - Or run standalone (will source ADS_Shared itself)
+   - Displays interactive dashboard for data exploration
 
 ### Optional: Generate PDF Reports
 
@@ -134,7 +155,12 @@ Case_001_ClientName/
 
 **Problem:** You tried to run analysis.R without running clean_data.R first.
 
-**Solution:** Always run `clean_data.R` before `analysis.R`. The clean_data script sets up the environment that analysis needs.
+**Solution:** **You MUST run `clean_data.R` before any other script.** The clean_data script:
+- Sources ADS functions from OneDrive
+- Sets up case paths
+- Creates the environment that all other scripts depend on
+
+**This is not optional** - clean_data.R is the required first step for every case.
 
 ### "Missing processed data" error
 
