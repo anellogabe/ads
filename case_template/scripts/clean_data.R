@@ -1,3 +1,12 @@
+# ==============================================================================
+# PROPRIETARY AND CONFIDENTIAL
+# Anello Data Solutions LLC
+# 
+# This file contains proprietary information and trade secrets.
+# Unauthorized copying, distribution, or use is strictly prohibited.
+# For authorized use by ANELLO DATA SOLUTIONS LLC contracted analysts only.
+# ==============================================================================
+
 # ----- ALL DATA:   Load Packages & Repositories --------------------------
 
 start.time <- Sys.time()
