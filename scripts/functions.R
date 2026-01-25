@@ -2,46 +2,32 @@
 
 ads_repo <- function() {
   ADS_REPO <- Sys.getenv("ADS_REPO", unset = "")
-  if (!nzchar(ADS_REPO)) stop("ADS_REPO env var not set (use setx ADS_REPO on Windows).")
+  if (!nzchar(ADS_REPO)) stop("ADS_REPO env var not set. On Windows: setx ADS_REPO \"C:/.../GitHub/ads\"")
   normalizePath(ADS_REPO, winslash = "/", mustWork = TRUE)
 }
 
 ads_path <- function(...) file.path(ads_repo(), ...)
 
-# ADS ENGINE: METRIC SPEC (lazy: only loads when you call it)
-load_metrics_spec <- function(path = ads_path("scripts", "metrics_spec.csv")) {
-  if (!file.exists(path)) stop("Missing metrics_spec.csv at: ", path)
-  data.table::fread(path)
-}
-
-
 # CASE PATH INITIALIZER ------------------------------------------------------------------------------
 
 init_case_paths <- function(case_dir = Sys.getenv("ADS_CASE_DIR", unset = ""),
                             set_globals = TRUE) {
-  
-  if (!nzchar(case_dir)) case_dir <- getwd()
+  if (!nzchar(case_dir)) stop("ADS_CASE_DIR not set. Set it or call set_case_dir(\"C:/.../CaseFolder\").")
   case_dir <- normalizePath(case_dir, winslash = "/", mustWork = TRUE)
   
   raw_dir       <- file.path(case_dir, "data", "raw")
   processed_dir <- file.path(case_dir, "data", "processed")
   out_dir       <- file.path(case_dir, "output")
   
-  # create canonical folders
   dir.create(raw_dir,       recursive = TRUE, showWarnings = FALSE)
   dir.create(processed_dir, recursive = TRUE, showWarnings = FALSE)
   dir.create(out_dir,       recursive = TRUE, showWarnings = FALSE)
   
-  message("CASE_DIR:      ", case_dir)
-  message("RAW_DIR:       ", raw_dir)
-  message("PROCESSED_DIR: ", processed_dir)
-  message("OUT_DIR:       ", out_dir)
-  
   paths <- list(
-    CASE_DIR = case_dir,
-    RAW_DIR = raw_dir,
+    CASE_DIR      = case_dir,
+    RAW_DIR       = raw_dir,
     PROCESSED_DIR = processed_dir,
-    OUT_DIR = out_dir
+    OUT_DIR       = out_dir
   )
   
   if (isTRUE(set_globals)) {
@@ -54,20 +40,47 @@ init_case_paths <- function(case_dir = Sys.getenv("ADS_CASE_DIR", unset = ""),
   paths
 }
 
+# One-liner you can call at the top of scripts (absolute, deterministic)
+set_case_dir <- function(case_dir, set_globals = TRUE) {
+  case_dir <- normalizePath(case_dir, winslash = "/", mustWork = TRUE)
+  Sys.setenv(ADS_CASE_DIR = case_dir)
+  init_case_paths(case_dir = case_dir, set_globals = set_globals)
+}
+
 resolve_case_paths <- function() {
-  if (exists("RAW_DIR", inherits = TRUE) &&
+  
+  env_case <- Sys.getenv("ADS_CASE_DIR", unset = "")
+  env_case <- if (nzchar(env_case)) normalizePath(env_case, winslash = "/", mustWork = FALSE) else ""
+  
+  globals_ok <- (
+    exists("CASE_DIR", inherits = TRUE) &&
+      exists("RAW_DIR", inherits = TRUE) &&
       exists("PROCESSED_DIR", inherits = TRUE) &&
-      exists("OUT_DIR", inherits = TRUE) &&
-      exists("CASE_DIR", inherits = TRUE)) {
+      exists("OUT_DIR", inherits = TRUE)
+  )
+  
+  if (globals_ok) {
+    g_case <- normalizePath(get("CASE_DIR", inherits = TRUE), winslash = "/", mustWork = FALSE)
     
-    return(list(
-      CASE_DIR      = get("CASE_DIR", inherits = TRUE),
-      RAW_DIR       = get("RAW_DIR", inherits = TRUE),
-      PROCESSED_DIR = get("PROCESSED_DIR", inherits = TRUE),
-      OUT_DIR       = get("OUT_DIR", inherits = TRUE)
-    ))
+    # Trust globals only if:
+    # 1) ADS_CASE_DIR is blank OR matches CASE_DIR
+    # AND
+    # 2) directory structure exists under CASE_DIR
+    structure_ok <- dir.exists(file.path(g_case, "data")) && dir.exists(file.path(g_case, "output"))
+    
+    same_as_env <- (!nzchar(env_case)) || identical(g_case, env_case)
+    
+    if (structure_ok && same_as_env) {
+      return(list(
+        CASE_DIR      = get("CASE_DIR", inherits = TRUE),
+        RAW_DIR       = get("RAW_DIR", inherits = TRUE),
+        PROCESSED_DIR = get("PROCESSED_DIR", inherits = TRUE),
+        OUT_DIR       = get("OUT_DIR", inherits = TRUE)
+      ))
+    }
   }
   
+  # Fall back to ADS_CASE_DIR (strict)
   init_case_paths()
 }
 
@@ -90,23 +103,17 @@ resolve_processed_dir <- function(processed_dir = NULL, subdir = NULL) {
 }
 
 
-
 # ADS ENGINE LOADER ------------------------------------------------------------------------------
 
 load_ads_engine <- function() {
-  ads_repo <- Sys.getenv("ADS_REPO", unset = "")
-  if (!nzchar(ads_repo)) stop("ADS_REPO is not set. Run setx ADS_REPO on this machine.")
-  ads_repo <- normalizePath(ads_repo, winslash = "/", mustWork = TRUE)
+  repo <- Sys.getenv("ADS_REPO", unset = "")
+  if (!nzchar(repo)) stop("ADS_REPO is not set. On Windows: setx ADS_REPO \"C:/.../GitHub/ads\"")
+  repo <- normalizePath(repo, winslash = "/", mustWork = TRUE)
   
-  fn_path <- file.path(ads_repo, "scripts", "functions.R")
+  fn_path <- file.path(repo, "scripts", "functions.R")
   if (!file.exists(fn_path)) stop("functions.R not found at: ", fn_path)
   
-  message("ADS_REPO:  ", ads_repo)
-  message("Sourcing:  ", fn_path)
-  
   source(fn_path, local = FALSE, chdir = FALSE)
-  message("✓ functions.R loaded")
-  
   invisible(TRUE)
 }
 
@@ -124,7 +131,7 @@ write_csv_and_rds <- function(dt, out_path_csv) {
   out_path_rds <- sub("\\.csv$", ".rds", out_path_csv, ignore.case = TRUE)
   
   csv_ok <- tryCatch(
-    { data.table::fwrite(dt, out_path_csv); TRUE },
+    { fwrite(dt, out_path_csv); TRUE },
     error = function(e) { warning("❌ FAILED CSV: ", out_path_csv, "\n   ", e$message); FALSE }
   )
   
@@ -145,44 +152,34 @@ write_csv_and_rds <- function(dt, out_path_csv) {
 
 # DEV / TEST SUBSET ------------------------------------------------------------------------------
 
-TEST_SUBSET <- FALSE      # flip to FALSE for full data
-SEED_VAL    <- 99999     # repeatable sample
-
-# Choose ONE of these (leave the other as NA)
-TEST_N      <- NA        # e.g., 500 employees
-TEST_PCT    <- 0.05      # e.g., 0.20 = 20%
-
-run_test_sample_from_all_ids <- function(all_ids, pay1, time1, class1,
+run_test_sample_from_all_ids <- function(all_ids, pay1, time1,
                                          test_n = NA, test_pct = NA,
                                          seed_val = 99999,
-                                         id_col_all = "ID",
+                                         id_col_all  = "ID",
                                          id_col_time = "ID",
                                          id_col_pay  = "Pay_ID",
-                                         id_col_class = "Class_ID",
                                          require_cols_all = c("Time_Present","Pay_Present","Class_Present"),
                                          verbose = TRUE) {
   
   data.table::setDT(all_ids)
   data.table::setDT(pay1)
   data.table::setDT(time1)
-  data.table::setDT(class1)
   
   # Validate selector params
   if (!is.na(test_n) && !is.na(test_pct)) stop("Set ONLY one of test_n or test_pct, not both.")
   if (is.na(test_n) && is.na(test_pct))   stop("Set either test_n or test_pct (one must be non-NA).")
   
-  # Validate required columns exist
+  # Required cols exist
   if (!id_col_all %in% names(all_ids)) stop("all_ids missing id column: ", id_col_all)
   missing_req <- setdiff(require_cols_all, names(all_ids))
   if (length(missing_req) > 0) stop("all_ids missing required columns: ", paste(missing_req, collapse = ", "))
   
-  # Build eligible universe: IDs present in all three
+  # Eligible universe: present in Time + Pay + Class (as recorded in all_ids)
   eligible <- all_ids[Time_Present == 1L & Pay_Present == 1L & Class_Present == 1L, unique(get(id_col_all))]
   eligible <- eligible[!is.na(eligible)]
-  
   if (length(eligible) == 0) stop("No eligible IDs found in all_ids with Time+Pay+Class present.")
   
-  # Determine sample size
+  # Sample size
   n_keep <- if (!is.na(test_n)) {
     min(as.integer(test_n), length(eligible))
   } else {
@@ -193,25 +190,22 @@ run_test_sample_from_all_ids <- function(all_ids, pay1, time1, class1,
   set.seed(seed_val)
   test_ids <- sample(eligible, n_keep)
   
-  # Filter all 3 tables consistently
-  time1_sub  <- time1[get(id_col_time) %in% test_ids]
-  pay1_sub   <- pay1[get(id_col_pay)   %in% test_ids]
-  class1_sub <- class1[get(id_col_class) %in% test_ids]
+  # Filter only time + pay
+  time1_sub <- time1[get(id_col_time) %in% test_ids]
+  pay1_sub  <- pay1[get(id_col_pay)  %in% test_ids]
   
   if (verbose) {
-    message("⚠ DEV MODE: Random test subset (from all_ids where Time+Pay+Class present)")
+    message("⚠ DEV MODE: Random test subset (eligible = Time+Pay+Class present per all_ids)")
     message("  • Seed: ", seed_val)
     message("  • Eligible IDs: ", format(length(eligible), big.mark = ","))
     message("  • Sample IDs kept: ", format(n_keep, big.mark = ","))
     message("  • time1 rows:  ", format(nrow(time1_sub), big.mark = ","))
     message("  • pay1 rows:   ", format(nrow(pay1_sub), big.mark = ","))
-    message("  • class1 rows: ", format(nrow(class1_sub), big.mark = ","))
   }
   
   invisible(list(
     pay1 = pay1_sub,
     time1 = time1_sub,
-    class1 = class1_sub,
     test_ids = test_ids,
     eligible_ids = eligible,
     n_keep = n_keep,
@@ -431,7 +425,7 @@ pay_code_summary <- function(
     summary_list <- list()
     
     for (pay_code in unique_pay_codes) {
-      subset_data <- df %>% dplyr::filter(Pay_Code == pay_code)
+      subset_data <- df %>% filter(Pay_Code == pay_code)
       if (nrow(subset_data) == 0) next
       
       summary_list[[paste(key_label, pay_code, sep = "_")]] <-
@@ -440,8 +434,8 @@ pay_code_summary <- function(
           Pay_Code = pay_code,
           Min_Period_End = min(subset_data$Pay_Period_End, na.rm = TRUE),
           Max_Period_End = max(subset_data$Pay_Period_End, na.rm = TRUE),
-          Employees = dplyr::n_distinct(subset_data$Pay_ID),
-          Pay_Periods = dplyr::n_distinct(subset_data$Pay_ID_Period_End),
+          Employees = uniqueN(subset_data$Pay_ID, na.rm = TRUE),
+          Pay_Periods = uniqueN(subset_data$Pay_ID_Period_End, na.rm = TRUE),
           Total_Hours = sum(subset_data$Pay_Hours, na.rm = TRUE),
           Total_Amount = sum(subset_data$Pay_Amount, na.rm = TRUE),
           Avg_Amount = mean(subset_data$Pay_Amount, na.rm = TRUE),
@@ -463,13 +457,13 @@ pay_code_summary <- function(
     }
     
     total_summary <- df %>%
-      dplyr::summarise(
+      summarise(
         Pay_Key_Gps = key_label,
         Pay_Code = paste(key_label, "Total", sep = ": "),
         Min_Period_End = min(Pay_Period_End, na.rm = TRUE),
         Max_Period_End = max(Pay_Period_End, na.rm = TRUE),
-        Employees = dplyr::n_distinct(Pay_ID),
-        Pay_Periods = dplyr::n_distinct(Pay_ID_Period_End),
+        Employees = uniqueN(Pay_ID, na.rm = TRUE),
+        Pay_Periods = uniqueN(Pay_ID_Period_End, na.rm = TRUE),
         Total_Hours = sum(Pay_Hours, na.rm = TRUE),
         Total_Amount = sum(Pay_Amount, na.rm = TRUE),
         Avg_Amount = mean(Pay_Amount, na.rm = TRUE),
@@ -490,31 +484,31 @@ pay_code_summary <- function(
       )
     
     summary_list[[paste(key_label, "Total", sep = "_")]] <- total_summary
-    dplyr::bind_rows(summary_list)
+    bind_rows(summary_list)
   }
   
   if (isTRUE(separate_key_gps)) {
     keys <- unique(data$Pay_Key_Gps)
     
-    final_summary_df <- dplyr::bind_rows(lapply(keys, function(k) {
-      summarize_one_group(data %>% dplyr::filter(Pay_Key_Gps == k), key_label = k)
+    final_summary_df <- bind_rows(lapply(keys, function(k) {
+      summarize_one_group(data %>% filter(Pay_Key_Gps == k), key_label = k)
     }))
     
     totals <- final_summary_df %>%
-      dplyr::filter(grepl(": Total$", Pay_Code)) %>%
-      dplyr::select(Pay_Key_Gps, Employees, Pay_Periods) %>%
-      dplyr::rename(
+      filter(grepl(": Total$", Pay_Code)) %>%
+      select(Pay_Key_Gps, Employees, Pay_Periods) %>%
+      rename(
         Total_Employees = Employees,
         Total_Pay_Periods = Pay_Periods
       )
     
     final_summary_df <- final_summary_df %>%
-      dplyr::left_join(totals, by = "Pay_Key_Gps") %>%
-      dplyr::mutate(
+      left_join(totals, by = "Pay_Key_Gps") %>%
+      mutate(
         Percent_Employees   = ifelse(Total_Employees > 0, round(Employees / Total_Employees, 4), NA_real_),
         Percent_Pay_Periods = ifelse(Total_Pay_Periods > 0, round(Pay_Periods / Total_Pay_Periods, 4), NA_real_)
       ) %>%
-      dplyr::select(
+      select(
         Pay_Key_Gps, Pay_Code,
         Min_Period_End, Max_Period_End,
         Employees, Percent_Employees,
@@ -528,11 +522,11 @@ pay_code_summary <- function(
     
   } else {
     final_summary_df <- summarize_one_group(data, key_label = "ALL") %>%
-      dplyr::mutate(
+      mutate(
         Percent_Employees = NA_real_,
         Percent_Pay_Periods = NA_real_
       ) %>%
-      dplyr::select(
+      select(
         Pay_Key_Gps, Pay_Code,
         Min_Period_End, Max_Period_End,
         Employees, Percent_Employees,
@@ -773,8 +767,8 @@ run_data_comparison <- function(
   output_dir <- normalizePath(output_dir, winslash = "/", mustWork = FALSE)
   
   # Convert to data.table copies
-  time1 <- data.table::as.data.table(data.table::copy(time_data))
-  pay1  <- data.table::as.data.table(data.table::copy(pay_data))
+  time1 <- as.data.table(copy(time_data))
+  pay1  <- as.data.table(copy(pay_data))
   
   # Remove any duplicate columns (defensive)
   time1 <- time1[, .SD, .SDcols = unique(names(time1))]
@@ -794,19 +788,19 @@ run_data_comparison <- function(
   
   # Summaries
   time_summary <- time1[, .(
-    Employees = data.table::uniqueN(ID),
+    Employees = uniqueN(ID, na.rm = TRUE),
     Records   = .N
   ), by = .(Period_End)]
   time_summary[, Data := "Time Data"]
   
   pay_summary <- pay1[, .(
-    Employees = data.table::uniqueN(Pay_ID),
+    Employees = uniqueN(Pay_ID, na.rm = TRUE),
     Records   = .N
   ), by = .(Pay_Period_End)]
-  data.table::setnames(pay_summary, "Pay_Period_End", "Period_End")
+  setnames(pay_summary, "Pay_Period_End", "Period_End")
   pay_summary[, Data := "Pay Data"]
   
-  comparison_dt <- data.table::rbindlist(list(time_summary, pay_summary), fill = TRUE)
+  comparison_dt <- rbindlist(list(time_summary, pay_summary), fill = TRUE)
   
   # Period breakdown grouping
   if (period_breakdown == "weekly") {
@@ -831,12 +825,12 @@ run_data_comparison <- function(
       First_Period = min(Period_End, na.rm = TRUE),
       Last_Period  = max(Period_End, na.rm = TRUE)
     ), by = .(Period_Group, Data)]
-    data.table::setnames(comparison_dt, "Period_Group", "Period_End")
+    setnames(comparison_dt, "Period_Group", "Period_End")
   }
   
   # Clean + order
   comparison_dt <- comparison_dt[!is.na(Period_End)]
-  data.table::setorder(comparison_dt, Period_End, Data)
+  setorder(comparison_dt, Period_End, Data)
   
   # Plot
   plot_line <- ggplot2::ggplot(
@@ -906,7 +900,7 @@ run_data_comparison <- function(
     if (exists("write_csv_and_rds", mode = "function", inherits = TRUE)) {
       write_csv_and_rds(comparison_dt, csv_path)
     } else {
-      data.table::fwrite(comparison_dt, csv_path)
+      fwrite(comparison_dt, csv_path)
       saveRDS(comparison_dt, sub("\\.csv$", ".rds", csv_path))
       message("✔ Output status:")
       message("  • CSV: ", csv_path)
@@ -915,6 +909,7 @@ run_data_comparison <- function(
     
     message("Files saved to: ", output_dir)
   }
+  output_dir <- normalizePath(output_dir, winslash = "/", mustWork = FALSE)
   
   if (isTRUE(return_data)) {
     return(invisible(comparison_dt))
@@ -968,8 +963,8 @@ employee_period_comparison <- function(
     return_data = TRUE
 ) {
   stopifnot(requireNamespace("data.table", quietly = TRUE))
-  data.table::setDT(time_data)
-  data.table::setDT(pay_data)
+  setDT(time_data)
+  setDT(pay_data)
   
   # Resolve output_dir
   if (is.null(output_dir) || !nzchar(output_dir)) {
@@ -982,8 +977,8 @@ employee_period_comparison <- function(
   output_dir <- normalizePath(output_dir, winslash = "/", mustWork = FALSE)
   
   # Copies (don’t modify originals)
-  time1 <- data.table::as.data.table(data.table::copy(time_data))
-  pay1  <- data.table::as.data.table(data.table::copy(pay_data))
+  time1 <- as.data.table(copy(time_data))
+  pay1  <- as.data.table(copy(pay_data))
   
   # Ensure required columns
   req_time <- c("ID", "Period_End")
@@ -999,7 +994,7 @@ employee_period_comparison <- function(
   
   # Time summary by employee
   time_summary <- time1[!is.na(Period_End), .(
-    Time_Periods     = data.table::uniqueN(Period_End),
+    Time_Periods     = uniqueN(Period_End, na.rm = TRUE),
     Time_First_Date  = min(Period_End, na.rm = TRUE),
     Time_Last_Date   = max(Period_End, na.rm = TRUE),
     Time_Records     = .N,
@@ -1008,13 +1003,13 @@ employee_period_comparison <- function(
   
   # Pay summary by employee
   pay_summary <- pay1[!is.na(Pay_Period_End), .(
-    Pay_Periods     = data.table::uniqueN(Pay_Period_End),
+    Pay_Periods     = uniqueN(Pay_Period_End, na.rm = TRUE),
     Pay_First_Date  = min(Pay_Period_End, na.rm = TRUE),
     Pay_Last_Date   = max(Pay_Period_End, na.rm = TRUE),
     Pay_Records     = .N,
     Pay_Period_List = list(unique(Pay_Period_End))
   ), by = .(Pay_ID)]
-  data.table::setnames(pay_summary, "Pay_ID", "ID")
+  setnames(pay_summary, "Pay_ID", "ID")
   
   # Merge
   all_employees <- merge(time_summary, pay_summary, by = "ID", all = TRUE)
@@ -1048,22 +1043,22 @@ employee_period_comparison <- function(
   # Match rates / coverage / status
   all_employees[, `:=`(
     Total_Unique_Periods = pmax(Time_Periods, Pay_Periods, na.rm = TRUE),
-    Match_Rate = data.table::fifelse(
+    Match_Rate = fifelse(
       (Time_Periods + Pay_Periods) > 0,
       round(Matching_Periods * 2 / (Time_Periods + Pay_Periods), 3),
       0
     ),
-    Time_Coverage = data.table::fifelse(
+    Time_Coverage = fifelse(
       Pay_Periods > 0,
       round(Matching_Periods / Pay_Periods, 3),
       0
     ),
-    Pay_Coverage = data.table::fifelse(
+    Pay_Coverage = fifelse(
       Time_Periods > 0,
       round(Matching_Periods / Time_Periods, 3),
       0
     ),
-    Data_Status = data.table::fcase(
+    Data_Status = fcase(
       Time_Periods == 0 & Pay_Periods == 0, "No Data",
       Time_Periods == 0, "Pay Only",
       Pay_Periods == 0, "Time Only",
@@ -1075,7 +1070,7 @@ employee_period_comparison <- function(
   output_df <- all_employees[, -c("Time_Period_List", "Pay_Period_List")]
   
   # Sort
-  data.table::setorder(output_df, Match_Rate, -Total_Unique_Periods)
+  setorder(output_df, Match_Rate, -Total_Unique_Periods)
   
   # Save outputs (CSV + RDS)
   if (isTRUE(save_output)) {
@@ -1087,7 +1082,7 @@ employee_period_comparison <- function(
       write_csv_and_rds(output_df, out_csv)
     } else {
       # fallback
-      data.table::fwrite(output_df, out_csv)
+      fwrite(output_df, out_csv)
       saveRDS(output_df, sub("\\.csv$", ".rds", out_csv))
       message("✔ Output status:")
       message("  • CSV: ", out_csv)
@@ -1627,7 +1622,7 @@ meal_start_time_tbl <- function(data,
   # Count frequency by exact time
   time_counts <- meal_data[, .(
     Records = .N,
-    Days = uniqueN(ID_Date)
+    Days = uniqueN(ID_Date, na.rm = TRUE)
   ), by = start_time_exact]
   
   setorder(time_counts, -Records)
@@ -1640,7 +1635,7 @@ meal_start_time_tbl <- function(data,
     other_row <- data.table(
       start_time_exact = "Other",
       Records = sum(other_counts$Records),
-      Days = uniqueN(meal_data[!start_time_exact %in% top_rows$start_time_exact, ID_Date])
+      Days = uniqueN(meal_data[!start_time_exact %in% top_rows$start_time_exact, ID_Date], na.rm = TRUE)
     )
     
     summary_df <- rbindlist(list(top_rows, other_row))
@@ -1650,7 +1645,7 @@ meal_start_time_tbl <- function(data,
   
   # Totals
   total_records <- nrow(meal_data)
-  total_days <- uniqueN(meal_data$ID_Date)
+  total_days <- uniqueN(meal_data$ID_Date, na.rm = TRUE)
   
   # Percentages
   summary_df[, `:=`(
@@ -1745,9 +1740,9 @@ meal_quarter_hour_tbl <- function(data,
   any_quarter_total <- data.table(
     Quarter_Hour_Type   = "ANY QUARTER HOUR",
     Records             = sum(any_quarter$Records),
-    Days                = uniqueN(meal_data[start_minute %in% c(0, 15, 30, 45), ID_Date]),
+    Days                = uniqueN(meal_data[start_minute %in% c(0, 15, 30, 45), ID_Date], na.rm = TRUE),
     Percent_of_Records  = round(sum(any_quarter$Records) / total_records, 10),
-    Percent_of_Days     = round(uniqueN(meal_data[start_minute %in% c(0, 15, 30, 45), ID_Date]) / total_days, 10)
+    Percent_of_Days     = round(uniqueN(meal_data[start_minute %in% c(0, 15, 30, 45), ID_Date], na.rm = TRUE) / total_days, 10)
   )
   
   # Separator row
@@ -2034,9 +2029,9 @@ generate_random_sample <- function(
   
   # ----------------- POPULATION COUNTS -----------------
   
-  time_population  <- all_ids[grepl("Time Data", Source), uniqueN(ID)]
-  pay_population   <- all_ids[grepl("Pay Data", Source), uniqueN(ID)]
-  class1_population <- if (use_class1) uniqueN(class1$ID) else NA
+  time_population  <- all_ids[grepl("Time Data", Source), uniqueN(ID, na.rm = TRUE)]
+  pay_population   <- all_ids[grepl("Pay Data", Source), uniqueN(ID, na.rm = TRUE)]
+  class1_population <- if (use_class1) uniqueN(class1$ID, na.rm = TRUE) else NA
   
   both_time_pay <- all_ids[Source == "Time Data; Pay Data"]
   
@@ -2207,6 +2202,11 @@ generate_random_sample <- function(
 #   results$sample_list, results$full_list, results$samplesize,
 #   results$sample_file, results$full_file, etc.
 
+# GENERATE RANDOM SAMPLE PRODUCTION FILES (if needed) ------------------------------------------------------------------------------
+#   - time/pay: filtered to sample + filtered to class_dmgs_start_date
+#   - class list: NEVER filtered (full class1), but includes Class_Anon_ID if you want it
+#   - outputs: .xlsx files saved to <OUT_DIR>/prod (absolute) by default
+#   - headers: underscores -> spaces, Proper Case; Pay_/Class_ removed in pay/class exports
 
 # GENERATE RANDOM SAMPLE PRODUCTION FILES (if needed) ------------------------------------------------------------------------------
 #   - time/pay: filtered to sample + filtered to class_dmgs_start_date
@@ -2237,7 +2237,7 @@ validate_prod_fields <- function(dt, fields, dt_name = deparse(substitute(dt))) 
 prep_xlsx_output <- function(x, drop_prefixes = character()) {
   
   # Copy so we never mutate analysis tables
-  y <- data.table::as.data.table(data.table::copy(x))
+  y <- as.data.table(copy(x))
   nms <- names(y)
   
   # Remove prefixes like "Pay_" or "Class_"
@@ -2258,7 +2258,7 @@ prep_xlsx_output <- function(x, drop_prefixes = character()) {
     nms <- tools::toTitleCase(tolower(nms))
   }
   
-  data.table::setnames(y, nms)
+  setnames(y, nms)
   y
 }
 
@@ -2276,9 +2276,9 @@ generate_production_files <- function(time1,
   cat("\n========== CREATING PRODUCTION FILES ==========\n")
   
   # Ensure data.tables
-  data.table::setDT(time1); data.table::setDT(pay1)
-  if (!is.null(class1)) data.table::setDT(class1)
-  data.table::setDT(sample_list)
+  setDT(time1); setDT(pay1)
+  if (!is.null(class1)) setDT(class1)
+  setDT(sample_list)
   
   # Assign anonymized IDs for SAMPLE ONLY (time/pay are filtered later)
   time1[, Anon_ID := NA_real_]
@@ -2301,7 +2301,7 @@ generate_production_files <- function(time1,
     time1_prod[punch_type == "out", Hours := NA]
   }
   if (all(c("Anon_ID", "Date") %in% names(time1_prod))) {
-    data.table::setorder(time1_prod, Anon_ID, Date)
+    setorder(time1_prod, Anon_ID, Date)
   }
   
   # Build production pay data (sample + date filter)
@@ -2309,7 +2309,7 @@ generate_production_files <- function(time1,
   validate_prod_fields(pay1_prod, prod_fields_pay, "pay1 (pre-subset)")
   pay1_prod <- pay1_prod[, ..prod_fields_pay]
   if (all(c("Pay_Anon_ID", "Pay_Date") %in% names(pay1_prod))) {
-    data.table::setorder(pay1_prod, Pay_Anon_ID, Pay_Date)
+    setorder(pay1_prod, Pay_Anon_ID, Pay_Date)
   }
   
   # Build production class list (FULL class list; no sample/date filtering)
@@ -2317,8 +2317,8 @@ generate_production_files <- function(time1,
   if (!is.null(class1)) {
     validate_prod_fields(class1, prod_fields_class, "class1 (full list)")
     class1_prod <- class1[, ..prod_fields_class]
-    if ("Class_Anon_ID" %in% names(class1_prod)) data.table::setorder(class1_prod, Class_Anon_ID)
-    else if ("ID" %in% names(class1_prod)) data.table::setorder(class1_prod, ID)
+    if ("Class_Anon_ID" %in% names(class1_prod)) setorder(class1_prod, Class_Anon_ID)
+    else if ("ID" %in% names(class1_prod)) setorder(class1_prod, ID)
   }
   
   # Prod directory (absolute): default to <OUT_DIR>/prod if OUT_DIR exists
@@ -2362,8 +2362,8 @@ generate_production_files <- function(time1,
   
   # Summary counts
   sample_count      <- nrow(sample_list)
-  time_unique_count <- if (nrow(time1_prod) > 0 && prod_fields_time[1] %in% names(time1_prod)) data.table::uniqueN(time1_prod[[prod_fields_time[1]]]) else 0
-  pay_unique_count  <- if (nrow(pay1_prod)  > 0 && prod_fields_pay[1]  %in% names(pay1_prod))  data.table::uniqueN(pay1_prod[[prod_fields_pay[1]]])  else 0
+  time_unique_count <- if (nrow(time1_prod) > 0 && prod_fields_time[1] %in% names(time1_prod)) uniqueN(time1_prod[[prod_fields_time[1]]], na.rm = TRUE) else 0
+  pay_unique_count  <- if (nrow(pay1_prod)  > 0 && prod_fields_pay[1]  %in% names(pay1_prod))  uniqueN(pay1_prod[[prod_fields_pay[1]]], na.rm = TRUE)  else 0
   
   cat("\nPRODUCTION SUMMARY:\n")
   cat(sprintf("time records:  %s\n", format(nrow(time1_prod), big.mark=",")))
@@ -2442,8 +2442,8 @@ generate_metadata <- function(data, file_name,
   adjusted_data <- data
   if (length(existing_date_cols) > 0) {
     adjusted_data <- adjusted_data |>
-      dplyr::mutate(
-        dplyr::across(dplyr::all_of(existing_date_cols), ~ as.Date(.))
+      mutate(
+        across(all_of(existing_date_cols), ~ as.Date(.))
       )
   }
   
@@ -2455,8 +2455,8 @@ generate_metadata <- function(data, file_name,
   
   # Convert R classes to Power Query friendly types
   metadata <- metadata |>
-    dplyr::mutate(
-      DataType = dplyr::case_when(
+    mutate(
+      DataType = case_when(
         DataType %in% c("integer") ~ "Whole Number",
         DataType %in% c("double", "numeric") ~ "Decimal Number",
         DataType == "character" ~ "Text",
@@ -2479,33 +2479,20 @@ generate_metadata <- function(data, file_name,
 
 # Unified Metrics Pipeline
 # Requires: data.table, lubridate
-# Uses: resolve_out_dir(), resolve_processed_dir(), write_csv_and_rds() (from your engine helpers)
+# Uses: resolve_out_dir(), write_csv_and_rds() (from your engine helpers)
 
-# --- 0) Load spec (ABSOLUTE PATH via ADS_REPO) ---
-ADS_REPO <- normalizePath(Sys.getenv("ADS_REPO"), winslash = "/", mustWork = TRUE)
-metrics_spec_path <- file.path(ADS_REPO, "scripts", "metrics_spec.csv")
-if (!file.exists(metrics_spec_path)) stop("Missing metrics_spec.csv at: ", metrics_spec_path)
+# ---------------- DENOMINATORS ----------------
 
-metrics_spec <- data.table::fread(metrics_spec_path)
-
-metrics_spec[, metric_type := data.table::fcase(
-  grepl("date", metric_label, ignore.case = TRUE), "date",
-  grepl("percent", metric_label, ignore.case = TRUE), "percent",
-  default = "value"
-)]
-metrics_spec[, metric_order := .I]
-
-# --- 1) Denominator functions (unchanged from your draft) ---
 denom_functions_time <- list(
-  shifts_all              = function(dt) dt[, dplyr::n_distinct(ID_Shift)],
-  shifts_gt_3_5           = function(dt) dt[shift_hrs > 3.5, dplyr::n_distinct(ID_Shift)],
-  shifts_gt_5             = function(dt) dt[shift_hrs > 5, dplyr::n_distinct(ID_Shift)],
-  shifts_gt_6             = function(dt) dt[shift_hrs > 6, dplyr::n_distinct(ID_Shift)],
-  shifts_gt_10            = function(dt) dt[shift_hrs > 10, dplyr::n_distinct(ID_Shift)],
-  shifts_gt_12            = function(dt) dt[shift_hrs > 12, dplyr::n_distinct(ID_Shift)],
-  pay_periods             = function(dt) dt[, dplyr::n_distinct(ID_Period_End)],
-  weeks                   = function(dt) dt[, dplyr::n_distinct(ID_Week_End)],
-  employees               = function(dt) dt[, dplyr::n_distinct(ID)],
+  shifts_all              = function(dt) dt[, uniqueN(ID_Shift, na.rm = TRUE)],
+  shifts_gt_3_5           = function(dt) dt[shift_hrs > 3.5, uniqueN(ID_Shift, na.rm = TRUE)],
+  shifts_gt_5             = function(dt) dt[shift_hrs > 5, uniqueN(ID_Shift, na.rm = TRUE)],
+  shifts_gt_6             = function(dt) dt[shift_hrs > 6, uniqueN(ID_Shift, na.rm = TRUE)],
+  shifts_gt_10            = function(dt) dt[shift_hrs > 10, uniqueN(ID_Shift, na.rm = TRUE)],
+  shifts_gt_12            = function(dt) dt[shift_hrs > 12, uniqueN(ID_Shift, na.rm = TRUE)],
+  pay_periods             = function(dt) dt[, uniqueN(ID_Period_End, na.rm = TRUE)],
+  weeks                   = function(dt) dt[, uniqueN(ID_Week_End, na.rm = TRUE)],
+  employees               = function(dt) dt[, uniqueN(ID, na.rm = TRUE)],
   meal_periods            = function(dt) dt[, sum(shift_mps, na.rm = TRUE)],
   auto_meal_periods       = function(dt) dt[, sum(!is.na(auto_mp))],
   shifts_gt_5_late_meals  = function(dt) dt[, sum(LateMP1, na.rm = TRUE)],
@@ -2518,8 +2505,8 @@ denom_functions_time <- list(
 )
 
 denom_functions_pay <- list(
-  employees_pay           = function(dt) dt[, dplyr::n_distinct(Pay_ID)],
-  pay_periods_pay         = function(dt) dt[, dplyr::n_distinct(Pay_ID_Period_End)]
+  employees_pay           = function(dt) dt[, uniqueN(Pay_ID, na.rm = TRUE)],
+  pay_periods_pay         = function(dt) dt[, uniqueN(Pay_ID_Period_End, na.rm = TRUE)]
 )
 
 denom_functions_pp <- list(
@@ -2527,7 +2514,10 @@ denom_functions_pp <- list(
   pp_with_shift           = function(dt) dt[has_shift == 1, .N],
   pp_with_pay             = function(dt) dt[has_pay == 1, .N],
   pp_with_both            = function(dt) dt[has_shift == 1 & has_pay == 1, .N],
-  pp_employees            = function(dt) dt[, dplyr::n_distinct(ID)],
+  pp_employees            = function(dt) dt[, uniqueN(ID, na.rm = TRUE)],
+  pp_pay_periods          = function(dt) dt[, uniqueN(ID_Period_End, na.rm = TRUE)],
+  pp_paga_employees       = function(dt) uniqueN(dt[in_PAGA_period==1, ID], na.rm = TRUE),
+  pp_paga_pay_periods     = function(dt) uniqueN(dt[in_PAGA_period==1, ID_Period_End], na.rm = TRUE),
   pp_with_shifts_gt_5     = function(dt) dt[Shifts_gt_5 > 0, .N],
   pp_with_shifts_gt_6     = function(dt) dt[Shifts_gt_6 > 0, .N],
   pp_with_shifts_gt_3_5   = function(dt) dt[Shifts_gt_3_5 > 0, .N],
@@ -2535,79 +2525,136 @@ denom_functions_pp <- list(
   pp_with_rp_violations   = function(dt) dt[rpv_per_pp > 0, .N]
 )
 
-denom_functions_ee <- list(
-  ee_all                  = function(dt) dt[, .N],
-  ee_with_shift           = function(dt) dt[has_shift == 1, .N],
-  ee_with_pay             = function(dt) dt[has_pay == 1, .N],
-  ee_with_both            = function(dt) dt[has_shift == 1 & has_pay == 1, .N],
-  ee_with_shifts_gt_5     = function(dt) dt[Shifts_gt_5 > 0, .N],
-  ee_with_shifts_gt_6     = function(dt) dt[Shifts_gt_6 > 0, .N],
-  ee_with_shifts_gt_3_5   = function(dt) dt[Shifts_gt_3_5 > 0, .N],
-  ee_with_mp_violations   = function(dt) dt[mpv_ee > 0, .N],
-  ee_with_rp_violations   = function(dt) dt[rpv_ee > 0, .N],
-  ee_with_mp_less_prems   = function(dt) dt[mpv_ee_less_prems > 0, .N],
-  ee_with_rp_less_prems   = function(dt) dt[rpv_ee_less_prems > 0, .N]
-)
+denom_functions <- c(denom_functions_time, denom_functions_pay, denom_functions_pp)
 
-denom_functions <- c(denom_functions_time, denom_functions_pay, denom_functions_pp, denom_functions_ee)
-
-# --- 2) Core evaluation (unchanged) ---
-eval_metric <- function(dt, expr_str, digits = NA) {
-  if (is.null(dt) || nrow(dt) == 0) return(NA_real_)
-  
-  result <- tryCatch(
-    dt[, eval(parse(text = expr_str))],
-    error = function(e) NA_real_
-  )
-  
-  if (inherits(result, c("Date", "POSIXct", "POSIXlt", "IDate"))) {
-    result <- as.numeric(as.Date(result))
-  }
-  
-  if (!is.numeric(result)) {
-    result <- tryCatch(as.numeric(result), error = function(e) NA_real_)
-  }
-  
-  digits_num <- suppressWarnings(as.numeric(digits))
-  if (!is.na(digits_num) && is.numeric(result) && length(result) == 1 && !is.na(result)) {
-    result <- round(result, digits_num)
-  }
-  
-  as.numeric(result)
-}
-
-eval_denom <- function(dt, denom_name, source) {
+eval_denom <- function(dt, denom_name) {
   if (is.null(dt) || nrow(dt) == 0 || is.na(denom_name) || denom_name == "") return(NA_real_)
   denom_fn <- denom_functions[[denom_name]]
   if (is.null(denom_fn)) return(NA_real_)
-  tryCatch(denom_fn(dt), error = function(e) NA_real_)
+  tryCatch(as.numeric(denom_fn(dt)), error = function(e) NA_real_)
 }
 
-calculate_metrics <- function(data_list, spec) {
+# ---------------- SAFE EVALUATION (dt cols + globals) ----------------
+# Key fix: do NOT use dt[, eval(parse())] for expressions that can reference global objects.
+# Instead, build an environment with dt columns and parent = globals env.
+
+make_eval_env <- function(dt, globals_env = .GlobalEnv, extra = list()) {
+  # dt columns first, then extra overrides, then globals fallback
+  env <- list2env(as.list(dt), parent = globals_env)
+  if (length(extra)) {
+    for (nm in names(extra)) assign(nm, extra[[nm]], envir = env)
+  }
+  env
+}
+
+eval_expr_safe <- function(dt, expr_str, globals_env = .GlobalEnv, extra = list()) {
+  if (is.null(dt) || nrow(dt) == 0) return(NA_real_)
+  if (is.na(expr_str) || !nzchar(trimws(expr_str))) return(NA_real_)
+  env <- make_eval_env(dt, globals_env = globals_env, extra = extra)
+  tryCatch(eval(parse(text = expr_str), envir = env), error = function(e) NA_real_)
+}
+
+coerce_metric_result <- function(result, digits = NA) {
+  # Date-ish -> numeric date
+  if (inherits(result, c("Date", "POSIXct", "POSIXlt", "IDate"))) {
+    result <- as.numeric(as.Date(result))
+  }
+  # scalar numeric coercion
+  if (!is.numeric(result)) {
+    result <- tryCatch(as.numeric(result), error = function(e) NA_real_)
+  }
+  digits_num <- suppressWarnings(as.numeric(digits))
+  if (!is.na(digits_num) && length(result) == 1 && is.numeric(result) && !is.na(result)) {
+    result <- round(result, digits_num)
+  }
+  as.numeric(result)
+}
+
+eval_metric <- function(dt, expr_str, digits = NA, globals_env = .GlobalEnv) {
+  res <- eval_expr_safe(dt, expr_str, globals_env = globals_env)
+  coerce_metric_result(res, digits)
+}
+
+eval_extrap <- function(dt, extrap_expr_str, digits = NA, globals_env = .GlobalEnv, extrap_env = list()) {
+  # extrap_env is optional named list; it will be visible to the expression
+  res <- eval_expr_safe(dt, extrap_expr_str, globals_env = globals_env, extra = extrap_env)
+  coerce_metric_result(res, digits)
+}
+
+# ---------------- CALCULATE METRICS ----------------
+
+calculate_metrics <- function(data_list, spec, extrap_env = list(), globals_env = .GlobalEnv) {
+  
+  # cache denom values per dt so you don't recompute for every metric row
+  denom_cache <- new.env(parent = emptyenv())
+  
+  get_all_denoms_for_dt <- function(dt) {
+    if (is.null(dt) || nrow(dt) == 0) return(list())
+    # key by object address (good enough for this pipeline)
+    key <- sprintf("%s_%s", nrow(dt), ncol(dt))
+    if (exists(key, envir = denom_cache, inherits = FALSE)) {
+      return(get(key, envir = denom_cache, inherits = FALSE))
+    }
+    denoms <- lapply(names(denom_functions), function(nm) eval_denom(dt, nm))
+    names(denoms) <- names(denom_functions)
+    assign(key, denoms, envir = denom_cache)
+    denoms
+  }
+  
   results <- lapply(seq_len(nrow(spec)), function(i) {
-    src <- spec$source[i]
-    dt <- data_list[[src]]
-    denom_name <- spec$denom[i]
-    digits_val <- suppressWarnings(as.numeric(spec$digits[i]))
     
-    val <- eval_metric(dt, spec$expr[i], digits_val)
-    denom_val <- eval_denom(dt, denom_name, src)
+    src <- spec$source[i]
+    dt  <- data_list[[src]]
+    
+    digits_val <- suppressWarnings(as.numeric(spec$digits[i]))
+    denom_name <- spec$denom[i]
+    
+    # metric value + pct denom
+    val       <- eval_metric(dt, spec$expr[i], digits_val, globals_env = globals_env)
+    denom_val <- eval_denom(dt, denom_name)
     
     pct <- if (!is.na(val) && !is.na(denom_val) && denom_val > 0) val / denom_val else NA_real_
     
-    list(
-      metric_order = spec$metric_order[i],
+    # extrap: expose extrap_env + ALL denom values
+    extrap_val <- NA_real_
+    if ("extrap_expr" %in% names(spec)) {
+      ex <- spec$extrap_expr[i]
+      if (!is.na(ex) && nzchar(trimws(ex))) {
+        denom_env <- get_all_denoms_for_dt(dt)
+        extra_env <- c(extrap_env, denom_env)   # <- this is the big fix
+        extrap_val <- eval_extrap(
+          dt,
+          ex,
+          digits_val,
+          globals_env = globals_env,
+          extrap_env  = extra_env
+        )
+      }
+    }
+    
+    out <- list(
+      metric_order = if ("metric_order" %in% names(spec)) spec$metric_order[i] else i,
       metric_group = spec$metric_group[i],
       metric_label = spec$metric_label[i],
-      metric_type  = spec$metric_type[i],
+      metric_type  = if ("metric_type" %in% names(spec)) spec$metric_type[i] else "value",
       digits       = digits_val,
       value        = val,
       denom_value  = denom_val,
-      pct          = pct
+      pct          = pct,
+      extrap_value = extrap_val
     )
+    
+    if ("scenario" %in% names(spec)) out$scenario <- spec$scenario[i]
+    if ("no_year_breakdown" %in% names(spec)) out$no_year_breakdown <- spec$no_year_breakdown[i]
+    
+    out
   })
-  data.table::rbindlist(results)
+  
+  data.table::rbindlist(results, fill = TRUE)
 }
+
+
+# ---------------- FILTERING HELPERS ----------------
 
 filter_data <- function(dt, filter_expr = NULL) {
   if (is.null(dt)) return(NULL)
@@ -2628,7 +2675,6 @@ create_filtered_data <- function(time_dt, pay_dt, pp_dt = NULL, ee_dt = NULL,
 
 build_filter_configs <- function(time_dt, pay_dt, pp_dt = NULL, ee_dt = NULL, custom_filters = list()) {
   configs <- list()
-  
   configs[["All Data"]] <- list(time_filter = NULL, pay_filter = NULL, pp_filter = NULL, ee_filter = NULL)
   
   time_years <- if (!is.null(time_dt) && "Period_End" %in% names(time_dt))
@@ -2653,51 +2699,110 @@ build_filter_configs <- function(time_dt, pay_dt, pp_dt = NULL, ee_dt = NULL, cu
   configs
 }
 
+# ---------------- PIPELINE ----------------
+
 run_metrics_pipeline <- function(time_dt, pay_dt, spec,
                                  pp_dt = NULL, ee_dt = NULL,
-                                 custom_filters = list()) {
+                                 custom_filters = list(),
+                                 extrap_env = list(),
+                                 globals_env = .GlobalEnv) {
   
-  if (!is.null(time_dt)) data.table::setDT(time_dt)
-  if (!is.null(pay_dt))  data.table::setDT(pay_dt)
-  if (!is.null(pp_dt))   data.table::setDT(pp_dt)
-  if (!is.null(ee_dt))   data.table::setDT(ee_dt)
+  if (!is.null(time_dt)) setDT(time_dt)
+  if (!is.null(pay_dt))  setDT(pay_dt)
+  if (!is.null(pp_dt))   setDT(pp_dt)
+  if (!is.null(ee_dt))   setDT(ee_dt)
   
-  filter_configs <- build_filter_configs(time_dt, pay_dt, pp_dt, ee_dt, custom_filters)
+  # normalize extrap_expr blanks -> NA
+  if ("extrap_expr" %in% names(spec)) {
+    spec[, extrap_expr := as.character(extrap_expr)]
+    spec[trimws(extrap_expr) == "", extrap_expr := NA_character_]
+  }
   
-  results_list <- lapply(names(filter_configs), function(filter_name) {
-    cfg <- filter_configs[[filter_name]]
-    
-    filtered_data <- create_filtered_data(
-      time_dt, pay_dt, pp_dt, ee_dt,
-      cfg$time_filter, cfg$pay_filter, cfg$pp_filter, cfg$ee_filter
-    )
-    
-    metrics <- calculate_metrics(filtered_data, spec)
-    metrics[, filter_name := filter_name]
-    metrics
-  })
+  # Split spec: year-OK vs no-year groups
+  if ("no_year_breakdown" %in% names(spec)) {
+    # robust logical parse (handles TRUE/FALSE/1/0/"TRUE"/"FALSE"/blank)
+    spec[, no_year_flag := {
+      x <- no_year_breakdown
+      if (is.logical(x)) x else {
+        x <- tolower(trimws(as.character(x)))
+        x %chin% c("true","t","1","yes","y")
+      }
+    }]
+    spec_no_year <- spec[no_year_flag == TRUE]
+    spec_year_ok <- spec[no_year_flag == FALSE]
+    spec[, no_year_flag := NULL]
+  } else {
+    is_no_year <- function(x) grepl("^Damages", x, ignore.case = TRUE) | grepl("^PAGA", x, ignore.case = TRUE)
+    spec_no_year <- spec[is_no_year(metric_group)]
+    spec_year_ok <- spec[!is_no_year(metric_group)]
+  }
   
-  data.table::rbindlist(results_list)
+  filter_configs_all <- build_filter_configs(time_dt, pay_dt, pp_dt, ee_dt, custom_filters)
+  
+  keep_nm <- names(filter_configs_all)
+  is_year_nm <- grepl("^\\d{4}$", keep_nm)
+  filter_configs_no_year <- filter_configs_all[!is_year_nm]
+  
+  res1 <- if (nrow(spec_year_ok) > 0) {
+    rbindlist(lapply(names(filter_configs_all), function(filter_name) {
+      cfg <- filter_configs_all[[filter_name]]
+      filtered_data <- create_filtered_data(
+        time_dt, pay_dt, pp_dt, ee_dt,
+        cfg$time_filter, cfg$pay_filter, cfg$pp_filter, cfg$ee_filter
+      )
+      metrics <- calculate_metrics(filtered_data, spec_year_ok, extrap_env = extrap_env, globals_env = globals_env)
+      metrics[, filter_name := filter_name]
+      metrics
+    }), fill = TRUE)
+  } else NULL
+  
+  res2 <- if (nrow(spec_no_year) > 0) {
+    rbindlist(lapply(names(filter_configs_no_year), function(filter_name) {
+      cfg <- filter_configs_no_year[[filter_name]]
+      filtered_data <- create_filtered_data(
+        time_dt, pay_dt, pp_dt, ee_dt,
+        cfg$time_filter, cfg$pay_filter, cfg$pp_filter, cfg$ee_filter
+      )
+      metrics <- calculate_metrics(filtered_data, spec_no_year, extrap_env = extrap_env, globals_env = globals_env)
+      metrics[, filter_name := filter_name]
+      metrics
+    }), fill = TRUE)
+  } else NULL
+  
+  rbindlist(list(res1, res2), fill = TRUE)
 }
 
+# ---------------- FORMAT OUTPUT ----------------
+
 format_metrics_table <- function(results_dt) {
-  dt <- data.table::copy(results_dt)
+  dt <- copy(results_dt)
+  setDT(dt)
+  
   dt[, digits := suppressWarnings(as.numeric(digits))]
   
+  # Helper function to safely format numbers with commas
+  safe_format_num <- function(x) {
+    sapply(x, function(v) {
+      if (is.na(v) || is.nan(v)) return(NA_character_)
+      prettyNum(v, big.mark = ",")
+    })
+  }
+  
+  # base formatted value (with pct appended for percent metrics)
   dt[, formatted_value := {
-    rounded_val <- data.table::fifelse(is.na(digits) | is.na(value), value, round(value, digits))
+    rounded_val <- fifelse(is.na(digits) | is.na(value), value, round(value, digits))
     
     fv <- data.table::fcase(
       metric_type == "date", as.character(as.Date(value, origin = "1970-01-01")),
       is.na(value), "0",
       is.nan(value), "0",
-      default = format(rounded_val, big.mark = ",", scientific = FALSE, trim = TRUE, nsmall = 0)
+      default = safe_format_num(rounded_val)
     )
     
-    fv <- data.table::fifelse(is.na(digits) | digits == 0, gsub("\\.0+$", "", fv), fv)
+    fv <- fifelse(is.na(digits) | digits == 0, gsub("\\.0+$", "", fv), fv)
     fv <- gsub("^\\s+|\\s+$", "", fv)
     
-    data.table::fifelse(
+    fifelse(
       !is.na(pct) & !is.nan(pct),
       paste0(fv, " (", round(pct * 100, 1), "%)"),
       fv
@@ -2707,38 +2812,75 @@ format_metrics_table <- function(results_dt) {
   dt[formatted_value == "NaN", formatted_value := "0"]
   dt[grepl("NaN", formatted_value), formatted_value := gsub(" \\(NaN%\\)", "", formatted_value)]
   
-  wide_dt <- data.table::dcast(dt, metric_order + metric_group + metric_label ~ filter_name,
-                               value.var = "formatted_value")
+  # formatted extrap (append pct like other columns)
+  dt[, formatted_extrap := {
+    rounded_val <- fifelse(is.na(digits) | is.na(extrap_value), extrap_value, round(extrap_value, digits))
+    
+    fv <- fcase(
+      metric_type == "date", as.character(as.Date(extrap_value, origin = "1970-01-01")),
+      is.na(extrap_value), "-",
+      is.nan(extrap_value), "-",
+      default = safe_format_num(rounded_val)
+    )
+    
+    fv <- fifelse(is.na(digits) | digits == 0, gsub("\\.0+$", "", fv), fv)
+    fv <- gsub("^\\s+|\\s+$", "", fv)
+    
+    # Append the SAME pct used for the base metric (sample proportion),
+    # so Extrapolated reads like: "1,234 (12.3%)"
+    fifelse(
+      metric_type != "date" & !is.na(pct) & !is.nan(pct) & fv != "-" & fv != "",
+      paste0(fv, " (", round(pct * 100, 1), "%)"),
+      fv
+    )
+  }]
   
-  data.table::setorder(wide_dt, metric_order)
+  dt[formatted_extrap == "NaN", formatted_extrap := "-"]
+  
+  # IMPORTANT: use a unique key for casting & merging (metric_order alone is NOT safe)
+  id_cols <- c("metric_order","metric_group","metric_label","scenario","metric_type","digits","no_year_breakdown")
+  
+  # wide values
+  wide_dt <- dcast(
+    dt,
+    formula   = as.formula(paste(paste(id_cols, collapse = " + "), "~ filter_name")),
+    value.var = "formatted_value"
+  )
+  
+  setorder(wide_dt, metric_order)
+  
+  # Extrapolated column should be per-metric key (not just metric_order)
+  extrap_col <- dt[filter_name == "All Data",
+                   c(id_cols, "formatted_extrap"),
+                   with = FALSE]
+  setnames(extrap_col, "formatted_extrap", "Extrapolated")
+  
+  wide_dt <- merge(wide_dt, extrap_col, by = id_cols, all.x = TRUE)
+  
+  # If All Data missing, fall back to first non-NA per id
+  if (all(is.na(wide_dt$Extrapolated))) {
+    extrap_col2 <- dt[, .(Extrapolated = first(formatted_extrap[!is.na(formatted_extrap)])),
+                      by = id_cols]
+    wide_dt[, Extrapolated := NULL]
+    wide_dt <- merge(wide_dt, extrap_col2, by = id_cols, all.x = TRUE)
+  }
   
   all_cols <- names(wide_dt)
   year_cols <- sort(all_cols[grepl("^\\d{4}$", all_cols)])
-  other_cols <- setdiff(all_cols, c("metric_order", "metric_group", "metric_label", "All Data", year_cols))
+  other_cols <- setdiff(all_cols, c(id_cols, "Extrapolated", "All Data", year_cols))
   
-  col_order <- c("metric_group", "metric_label", "All Data", year_cols, other_cols)
+  # final column order
+  col_order <- c("metric_group", "metric_label", "scenario", "Extrapolated", "All Data", year_cols, other_cols)
   col_order <- col_order[col_order %in% all_cols]
+  setcolorder(wide_dt, col_order)
   
-  data.table::setcolorder(wide_dt, col_order)
-  wide_dt[, metric_order := NULL]
+  wide_dt[, c("metric_order","metric_type","digits","no_year_breakdown") := NULL]
   wide_dt
 }
 
-# --- 3) Export helper (ABSOLUTE OUT_DIR + CSV/RDS) ---
 export_metrics <- function(wide_dt, base_name = "Metrics_Table", out_dir = NULL) {
   out_dir <- resolve_out_dir(out_dir)
   out_csv <- file.path(out_dir, paste0(base_name, ".csv"))
   write_csv_and_rds(wide_dt, out_csv)
   invisible(list(csv = out_csv, rds = sub("\\.csv$", ".rds", out_csv)))
 }
-
-# Example: Standard run (All Data + Year tabs) and export
-# metrics_raw  <- run_metrics_pipeline(
-#   time_dt = shift_data1,
-#   pay_dt  = pay1,
-#   pp_dt   = pp_data1,
-#   ee_dt   = ee_data1,
-#   spec    = metrics_spec
-# )
-# metrics_wide <- format_metrics_table(metrics_raw)
-# export_metrics(metrics_wide, base_name = "Metrics_Table")
