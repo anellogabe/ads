@@ -5,9 +5,16 @@
 # This file contains proprietary information and trade secrets.
 # Unauthorized copying, distribution, or use is strictly prohibited.
 # For authorized use by ANELLO DATA SOLUTIONS LLC contracted analysts only.
-# ==============================================================================
 
-# ----- ALL DATA:   Load Packages & Repositories --------------------------
+# ==============================================================================
+# CLEAN DATA SCRIPT
+#
+# This script MUST be run first for every case.
+# It sets up the ADS environment, paths, and cleans raw data.
+#
+# After running this script, you can run analysis.R
+
+# ----- ALL DATA:   Load packages, functions and directories --------------------------
 
 start.time <- Sys.time()
 
@@ -21,18 +28,89 @@ library(openxlsx)
 library(stringr)
 library(purrr)
 
-# Source ADS engine / repository FIRST (so set_case_dir exists)
-ADS_REPO <- Sys.getenv("ADS_REPO", unset = "")
-if (!nzchar(ADS_REPO)) stop("ADS_REPO not set. On Windows: setx ADS_REPO \"C:/Users/Gabe/Documents/GitHub/ads\"")
-ADS_REPO <- normalizePath(ADS_REPO, winslash = "/", mustWork = TRUE)
-source(file.path(ADS_REPO, "scripts", "functions.R"), local = FALSE, chdir = FALSE)
 
-# SET YOUR CASE DIRECTORY (ONCE PER CASE / USER)
-#set_case_dir("C:/Users/Gabe/OneDrive - anellodatasolutions.com/Documents/0. ADS/....")
-set_case_dir("C:/Users/Amnon/OneDrive - Employment Research Corporation/Cases/....")
+# --- Source ADS Shared Functions (OneDrive) ---
 
-# Resolve paths (consistent)
-paths <- resolve_case_paths()
+# IMPORTANT: Update this path to match YOUR OneDrive location
+# Default path:
+# C:/Users/[USERNAME]/OneDrive - anellodatasolutions.com/Documents/0. ADS/ADS_Shared
+
+ADS_SHARED <- Sys.getenv("ADS_SHARED",
+                         unset = "C:/Users/Gabe/OneDrive - anellodatasolutions.com/Documents/0. ADS/ADS_Shared")
+
+# Verify ADS_Shared folder exists
+if (!dir.exists(ADS_SHARED)) {
+  stop("\n\nERROR: Cannot find ADS_Shared folder at:\n  ", ADS_SHARED,
+       "\n\nPlease either:",
+       "\n  1. Update the ADS_SHARED path above (line 28) to match your OneDrive location",
+       "\n  2. Set the ADS_SHARED environment variable",
+       "\n\nCheck OneDrive sync status if the folder should exist.\n")
+}
+
+# Source core ADS functions and PDF generator
+
+source(file.path(ADS_SHARED, "scripts", "functions.R"), local = FALSE, chdir = FALSE)
+cat("✓ ADS functions loaded successfully\n\n")
+
+source(file.path(ADS_REPO, "scripts", "generate_pdf.R"), local = FALSE, chdir = FALSE)
+cat("✓ ADS functions loaded successfully\n\n")
+
+# --- Set Case Directory ---
+
+# IMPORTANT: Update this path for EACH case
+# This should be the root folder for THIS case (contains data/ and output/ folders)
+#
+# Examples:
+#   set_case_dir("C:/Users/[USERNAME]/OneDrive/Cases/[CASE_NAME]/Analysis/CASE_R")
+
+set_case_dir("C:/Users/Amnon/OneDrive - Employment Research Corporation/Cases/34000s/34146 Ulloa v Securitas/Analysis/34146_R")
+
+# Initialize case paths (creates data/raw, data/processed, output folders if needed)
+paths <- init_case_paths(set_globals = TRUE)
+
+cat("\n✓ Case directory set:\n  ", paths$CASE_DIR, "\n")
+cat("✓ Data directories:\n")
+cat("    Raw:       ", paths$RAW_DIR, "\n")
+cat("    Processed: ", paths$PROCESSED_DIR, "\n")
+cat("    Output:    ", paths$OUT_DIR, "\n\n")
+
+
+# ----- ALL DATA:   Case configuration --------------------------
+
+# --- Case info ---
+contract_footer <- NA # e.g. use "Employment Research Corporation" for ERC projects else NA
+case_name <- "Plaintiff v Defendant" 
+case_no <- "4:49:cv-494949-NINERS"
+date_filed <- as.Date("1981-09-15")
+sample_size <- "100%" # Use as text field
+sample_size_val <- 1  # e.g., 1 = 100%
+
+# --- Key groups (named plaintiff(s)) ---
+key_employees <- c("999999999" = "Chief, Chieify")
+separate_key_gps <- FALSE # Set to TRUE if key groups should be separated from a anonymized random sample
+
+# --- Key dates ---
+
+complaint_date            <- date_filed # Date of ORIGINAL complaint (this is used to filter data; adjust if necessary)
+mediation_date            <- Sys.Date() # if unknown or potentially not necessary, set to #Sys.Date()
+
+# Class period
+class_dmgs_start_date     <- (complaint_date %m-% years(4)) # Typically four years back from original Complaint.
+class_dmgs_end_date       <- mediation_date
+
+# PAGA period
+paga_dmgs_start_date      <- (complaint_date %m-% years(1)) - days(65) # Typically 1 yr + 65 days from the filing of the Complaint. 
+# Check for the particular Complaint with the PAGA claim.
+paga_dmgs_end_date        <- mediation_date
+
+# Waiting Time Penalties period (remember to filter out active employees)
+wt_start_date             <- (complaint_date %m-% years(3)) # Typically three years back from original Complaint. 
+wt_end_date               <- mediation_date
+
+# Wage statement violations period
+wsv_start_date            <- (complaint_date %m-% years(1)) # Typically one year back from original Complaint. 
+wsv_end_date              <- mediation_date
+
 
 
 # ----- TIME DATA:  Load data -------------------------------
@@ -638,36 +716,7 @@ if(length(existing_cols) > 0) {
 }
 
 
-# ----- ALL DATA:   Set Parameters for Case  --------------------------------------------------------------------------
-
-contract_footer <- NA # NA for ADS cases, else "Employment Research Corporation" for ERC cases
-case_name <- "CASE_NAME" 
-case_no <- "CASE_NUMBER"
-date_filed <- "?"
-sample_size <- "SAMPLE_PERCENTAGE" # Use as text field
-sample_size_val <- 1 #e.g., 1 = 100%
-separate_key_gps <- FALSE # Set to TRUE if key groups should be separated from a anonymized random sample
-
-# Set top parameters for case analysis and extrapolation
-complaint_date            <- as.Date("2015-09-81") # Date of ORIGINAL complaint
-mediation_date            <- Sys.Date() # if unknown or potentially not necessary, set to #Sys.Date()
-
-# Class period
-class_dmgs_start_date     <- (complaint_date %m-% years(4)) # Typically four years back from original Complaint.
-class_dmgs_end_date       <- mediation_date
-
-# PAGA period
-paga_dmgs_start_date      <- (complaint_date %m-% years(1)) - days(65) # Typically 1 yr + 65 days from the filing of the Complaint. 
-# Check for the particular Complaint with the PAGA claim.
-paga_dmgs_end_date        <- mediation_date
-
-# Waiting Time Penalties period (remember to filter out active employees)
-wt_start_date             <- (complaint_date %m-% years(3)) # Typically three years back from original Complaint. 
-wt_end_date               <- mediation_date
-
-# Wage statement violations period
-wsv_start_date            <- (complaint_date %m-% years(1)) # Typically one year back from original Complaint. 
-wsv_end_date              <- mediation_date
+# ----- ALL DATA:   Filter data based on class and date  --------------------------------------------------------------------------
 
 # Filter based on Class Period (and summary of what was removed)
 
@@ -843,9 +892,6 @@ time1[, ID_Period_End := paste(ID, Period_End, sep = "_")]
 
 
 # ----- ALL DATA:   Key_Gps & Data comparison ------------------------------------------------
-
-# Identify key groups (e.g., named plaintiffs or specific employees of interest)
-key_employees <- c("999999999" = "Chief, Chieify")
 
 time1[, Key_Gps := key_employees[as.character(ID)]]
 time1[is.na(Key_Gps), Key_Gps := "Everyone Else"]
