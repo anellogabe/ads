@@ -90,8 +90,11 @@ generate_report <- function(
   progress("Loading data for case info")
   
   # Load data - use existing from environment or load from files
+  # Dashboard uses shift_data1, standalone may use shift1
   if (exists("shift_data1") && is.data.table(shift_data1)) {
     local_shift <- shift_data1
+  } else if (exists("shift1") && is.data.table(shift1)) {
+    local_shift <- shift1
   } else {
     local_shift <- readRDS(file.path(DATA_DIR, "Time Shift Data.rds"))
   }
@@ -125,8 +128,12 @@ generate_report <- function(
     setDT(metric_spec)
   }
   
-  # Use existing final_table from analysis.R if available
-  if (exists("final_table") && is.data.table(final_table)) {
+  # Use existing final_table/results from environment if available
+  # Dashboard uses "results", standalone may use "final_table"
+  if (exists("results") && is.data.table(results)) {
+    results_table <- copy(results)
+    cat("Using existing results from environment\n")
+  } else if (exists("final_table") && is.data.table(final_table)) {
     results_table <- copy(final_table)
     cat("Using existing final_table from environment\n")
   } else {
@@ -136,7 +143,7 @@ generate_report <- function(
       results_table <- readRDS(results_file)
       cat("Loaded results from Analysis.rds\n")
     } else {
-      stop("Cannot find final_table in environment or Analysis.rds file")
+      stop("Cannot find results/final_table in environment or Analysis.rds file")
     }
   }
   
@@ -239,10 +246,10 @@ generate_report <- function(
     if (!is.null(scenario_filter) && "scenario" %in% names(dt)) {
       if (scenario_filter == "no waivers") {
         # Keep "no waivers" and "all" scenarios
-        dt <- dt[tolower(scenario) %in% c("no waivers", "all", "no waiver", "")]
+        dt <- dt[tolower(scenario) %in% c("no waivers", "all")]
       } else if (scenario_filter == "waivers") {
         # Keep "waivers" and "all" scenarios
-        dt <- dt[tolower(scenario) %in% c("waivers", "waiver", "all", "")]
+        dt <- dt[tolower(scenario) %in% c("waivers", "all")]
       }
     }
     
@@ -304,16 +311,7 @@ generate_report <- function(
     tbl_class <- if (compact) ' class="compact"' else ''
     paste0('<div class="page-break"></div><h2>', title, '</h2><table', tbl_class, '><thead><tr>', hdr, '</tr></thead><tbody>', paste(rows, collapse = ""), '</tbody></table>')
   }
-  
-  # Filter RROP to only show totals and summary rows (no longer used but kept for reference)
-  filter_rrop_summary <- function(dt) {
-    if (is.null(dt) || nrow(dt) == 0) return(dt)
-    metric_col <- names(dt)[1]
-    keep_patterns <- c("Total.*Underpayment", "Gross", "Net", "Employees", "Pay Periods", "RROP.*\\$")
-    keep <- sapply(dt[[metric_col]], function(m) any(sapply(keep_patterns, function(p) grepl(p, m, ignore.case = TRUE))))
-    dt[keep, ]
-  }
-  
+
   # Build HTML
   rpt <- if (exists("case_name") && !is.null(case_name)) case_name else "Report"
   cno <- if (exists("case_no") && !is.null(case_no) && nzchar(case_no)) paste0(" (", case_no, ")") else ""
@@ -340,15 +338,15 @@ generate_report <- function(
 body { font-family: Arial, sans-serif; font-size: 10pt; }
 h1 { color: #2c3e50; border-bottom: 3px solid #50C878; padding-bottom: 8px; }
 h2 { color: #34495e; margin-top: 20px; border-bottom: 2px solid #50C878; padding-bottom: 4px; }
-table { border-collapse: collapse; margin: 10px 0; width: 100%; font-size: 9pt; }
+table { border-collapse: collapse; margin: 10px 0; width: 100%; font-size: 8pt; }
 thead { display: table-header-group; }
-th { background: linear-gradient(to bottom, #5CDB95, #3CB371); color: white; padding: 6px; text-align: center; font-weight: bold; }
+th { background: linear-gradient(to bottom, #5CDB95, #3CB371); color: white; padding: 3px 5px; text-align: center; font-weight: bold; }
 th:first-child { text-align: left; }
-td { padding: 5px; border-bottom: 1px solid #ddd; text-align: center; }
+td { padding: 2px 5px; border-bottom: 1px solid #ddd; text-align: center; line-height: 1.2; }
 td:first-child { text-align: left; }
 tr:nth-child(even) { background: #f8f8f8; }
 .page-break { page-break-before: always; }
-.case-tbl { width: 60%; }
+.case-tbl { width: 60%; font-size: 9pt; }
 .case-tbl td { text-align: left; padding: 6px 10px; }
 .case-tbl td:first-child { font-weight: bold; background: linear-gradient(to right, #e8f5e9, #f5f5f5); width: 40%; }
 table.compact th { padding: 3px 5px; font-size: 8pt; }
@@ -458,34 +456,31 @@ table.compact td { padding: 2px 5px; font-size: 8pt; line-height: 1.2; }
     damages_part1 <- c(damages_summary, damages_principal, damages_interest, damages_subtotal)
     # Part 2: Wage Statement Penalties, Waiting Time Penalties, Grand Total (new page)
     damages_part2 <- c(damages_wsv, damages_wt, damages_grand_total)
-    
-    # No Waivers
-    progress("Class Damages (No Waivers)")
-    nw_part1 <- get_group_data(damages_part1, "no waivers")
-    nw_part2 <- get_group_data(damages_part2, "no waivers")
-    if (nrow(nw_part1) > 0) {
-      html <- paste0(html, add_tbl(nw_part1, "Class Damages (No Waivers)", hide_years = TRUE))
+
+    # Loop through scenarios to avoid duplication
+    for (scenario in c("no waivers", "waivers")) {
+      scenario_label <- tools::toTitleCase(scenario)
+      progress(paste0("Class Damages (", scenario_label, ")"))
+
+      part1 <- get_group_data(damages_part1, scenario)
+      part2 <- get_group_data(damages_part2, scenario)
+
+      if (nrow(part1) > 0) {
+        html <- paste0(html, add_tbl(part1, paste0("Class Damages (", scenario_label, ")"), hide_years = TRUE))
+      }
+      if (nrow(part2) > 0) {
+        html <- paste0(html, add_tbl(part2, paste0("Class Damages (", scenario_label, ") - Penalties"), hide_years = TRUE))
+      }
     }
-    if (nrow(nw_part2) > 0) {
-      html <- paste0(html, add_tbl(nw_part2, "Class Damages (No Waivers) - Penalties", hide_years = TRUE))
+
+    # Breakdown by claim type (loop through scenarios for meal and rest)
+    for (scenario in c("no waivers", "waivers")) {
+      scenario_label <- tools::toTitleCase(scenario)
+      html <- paste0(html, add_section(damages_meal, paste0("Damages - Meal Premiums (", scenario_label, ")"), scenario, hide_years = TRUE))
+      html <- paste0(html, add_section(damages_rest, paste0("Damages - Rest Premiums (", scenario_label, ")"), scenario, hide_years = TRUE))
     }
-    
-    # Waivers
-    progress("Class Damages (Waivers)")
-    w_part1 <- get_group_data(damages_part1, "waivers")
-    w_part2 <- get_group_data(damages_part2, "waivers")
-    if (nrow(w_part1) > 0) {
-      html <- paste0(html, add_tbl(w_part1, "Class Damages (Waivers)", hide_years = TRUE))
-    }
-    if (nrow(w_part2) > 0) {
-      html <- paste0(html, add_tbl(w_part2, "Class Damages (Waivers) - Penalties", hide_years = TRUE))
-    }
-    
-    # Breakdown by claim type
-    html <- paste0(html, add_section(damages_meal, "Damages - Meal Premiums (No Waivers)", "no waivers", hide_years = TRUE))
-    html <- paste0(html, add_section(damages_meal, "Damages - Meal Premiums (Waivers)", "waivers", hide_years = TRUE))
-    html <- paste0(html, add_section(damages_rest, "Damages - Rest Premiums (No Waivers)", "no waivers", hide_years = TRUE))
-    html <- paste0(html, add_section(damages_rest, "Damages - Rest Premiums (Waivers)", "waivers", hide_years = TRUE))
+
+    # Non-scenario-specific damages
     html <- paste0(html, add_section(damages_rrop, "Damages - Regular Rate of Pay", hide_years = TRUE))
     html <- paste0(html, add_section(damages_otc, "Damages - Off-the-Clock", hide_years = TRUE))
     html <- paste0(html, add_section(damages_expenses, "Damages - Unreimbursed Expenses", hide_years = TRUE))
