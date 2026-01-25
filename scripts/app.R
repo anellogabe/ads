@@ -107,12 +107,8 @@ if (!exists("paths")) {
   message("✓ Case paths already set (clean_data.R was run)")
 }
 
-# Canonical dirs (case folders)
-DATA_DIR    <- paths$OUT_DIR           # dashboard reads analysis outputs from /output
-SCRIPTS_DIR <- file.path(paths$CASE_DIR, "scripts")  # case scripts live here
-
-message("DATA_DIR   = ", normalizePath(DATA_DIR, winslash = "/", mustWork = FALSE))
-message("SCRIPTS_DIR= ", normalizePath(SCRIPTS_DIR, winslash = "/", mustWork = FALSE))
+message("Output dir : ", normalizePath(paths$OUT_DIR, winslash = "/", mustWork = FALSE))
+message("Scripts dir: ", normalizePath(file.path(paths$CASE_DIR, "scripts"), winslash = "/", mustWork = FALSE))
 
 # ---- DASHBOARD INPUT FILE NAMES ----
 # These must match what analysis.R actually writes to OUT_DIR
@@ -176,12 +172,12 @@ load_data <- function() {
     }
   }
   
-  shift_data1 <- read_if_exists(DATA_DIR, SHIFT_DATA_FILE)
-  pay1 <- read_if_exists(DATA_DIR, PAY_DATA_FILE)
-  time1 <- read_if_exists(DATA_DIR, TIME_DATA_FILE)
-  class1 <- read_if_exists(PROCESSED_DIR, CLASS_DATA_FILE)
-  pp_data1 <- read_if_exists(DATA_DIR, PP_DATA_FILE)
-  ee_data1 <- read_if_exists(DATA_DIR, EE_DATA_FILE)
+  shift_data1 <- read_if_exists(paths$OUT_DIR, SHIFT_DATA_FILE)
+  pay1 <- read_if_exists(paths$OUT_DIR, PAY_DATA_FILE)
+  time1 <- read_if_exists(paths$OUT_DIR, TIME_DATA_FILE)
+  class1 <- read_if_exists(paths$PROCESSED_DIR, CLASS_DATA_FILE)
+  pp_data1 <- read_if_exists(paths$OUT_DIR, PP_DATA_FILE)
+  ee_data1 <- read_if_exists(paths$OUT_DIR, EE_DATA_FILE)
   
   # Set primary keys for fast filtering
   if (!is.null(shift_data1) && all(c("Date", "ID") %in% names(shift_data1))) {
@@ -276,7 +272,7 @@ load_metric_spec <- function() {
 }
 load_analysis_table <- function(filename) {
   
-  path <- file.path(DATA_DIR, filename)
+  path <- file.path(paths$OUT_DIR, filename)
   if (!file.exists(path)) return(NULL)
   
   # Use readRDS for .rds files, fread for .csv
@@ -3584,7 +3580,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         
         # Source generate_pdf.R if not already loaded
         if (!exists("generate_report")) {
-          source(file.path(SCRIPTS_DIR, "generate_pdf.R"))
+          source(file.path(paths$CASE_DIR, "scripts", "generate_pdf.R"))
         }
         
         
