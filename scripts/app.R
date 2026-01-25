@@ -1,7 +1,7 @@
 # ==============================================================================
 # PROPRIETARY AND CONFIDENTIAL
 # Anello Data Solutions LLC
-#
+# 
 # This file contains proprietary information and trade secrets.
 # Unauthorized copying, distribution, or use is strictly prohibited.
 # For authorized use by ANELLO DATA SOLUTIONS LLC contracted analysts only.
@@ -60,11 +60,6 @@ if (!nzchar(Sys.getenv("CHROME", ""))) {
     }
   }
 }
-
-# ---- LOAD ADS FUNCTIONS ----
-
-# Check if environment is already set up (from clean_data.R)
-if (!exists("paths") || !exists("init_case_paths")) {
 
   message("Setting up ADS environment...")
 
@@ -1022,6 +1017,22 @@ filter_sidebar <- function(data_list) {
     
     hr(),
     
+    hr(),
+    
+    checkboxInput("show_extrapolation", "Show Extrapolated Values", value = FALSE),
+    
+    hr(),
+    
+    actionButton("apply_filters", "Apply Filters", class = "btn-primary w-100"),
+    actionButton("reset_filters", "Reset All Filters", class = "btn-outline-secondary w-100 mt-2"),
+    
+    hr(),
+    
+    actionButton("apply_filters", "Apply Filters", class = "btn-primary w-100"),
+    actionButton("reset_filters", "Reset All Filters", class = "btn-outline-secondary w-100 mt-2"),
+    
+    hr(),
+    
     # Toggle extrapolation columns
     checkboxInput("toggle_extrap_cols", "Show Extrapolated Values", value = TRUE),
     
@@ -1425,7 +1436,7 @@ ui <- function(data_list, metric_spec) {
         withSpinner(DTOutput("table_damages_class_waivers"), type = 6, color = "#2c3e50")
       )
     ),
-
+    
     # =======================================================================
     # PAGA DAMAGES
     # =======================================================================
@@ -1448,7 +1459,7 @@ ui <- function(data_list, metric_spec) {
         withSpinner(DTOutput("table_paga_waivers"), type = 6, color = "#2c3e50")
       )
     ),
-    
+
     # =======================================================================
     # EMPLOYEE-PERIOD EXAMPLE TAB
     # =======================================================================
@@ -1700,14 +1711,14 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         filters$Subclass <- input$subclass_filter
         filters$Pay_Subclass <- input$subclass_filter
       }
-
+      
       # Key Groups filter
       if (length(input$key_groups_filter) > 0) {
         filters$Key_Gps <- input$key_groups_filter
         filters$Pay_Key_Gps <- input$key_groups_filter
         filters$Class_Key_Gps <- input$key_groups_filter
       }
-
+      
       current_filters(filters)
     })
     
@@ -2229,16 +2240,16 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       data <- filtered_data()
       format(uniqueN(data$shift_data1$ID_Week_End), big.mark = ",")
     })
-
+    
     output$employee_coverage_plot <- renderPlotly({
       data <- filtered_data()
-
+      
       # Aggregate by pay period for smooth line graph
       time_emp <- data$shift_data1[, .(
         Employees = uniqueN(ID),
         Type = "Time Data"
       ), by = .(Period = Period_End)]
-
+      
       pay_date_col <- if ("Pay_Period_End" %in% names(data$pay1)) {
         "Pay_Period_End"
       } else if ("Pay_Date" %in% names(data$pay1)) {
@@ -2246,7 +2257,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       } else {
         NULL
       }
-
+      
       pay_emp <- if (!is.null(pay_date_col)) {
         data$pay1[, .(
           Employees = uniqueN(Pay_ID),
@@ -3570,13 +3581,13 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       contentType = "application/pdf",
       content = function(file) {
         message("PDF export starting via generate_pdf.R...")
-
+        
         # Source generate_pdf.R if not already loaded
         if (!exists("generate_report")) {
           source(file.path(SCRIPTS_DIR, "generate_pdf.R"))
         }
-
-
+        
+        
         # Get data needed by generate_report() - it checks environment variables
         data <- filtered_data()
         shift_data1 <- data$shift_data1  # Make available in environment
@@ -3584,8 +3595,8 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         class1 <- data$class1           # Make available in environment
         results <- pipeline_results()    # Make available as "results"
         message("Data loaded for generate_report()")
-
-
+        
+        
         # Call standalone PDF generator
         generate_report(
           output_file = file,
@@ -3595,7 +3606,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
           include_data_comparison = isTRUE(input$pdf_include_data_comparison),
           verbose = FALSE  # Don't show progress bar in Shiny
         )
-
+        
         message("PDF generation complete")
         
       }

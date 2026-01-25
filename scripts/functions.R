@@ -1,10 +1,10 @@
 # ==============================================================================
 # PROPRIETARY AND CONFIDENTIAL
-# Copyright (c) 2025 Anello Data Solutions LLC
-#
+# Anello Data Solutions LLC
+# 
 # This file contains proprietary information and trade secrets.
 # Unauthorized copying, distribution, or use is strictly prohibited.
-# For authorized use by designated analysts only under NDA.
+# For authorized use by ANELLO DATA SOLUTIONS LLC contracted analysts only.
 # ==============================================================================
 
 # ADS ENGINE: PATH HELPERS ------------------------------------------------------------------------------

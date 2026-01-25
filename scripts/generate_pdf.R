@@ -1,10 +1,10 @@
 # ==============================================================================
 # PROPRIETARY AND CONFIDENTIAL
-# Copyright (c) 2025 Anello Data Solutions LLC
-#
+# Anello Data Solutions LLC
+# 
 # This file contains proprietary information and trade secrets.
 # Unauthorized copying, distribution, or use is strictly prohibited.
-# For authorized use by designated analysts only under NDA.
+# For authorized use by ANELLO DATA SOLUTIONS LLC contracted analysts only.
 # ==============================================================================
 
 # ============================================================================
@@ -320,7 +320,7 @@ generate_report <- function(
     tbl_class <- if (compact) ' class="compact"' else ''
     paste0('<div class="page-break"></div><h2>', title, '</h2><table', tbl_class, '><thead><tr>', hdr, '</tr></thead><tbody>', paste(rows, collapse = ""), '</tbody></table>')
   }
-
+  
   # Build HTML
   rpt <- if (exists("case_name") && !is.null(case_name)) case_name else "Report"
   cno <- if (exists("case_no") && !is.null(case_no) && nzchar(case_no)) paste0(" (", case_no, ")") else ""
@@ -465,15 +465,15 @@ table.compact td { padding: 2px 5px; font-size: 8pt; line-height: 1.2; }
     damages_part1 <- c(damages_summary, damages_principal, damages_interest, damages_subtotal)
     # Part 2: Wage Statement Penalties, Waiting Time Penalties, Grand Total (new page)
     damages_part2 <- c(damages_wsv, damages_wt, damages_grand_total)
-
+    
     # Loop through scenarios to avoid duplication
     for (scenario in c("no waivers", "waivers")) {
       scenario_label <- tools::toTitleCase(scenario)
       progress(paste0("Class Damages (", scenario_label, ")"))
-
+      
       part1 <- get_group_data(damages_part1, scenario)
       part2 <- get_group_data(damages_part2, scenario)
-
+      
       if (nrow(part1) > 0) {
         html <- paste0(html, add_tbl(part1, paste0("Class Damages (", scenario_label, ")"), hide_years = TRUE))
       }
@@ -481,14 +481,14 @@ table.compact td { padding: 2px 5px; font-size: 8pt; line-height: 1.2; }
         html <- paste0(html, add_tbl(part2, paste0("Class Damages (", scenario_label, ") - Penalties"), hide_years = TRUE))
       }
     }
-
+    
     # Breakdown by claim type (loop through scenarios for meal and rest)
     for (scenario in c("no waivers", "waivers")) {
       scenario_label <- tools::toTitleCase(scenario)
       html <- paste0(html, add_section(damages_meal, paste0("Damages - Meal Premiums (", scenario_label, ")"), scenario, hide_years = TRUE))
       html <- paste0(html, add_section(damages_rest, paste0("Damages - Rest Premiums (", scenario_label, ")"), scenario, hide_years = TRUE))
     }
-
+    
     # Non-scenario-specific damages
     html <- paste0(html, add_section(damages_rrop, "Damages - Regular Rate of Pay", hide_years = TRUE))
     html <- paste0(html, add_section(damages_otc, "Damages - Off-the-Clock", hide_years = TRUE))
