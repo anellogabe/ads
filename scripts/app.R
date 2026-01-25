@@ -565,13 +565,13 @@ pipeline_to_damages_format <- function(pipeline_results, section_definitions, sc
 # Damages-specific calculation (no year columns, only All Data and Key Groups)
 calculate_damages_metrics <- function(data_list, spec, group_names, filters = list(), extrapolation_factor = 1.0) {
   if (length(group_names) == 0) return(data.table())
-  
+
   all_results <- lapply(group_names, function(group_name) {
     group_spec <- spec[metric_group == group_name]
     if (nrow(group_spec) == 0) return(NULL)
-    
+
     first_source <- group_spec$source[1]
-    
+
     # Determine key groups based on source
     if (grepl("pay", first_source, ignore.case = TRUE)) {
       key_groups <- data_list$pay_key_groups
@@ -788,10 +788,10 @@ create_dt_table <- function(dt, metric_col = "Metric") {
   if (is.null(dt) || nrow(dt) == 0) {
     return(datatable(data.table(Message = "No data available"), rownames = FALSE, options = list(dom = 't')))
   }
-  
+
   # Replace underscores with spaces in column names
   formatted_names <- gsub("_", " ", names(dt))
-  
+
   # Determine which columns are metrics vs values
   metric_cols_idx <- which(names(dt) == metric_col) - 1  # 0-indexed for JS
   value_cols_idx <- setdiff(seq_along(names(dt)) - 1, metric_cols_idx)
@@ -977,10 +977,10 @@ filter_sidebar <- function(data_list) {
     checkboxInput("show_extrapolation", "Show Extrapolated Values", value = FALSE),
     
     hr(),
-    
+
     actionButton("apply_filters", "Apply Filters", class = "btn-primary w-100"),
     actionButton("reset_filters", "Reset All Filters", class = "btn-outline-secondary w-100 mt-2"),
-    
+
     hr(),
     
     actionButton("apply_filters", "Apply Filters", class = "btn-primary w-100"),
@@ -1008,13 +1008,13 @@ filter_sidebar <- function(data_list) {
     ),
     
     hr(),
-    
+
     # Display Settings
     h5("Display Settings"),
     selectInput("font_size", "Font Size",
                 choices = c("Small" = "12px", "Medium" = "14px", "Large" = "16px", "X-Large" = "18px"),
                 selected = "14px"),
-    
+
     hr(),
     
     actionButton("open_pdf_modal", "Generate PDF Report",
@@ -1298,7 +1298,7 @@ ui <- function(data_list, metric_spec) {
         "Meal Analysis",
         withSpinner(DTOutput("table_meal_consolidated"), type = 6, color = "#2c3e50")
       ),
-      
+
       nav_panel(
         "Meal Violations (no waivers)",
         navset_card_underline(
@@ -1316,7 +1316,7 @@ ui <- function(data_list, metric_spec) {
           )
         )
       ),
-      
+
       nav_panel(
         "Meal Violations (waivers)",
         navset_card_underline(
@@ -1334,7 +1334,7 @@ ui <- function(data_list, metric_spec) {
           )
         )
       ),
-      
+
       nav_panel(
         "Rest Periods",
         withSpinner(DTOutput("table_rest_consolidated"), type = 6, color = "#2c3e50")
@@ -1391,7 +1391,7 @@ ui <- function(data_list, metric_spec) {
         withSpinner(DTOutput("table_damages_class_waivers"), type = 6, color = "#2c3e50")
       )
     ),
-    
+
     # =======================================================================
     # PAGA DAMAGES
     # =======================================================================
@@ -1890,7 +1890,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       updateCheckboxInput(session, "pdf_include_data_comparison", value = TRUE)
       updateCheckboxInput(session, "pdf_include_extrap", value = FALSE)
     })
-    
+
     # PDF Deselect All button
     observeEvent(input$pdf_deselect_all, {
       updateCheckboxGroupInput(session, "pdf_sections_col1", selected = character(0))
@@ -2311,61 +2311,61 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       display <- pipeline_to_display_format(results, time_shift_groups, include_years = TRUE)
       create_dt_table(display)
     })
-    
+
     output$table_rounding_consolidated <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_rounding_groups, include_years = TRUE)
       create_dt_table(display)
     })
-    
+
     output$table_meal_consolidated <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_meal_analysis, include_years = TRUE)
       create_dt_table(display)
     })
-    
+
     output$table_meal_5hr_consolidated <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_meal_violations_5_summary, include_years = TRUE)
       create_dt_table(display)
     })
-    
+
     output$table_meal_5hr_short_details <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_meal_violations_5_short, include_years = TRUE)
       create_dt_table(display)
     })
-    
+
     output$table_meal_5hr_late_details <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_meal_violations_5_late, include_years = TRUE)
       create_dt_table(display)
     })
-    
+
     output$table_meal_6hr_consolidated <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_meal_violations_6_summary, include_years = TRUE)
       create_dt_table(display)
     })
-    
+
     output$table_meal_6hr_short_details <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_meal_violations_6_short, include_years = TRUE)
       create_dt_table(display)
     })
-    
+
     output$table_meal_6hr_late_details <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_meal_violations_6_late, include_years = TRUE)
       create_dt_table(display)
     })
-    
+
     output$table_rest_consolidated <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_rest, include_years = TRUE)
       create_dt_table(display)
     })
-    
+
     output$table_pay_consolidated <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, pay_summary_groups, include_years = TRUE)
@@ -3973,6 +3973,7 @@ tr:nth-child(even) { background: #f8f8f8; }
         unlink(main_pdf)
       }
     )
+  }
 }
 
 # ---- RUN APP ----
