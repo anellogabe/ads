@@ -61,31 +61,51 @@ if (!nzchar(Sys.getenv("CHROME", ""))) {
   }
 }
 
-# ---- CONFIGURATION - engine repo + case paths ----
+  message("Setting up ADS environment...")
 
-# ADS engine repo (required to source helpers)
-ADS_REPO <- Sys.getenv("ADS_REPO", unset = "")
-if (!nzchar(ADS_REPO)) stop("ADS_REPO env var not set (use setx ADS_REPO on Windows).")
-ADS_REPO <- normalizePath(ADS_REPO, winslash = "/", mustWork = TRUE)
+  # Source ADS functions from shared OneDrive location
+  ADS_SHARED <- Sys.getenv("ADS_SHARED",
+    unset = "C:/Users/Gabe/OneDrive - anellodatasolutions.com/Documents/0. ADS/ADS_Shared")
 
-FN_PATH <- file.path(ADS_REPO, "scripts", "functions.R")
-if (!file.exists(FN_PATH)) stop("functions.R not found at: ", FN_PATH)
-source(FN_PATH, local = FALSE)
-message("✓ functions.R loaded")
-
-# Case directory setup
-# When app.R is run from scripts folder (via runApp('path/to/scripts')),
-# we need to go up one level to get the true case directory
-case_dir <- Sys.getenv("ADS_CASE_DIR", unset = "")
-if (!nzchar(case_dir)) {
-  case_dir <- getwd()
-  # If we're in a 'scripts' folder, use parent as case directory
-  if (basename(case_dir) == "scripts") {
-    case_dir <- dirname(case_dir)
+  if (!dir.exists(ADS_SHARED)) {
+    stop("\n\nERROR: Cannot find ADS_Shared folder at:\n  ", ADS_SHARED,
+         "\n\nPlease either:",
+         "\n  1. Update the ADS_SHARED path above (line 72) to match your OneDrive location",
+         "\n  2. Set the ADS_SHARED environment variable",
+         "\n  3. Run clean_data.R first to set up environment\n\n")
   }
+
+  FN_PATH <- file.path(ADS_SHARED, "scripts", "functions.R")
+  if (!file.exists(FN_PATH)) stop("functions.R not found at: ", FN_PATH)
+
+  source(FN_PATH, local = FALSE, chdir = FALSE)
+  message("✓ functions.R loaded from ADS_Shared")
+
+} else {
+  message("✓ ADS environment already initialized (clean_data.R was run)")
 }
 
-paths <- init_case_paths(case_dir = case_dir, set_globals = TRUE)
+# ---- CASE DIRECTORY SETUP ----
+
+# Check if paths already set up (from clean_data.R)
+if (!exists("paths")) {
+  # Set up case directory
+  # When app.R is run from scripts folder (via runApp('path/to/scripts')),
+  # we need to go up one level to get the true case directory
+  case_dir <- Sys.getenv("ADS_CASE_DIR", unset = "")
+  if (!nzchar(case_dir)) {
+    case_dir <- getwd()
+    # If we're in a 'scripts' folder, use parent as case directory
+    if (basename(case_dir) == "scripts") {
+      case_dir <- dirname(case_dir)
+    }
+  }
+
+  paths <- init_case_paths(case_dir = case_dir, set_globals = TRUE)
+  message("✓ Case paths initialized")
+} else {
+  message("✓ Case paths already set (clean_data.R was run)")
+}
 
 # Canonical dirs (case folders)
 DATA_DIR    <- paths$OUT_DIR           # dashboard reads analysis outputs from /output
@@ -574,13 +594,13 @@ pipeline_to_damages_format <- function(pipeline_results, section_definitions, sc
 # Damages-specific calculation (no year columns, only All Data and Key Groups)
 calculate_damages_metrics <- function(data_list, spec, group_names, filters = list(), extrapolation_factor = 1.0) {
   if (length(group_names) == 0) return(data.table())
-  
+
   all_results <- lapply(group_names, function(group_name) {
     group_spec <- spec[metric_group == group_name]
     if (nrow(group_spec) == 0) return(NULL)
-    
+
     first_source <- group_spec$source[1]
-    
+
     # Determine key groups based on source
     if (grepl("pay", first_source, ignore.case = TRUE)) {
       key_groups <- data_list$pay_key_groups
@@ -797,10 +817,10 @@ create_dt_table <- function(dt, metric_col = "Metric") {
   if (is.null(dt) || nrow(dt) == 0) {
     return(datatable(data.table(Message = "No data available"), rownames = FALSE, options = list(dom = 't')))
   }
-  
+
   # Replace underscores with spaces in column names
   formatted_names <- gsub("_", " ", names(dt))
-  
+
   # Determine which columns are metrics vs values
   metric_cols_idx <- which(names(dt) == metric_col) - 1  # 0-indexed for JS
   value_cols_idx <- setdiff(seq_along(names(dt)) - 1, metric_cols_idx)
@@ -969,11 +989,27 @@ filter_sidebar <- function(data_list) {
       multiple = TRUE,
       options = list(placeholder = "All key groups...")
     ),
+
+    hr(),
+    
+    checkboxInput("show_extrapolation", "Show Extrapolated Values", value = FALSE),
+    
+    hr(),
+    
+    actionButton("apply_filters", "Apply Filters", class = "btn-primary w-100"),
+    actionButton("reset_filters", "Reset All Filters", class = "btn-outline-secondary w-100 mt-2"),
+    
+    hr(),
     
     hr(),
     
     checkboxInput("show_extrapolation", "Show Extrapolated Values", value = FALSE),
     
+    hr(),
+
+    actionButton("apply_filters", "Apply Filters", class = "btn-primary w-100"),
+    actionButton("reset_filters", "Reset All Filters", class = "btn-outline-secondary w-100 mt-2"),
+
     hr(),
     
     actionButton("apply_filters", "Apply Filters", class = "btn-primary w-100"),
@@ -1017,13 +1053,13 @@ filter_sidebar <- function(data_list) {
     ),
     
     hr(),
-    
+
     # Display Settings
     h5("Display Settings"),
     selectInput("font_size", "Font Size",
                 choices = c("Small" = "12px", "Medium" = "14px", "Large" = "16px", "X-Large" = "18px"),
                 selected = "14px"),
-    
+
     hr(),
     
     actionButton("open_pdf_modal", "Generate PDF Report",
@@ -1307,7 +1343,7 @@ ui <- function(data_list, metric_spec) {
         "Meal Analysis",
         withSpinner(DTOutput("table_meal_consolidated"), type = 6, color = "#2c3e50")
       ),
-      
+
       nav_panel(
         "Meal Violations (no waivers)",
         navset_card_underline(
@@ -1325,7 +1361,7 @@ ui <- function(data_list, metric_spec) {
           )
         )
       ),
-      
+
       nav_panel(
         "Meal Violations (waivers)",
         navset_card_underline(
@@ -1343,7 +1379,7 @@ ui <- function(data_list, metric_spec) {
           )
         )
       ),
-      
+
       nav_panel(
         "Rest Periods",
         withSpinner(DTOutput("table_rest_consolidated"), type = 6, color = "#2c3e50")
@@ -1423,7 +1459,7 @@ ui <- function(data_list, metric_spec) {
         withSpinner(DTOutput("table_paga_waivers"), type = 6, color = "#2c3e50")
       )
     ),
-    
+
     # =======================================================================
     # EMPLOYEE-PERIOD EXAMPLE TAB
     # =======================================================================
@@ -1899,7 +1935,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       updateCheckboxInput(session, "pdf_include_data_comparison", value = TRUE)
       updateCheckboxInput(session, "pdf_include_extrap", value = FALSE)
     })
-    
+
     # PDF Deselect All button
     observeEvent(input$pdf_deselect_all, {
       updateCheckboxGroupInput(session, "pdf_sections_col1", selected = character(0))
@@ -2320,61 +2356,61 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       display <- pipeline_to_display_format(results, time_shift_groups, include_years = TRUE)
       create_dt_table(display)
     })
-    
+
     output$table_rounding_consolidated <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_rounding_groups, include_years = TRUE)
       create_dt_table(display)
     })
-    
+
     output$table_meal_consolidated <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_meal_analysis, include_years = TRUE)
       create_dt_table(display)
     })
-    
+
     output$table_meal_5hr_consolidated <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_meal_violations_5_summary, include_years = TRUE)
       create_dt_table(display)
     })
-    
+
     output$table_meal_5hr_short_details <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_meal_violations_5_short, include_years = TRUE)
       create_dt_table(display)
     })
-    
+
     output$table_meal_5hr_late_details <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_meal_violations_5_late, include_years = TRUE)
       create_dt_table(display)
     })
-    
+
     output$table_meal_6hr_consolidated <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_meal_violations_6_summary, include_years = TRUE)
       create_dt_table(display)
     })
-    
+
     output$table_meal_6hr_short_details <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_meal_violations_6_short, include_years = TRUE)
       create_dt_table(display)
     })
-    
+
     output$table_meal_6hr_late_details <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_meal_violations_6_late, include_years = TRUE)
       create_dt_table(display)
     })
-    
+
     output$table_rest_consolidated <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, time_rest, include_years = TRUE)
       create_dt_table(display)
     })
-    
+
     output$table_pay_consolidated <- renderDT({
       results <- pipeline_results()
       display <- pipeline_to_display_format(results, pay_summary_groups, include_years = TRUE)
