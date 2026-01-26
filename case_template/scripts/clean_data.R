@@ -111,6 +111,43 @@ wt_end_date               <- mediation_date
 wsv_start_date            <- (complaint_date %m-% years(1)) # Typically one year back from original Complaint. 
 wsv_end_date              <- mediation_date
 
+# --- Analysis.R parameters ---
+
+# regular rate analysis de minimis under/overpayment buffer (< buffer forced to zero)
+rrop_buffer <- 0.05 # 5 cents is default
+
+# Shift duration / shift-level clock rounding analysis threshold
+rounding_hrs_cutoff <- 0.25 # 0.25 hrs is default (values within threshold assumed acceptable, normal aberrations)
+
+# Define unpaid overtime / double time analysis / damages model buffers 
+min_ot_buffer <- 0.25 # 0.25 hrs is default min (values within threshold assumed acceptable, normal aberrations)
+max_ot_buffer <- 20   # 20 hrs is default (over two week pay period normally)
+
+# Interest (for damages) parameters
+annual_interest_rate      <- 0.07  # 7% prejudgment interest rate default (10% occasionally argued here)
+monthly_interest_rate     <- annual_interest_rate / 12 # "yr/12 mos" default due to most rates reported as annual rates
+interest_thru_date        <- mediation_date # defaults to defined "mediation" date
+
+# Wage statement penalties settings
+wsv_initial_pp_penalty     <- 50   # $50 initial pay period penalty amount default
+wsv_subsequent_pp_penalty  <- 100  # $100 subsequent pay period penalty amount default
+wsv_cap                    <- 4000 # $4,000 cap per employee default
+
+# Waiting time penalties settings
+wt_active_days_threshold <- 30     # defaults to 30 days of waiting time penalties
+wt_use_rrop <- TRUE                # default == TRUE (FALSE uses final_Base_Rate instead of RROP)
+
+# PAGA penalties settings
+initial_pp_penalty        <- 100   # $100 default (covers all penalty types other than below)
+subsequent_pp_penalty     <- 100   # $100 default (covers all penalty types other than below)
+
+initial_pp_penalty_226    <- 250   # $250 default
+subsequent_pp_penalty_226 <- 250   # $250 default
+
+initial_pp_penalty_558    <- 100   # $100 default
+subsequent_pp_penalty_558 <- 100   # $100 default
+
+penalty_1174 <- 500                # $500 default
 
 
 # ----- TIME DATA:  Load data -------------------------------

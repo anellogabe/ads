@@ -756,7 +756,10 @@ pay1[, rrop_any_underpayment := as.integer(Gross_rrop_dmgs > 0)]
 pay1[, rrop_net_underpayment := as.integer(Net_rrop_dmgs > 0)]
 
 
-# ----- TIME DATA:               Key identifiers & workweeks --------
+# ----- TIME DATA:               Flag time off weeks, then filter out non work hrs records --------
+
+# Sort by ID and Date
+setorder(time1, ID, Date)
 
 time1[, ID_Date := paste(ID, Date, sep = "_")]
 
@@ -778,38 +781,12 @@ time1[, Week_End_Day := weekdays(Week_End)]
 
 time1[, ID_Week_End := paste(ID, Week_End, sep = "-")]
 
-
-# ----- TIME DATA:               Flag time off weeks, then filter out non work hrs records --------
-
-# Sort by ID and Date
-setorder(time1, ID, Date)
-
-# Week end day mapping for floor_date() and ceiling_date()
-# week_end = 1  ->  Sunday
-# week_end = 2  ->  Monday
-# week_end = 3  ->  Tuesday
-# week_end = 4  ->  Wednesday
-# week_end = 5  ->  Thursday
-# week_end = 6  ->  Friday
-# week_end = 7  ->  Saturday
-workweek_value = 5
-
-setDT(time1)
-
-# Add week ending date ADJUST AS NEEDED BASED ON THE PAY DATA
-time1[, Week_End := floor_date(Date, "week", week_start = workweek_value) + days(6)]
-
-# Add day of week name to verify
-time1[, Week_End_Day := weekdays(Week_End)]
-
-time1[, ID_Week_End := paste(ID, Week_End, sep = "-")]
-
 # Flag weeks with time off, then remove time off records
 time1[, wk_time_off := fifelse(any(Code == "PTO"), TRUE,FALSE), by = "ID_Week_End"]
 
 # Filter out time off rows
 nrow(time1) #_______
-time1 = time1[Code != "PTO"]
+time1 = time1[Code != "PTO"] # Adjust as needed (NA if none or notate out)
 nrow(time1) #_______
 
 
