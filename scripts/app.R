@@ -61,7 +61,11 @@ if (!nzchar(Sys.getenv("CHROME", ""))) {
   }
 }
 
-message("Setting up ADS environment...")
+# ---- ADS ENVIRONMENT SETUP ----
+
+# Check if ADS functions already loaded (from clean_data.R)
+if (!exists("init_case_paths")) {
+  message("Setting up ADS environment...")
 
 # Source ADS functions from shared OneDrive location
 ADS_SHARED <- Sys.getenv("ADS_SHARED",
