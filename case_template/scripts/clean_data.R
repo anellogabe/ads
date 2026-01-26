@@ -53,7 +53,7 @@ source(file.path(ADS_SHARED, "scripts", "functions.R"), local = FALSE, chdir = F
 cat("✓ ADS functions loaded successfully\n\n")
 
 source(file.path(ADS_REPO, "scripts", "generate_pdf.R"), local = FALSE, chdir = FALSE)
-cat("✓ ADS functions loaded successfully\n\n")
+cat("✓ ADS generate PDF loaded successfully\n\n")
 
 # --- Set Case Directory ---
 
