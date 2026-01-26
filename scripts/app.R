@@ -61,26 +61,30 @@ if (!nzchar(Sys.getenv("CHROME", ""))) {
   }
 }
 
-message("Setting up ADS environment...")
+# ---- ADS ENVIRONMENT SETUP ----
 
-# Source ADS functions from shared OneDrive location
-ADS_SHARED <- Sys.getenv("ADS_SHARED",
-                         unset = "C:/Users/Gabe/OneDrive - anellodatasolutions.com/Documents/0. ADS/ADS_Shared")
-
-if (!dir.exists(ADS_SHARED)) {
-  stop("\n\nERROR: Cannot find ADS_Shared folder at:\n  ", ADS_SHARED,
-       "\n\nPlease either:",
-       "\n  1. Update the ADS_SHARED path above (line 72) to match your OneDrive location",
-       "\n  2. Set the ADS_SHARED environment variable",
-       "\n  3. Run clean_data.R first to set up environment\n\n")
-}
-
-FN_PATH <- file.path(ADS_SHARED, "scripts", "functions.R")
-if (!file.exists(FN_PATH)) stop("functions.R not found at: ", FN_PATH)
-
-source(FN_PATH, local = FALSE, chdir = FALSE)
-message("✓ functions.R loaded from ADS_Shared")
-
+# Check if ADS functions already loaded (from clean_data.R)
+if (!exists("init_case_paths")) {
+  message("Setting up ADS environment...")
+  
+  # Source ADS functions from shared OneDrive location
+  ADS_SHARED <- Sys.getenv("ADS_SHARED",
+                           unset = "C:/Users/Gabe/OneDrive - anellodatasolutions.com/Documents/0. ADS/ADS_Shared")
+  
+  if (!dir.exists(ADS_SHARED)) {
+    stop("\n\nERROR: Cannot find ADS_Shared folder at:\n  ", ADS_SHARED,
+         "\n\nPlease either:",
+         "\n  1. Update the ADS_SHARED path above (line 72) to match your OneDrive location",
+         "\n  2. Set the ADS_SHARED environment variable",
+         "\n  3. Run clean_data.R first to set up environment\n\n")
+  }
+  
+  FN_PATH <- file.path(ADS_SHARED, "scripts", "functions.R")
+  if (!file.exists(FN_PATH)) stop("functions.R not found at: ", FN_PATH)
+  
+  source(FN_PATH, local = FALSE, chdir = FALSE)
+  message("✓ functions.R loaded from ADS_Shared")
+  
 } else {
   message("✓ ADS environment already initialized (clean_data.R was run)")
 }
