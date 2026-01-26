@@ -34,7 +34,7 @@ time1  <- readRDS(time_rds)
 pay1   <- readRDS(pay_rds)
 class1 <- readRDS(class_rds)
 
-message("✓ loaded processed data from: ", PROCESSED_DIR)
+message("✓ loaded processed data from: ", paths$PROCESSED_DIR)
 
 # # Merge time1 with class1 (if needed in order to get key information from Class List)
 # time1 <- merge(
