@@ -61,38 +61,54 @@ if (!nzchar(Sys.getenv("CHROME", ""))) {
   }
 }
 
-# ---- CONFIGURATION - engine repo + case paths ----
+message("Setting up ADS environment...")
 
-# ADS engine repo (required to source helpers)
-ADS_REPO <- Sys.getenv("ADS_REPO", unset = "")
-if (!nzchar(ADS_REPO)) stop("ADS_REPO env var not set (use setx ADS_REPO on Windows).")
-ADS_REPO <- normalizePath(ADS_REPO, winslash = "/", mustWork = TRUE)
+# Source ADS functions from shared OneDrive location
+ADS_SHARED <- Sys.getenv("ADS_SHARED",
+                         unset = "C:/Users/Gabe/OneDrive - anellodatasolutions.com/Documents/0. ADS/ADS_Shared")
 
-FN_PATH <- file.path(ADS_REPO, "scripts", "functions.R")
-if (!file.exists(FN_PATH)) stop("functions.R not found at: ", FN_PATH)
-source(FN_PATH, local = FALSE)
-message("✓ functions.R loaded")
-
-# Case directory setup
-# When app.R is run from scripts folder (via runApp('path/to/scripts')),
-# we need to go up one level to get the true case directory
-case_dir <- Sys.getenv("ADS_CASE_DIR", unset = "")
-if (!nzchar(case_dir)) {
-  case_dir <- getwd()
-  # If we're in a 'scripts' folder, use parent as case directory
-  if (basename(case_dir) == "scripts") {
-    case_dir <- dirname(case_dir)
-  }
+if (!dir.exists(ADS_SHARED)) {
+  stop("\n\nERROR: Cannot find ADS_Shared folder at:\n  ", ADS_SHARED,
+       "\n\nPlease either:",
+       "\n  1. Update the ADS_SHARED path above (line 72) to match your OneDrive location",
+       "\n  2. Set the ADS_SHARED environment variable",
+       "\n  3. Run clean_data.R first to set up environment\n\n")
 }
 
-paths <- init_case_paths(case_dir = case_dir, set_globals = TRUE)
+FN_PATH <- file.path(ADS_SHARED, "scripts", "functions.R")
+if (!file.exists(FN_PATH)) stop("functions.R not found at: ", FN_PATH)
 
-# Canonical dirs (case folders)
-DATA_DIR    <- paths$OUT_DIR           # dashboard reads analysis outputs from /output
-SCRIPTS_DIR <- file.path(paths$CASE_DIR, "scripts")  # case scripts live here
+source(FN_PATH, local = FALSE, chdir = FALSE)
+message("✓ functions.R loaded from ADS_Shared")
 
-message("DATA_DIR   = ", normalizePath(DATA_DIR, winslash = "/", mustWork = FALSE))
-message("SCRIPTS_DIR= ", normalizePath(SCRIPTS_DIR, winslash = "/", mustWork = FALSE))
+} else {
+  message("✓ ADS environment already initialized (clean_data.R was run)")
+}
+
+# ---- CASE DIRECTORY SETUP ----
+
+# Check if paths already set up (from clean_data.R)
+if (!exists("paths")) {
+  # Set up case directory
+  # When app.R is run from scripts folder (via runApp('path/to/scripts')),
+  # we need to go up one level to get the true case directory
+  case_dir <- Sys.getenv("ADS_CASE_DIR", unset = "")
+  if (!nzchar(case_dir)) {
+    case_dir <- getwd()
+    # If we're in a 'scripts' folder, use parent as case directory
+    if (basename(case_dir) == "scripts") {
+      case_dir <- dirname(case_dir)
+    }
+  }
+  
+  paths <- init_case_paths(case_dir = case_dir, set_globals = TRUE)
+  message("✓ Case paths initialized")
+} else {
+  message("✓ Case paths already set (clean_data.R was run)")
+}
+
+message("Output dir : ", normalizePath(paths$OUT_DIR, winslash = "/", mustWork = FALSE))
+message("Scripts dir: ", normalizePath(file.path(paths$CASE_DIR, "scripts"), winslash = "/", mustWork = FALSE))
 
 # ---- DASHBOARD INPUT FILE NAMES ----
 # These must match what analysis.R actually writes to OUT_DIR
@@ -156,12 +172,12 @@ load_data <- function() {
     }
   }
   
-  shift_data1 <- read_if_exists(DATA_DIR, SHIFT_DATA_FILE)
-  pay1 <- read_if_exists(DATA_DIR, PAY_DATA_FILE)
-  time1 <- read_if_exists(DATA_DIR, TIME_DATA_FILE)
-  class1 <- read_if_exists(PROCESSED_DIR, CLASS_DATA_FILE)
-  pp_data1 <- read_if_exists(DATA_DIR, PP_DATA_FILE)
-  ee_data1 <- read_if_exists(DATA_DIR, EE_DATA_FILE)
+  shift_data1 <- read_if_exists(paths$OUT_DIR, SHIFT_DATA_FILE)
+  pay1 <- read_if_exists(paths$OUT_DIR, PAY_DATA_FILE)
+  time1 <- read_if_exists(paths$OUT_DIR, TIME_DATA_FILE)
+  class1 <- read_if_exists(paths$PROCESSED_DIR, CLASS_DATA_FILE)
+  pp_data1 <- read_if_exists(paths$OUT_DIR, PP_DATA_FILE)
+  ee_data1 <- read_if_exists(paths$OUT_DIR, EE_DATA_FILE)
   
   # Set primary keys for fast filtering
   if (!is.null(shift_data1) && all(c("Date", "ID") %in% names(shift_data1))) {
@@ -256,7 +272,7 @@ load_metric_spec <- function() {
 }
 load_analysis_table <- function(filename) {
   
-  path <- file.path(DATA_DIR, filename)
+  path <- file.path(paths$OUT_DIR, filename)
   if (!file.exists(path)) return(NULL)
   
   # Use readRDS for .rds files, fread for .csv
@@ -973,6 +989,22 @@ filter_sidebar <- function(data_list) {
     hr(),
     
     checkboxInput("show_extrapolation", "Show Extrapolated Values", value = FALSE),
+    
+    hr(),
+    
+    actionButton("apply_filters", "Apply Filters", class = "btn-primary w-100"),
+    actionButton("reset_filters", "Reset All Filters", class = "btn-outline-secondary w-100 mt-2"),
+    
+    hr(),
+    
+    hr(),
+    
+    checkboxInput("show_extrapolation", "Show Extrapolated Values", value = FALSE),
+    
+    hr(),
+    
+    actionButton("apply_filters", "Apply Filters", class = "btn-primary w-100"),
+    actionButton("reset_filters", "Reset All Filters", class = "btn-outline-secondary w-100 mt-2"),
     
     hr(),
     
@@ -3548,7 +3580,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         
         # Source generate_pdf.R if not already loaded
         if (!exists("generate_report")) {
-          source(file.path(SCRIPTS_DIR, "generate_pdf.R"))
+          source(file.path(paths$CASE_DIR, "scripts", "generate_pdf.R"))
         }
         
         
