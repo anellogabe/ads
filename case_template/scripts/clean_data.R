@@ -1,26 +1,134 @@
-# ----- ALL DATA:   Load packages and run accompanying functions script -----
+# ==============================================================================
+# PROPRIETARY AND CONFIDENTIAL
+# Anello Data Solutions LLC
+# 
+# This file contains proprietary information and trade secrets.
+# Unauthorized copying, distribution, or use is strictly prohibited.
+# For authorized use by ANELLO DATA SOLUTIONS LLC contracted analysts only.
+
+# ==============================================================================
+# CLEAN DATA SCRIPT
+#
+# This script MUST be run first for every case.
+# It sets up the ADS environment, paths, and cleans raw data.
+#
+# After running this script, you can run analysis.R
+
+# ----- ALL DATA:   Load packages, functions and directories --------------------------
+
+start.time <- Sys.time()
+
 library(data.table)
+library(dplyr)
+library(tidyr)
 library(lubridate)
+library(readr)
 library(readxl)
-library(here)
+library(openxlsx)
+library(stringr)
+library(purrr)
 
-source(here("scripts", "functions.R"))
+
+# --- Source ADS Shared Functions (OneDrive) ---
+
+# IMPORTANT: Update this path to match YOUR OneDrive location
+# Default path:
+# C:/Users/[USERNAME]/OneDrive - anellodatasolutions.com/Documents/0. ADS/ADS_Shared
+
+ADS_SHARED <- Sys.getenv("ADS_SHARED",
+                         unset = "C:/Users/Gabe/OneDrive - anellodatasolutions.com/Documents/0. ADS/ADS_Shared")
+
+# Verify ADS_Shared folder exists
+if (!dir.exists(ADS_SHARED)) {
+  stop("\n\nERROR: Cannot find ADS_Shared folder at:\n  ", ADS_SHARED,
+       "\n\nPlease either:",
+       "\n  1. Update the ADS_SHARED path above (line 28) to match your OneDrive location",
+       "\n  2. Set the ADS_SHARED environment variable",
+       "\n\nCheck OneDrive sync status if the folder should exist.\n")
+}
+
+# Source core ADS functions and PDF generator
+
+source(file.path(ADS_SHARED, "scripts", "functions.R"), local = FALSE, chdir = FALSE)
+cat("✓ ADS functions loaded successfully\n\n")
+
+source(file.path(ADS_REPO, "scripts", "generate_pdf.R"), local = FALSE, chdir = FALSE)
+cat("✓ ADS functions loaded successfully\n\n")
+
+# --- Set Case Directory ---
+
+# IMPORTANT: Update this path for EACH case
+# This should be the root folder for THIS case (contains data/ and output/ folders)
+#
+# Examples:
+#   set_case_dir("C:/Users/[USERNAME]/OneDrive/Cases/[CASE_NAME]/Analysis/CASE_R")
+
+set_case_dir("C:/Users/Amnon/OneDrive - Employment Research Corporation/Cases/34000s/34146 Ulloa v Securitas/Analysis/34146_R")
+
+# Initialize case paths (creates data/raw, data/processed, output folders if needed)
+paths <- init_case_paths(set_globals = TRUE)
+
+cat("\n✓ Case directory set:\n  ", paths$CASE_DIR, "\n")
+cat("✓ Data directories:\n")
+cat("    Raw:       ", paths$RAW_DIR, "\n")
+cat("    Processed: ", paths$PROCESSED_DIR, "\n")
+cat("    Output:    ", paths$OUT_DIR, "\n\n")
 
 
-# ----- TIME DATA:  Load time data ----------------------------------------------
+# ----- ALL DATA:   Case configuration --------------------------
+
+# --- Case info ---
+contract_footer <- NA # e.g. use "Employment Research Corporation" for ERC projects else NA
+case_name <- "Plaintiff v Defendant" 
+case_no <- "4:49:cv-494949-NINERS"
+date_filed <- as.Date("1981-09-15")
+sample_size <- "100%" # Use as text field
+sample_size_val <- 1  # e.g., 1 = 100%
+
+# --- Key groups (named plaintiff(s)) ---
+key_employees <- c("999999999" = "Chief, Chieify")
+separate_key_gps <- FALSE # Set to TRUE if key groups should be separated from a anonymized random sample
+
+# --- Key dates ---
+
+complaint_date            <- date_filed # Date of ORIGINAL complaint (this is used to filter data; adjust if necessary)
+mediation_date            <- Sys.Date() # if unknown or potentially not necessary, set to #Sys.Date()
+
+# Class period
+class_dmgs_start_date     <- (complaint_date %m-% years(4)) # Typically four years back from original Complaint.
+class_dmgs_end_date       <- mediation_date
+
+# PAGA period
+paga_dmgs_start_date      <- (complaint_date %m-% years(1)) - days(65) # Typically 1 yr + 65 days from the filing of the Complaint. 
+# Check for the particular Complaint with the PAGA claim.
+paga_dmgs_end_date        <- mediation_date
+
+# Waiting Time Penalties period (remember to filter out active employees)
+wt_start_date             <- (complaint_date %m-% years(3)) # Typically three years back from original Complaint. 
+wt_end_date               <- mediation_date
+
+# Wage statement violations period
+wsv_start_date            <- (complaint_date %m-% years(1)) # Typically one year back from original Complaint. 
+wsv_end_date              <- mediation_date
+
+
+
+# ----- TIME DATA:  Load data -------------------------------
+
 time1 <- read_excel("")
 
-cat("✓ Loaded", nrow(time1), "time records\n")
+cat("✓ Loaded", nrow(time1), "pay records\n")
 cat("\n=== Columns in Time Data ===\n")
 for(col in names(time1)) {
   cat(col, "\n")
 }
 
+
 # ----- TIME DATA:  Standardize column names -------------------------------
 
 standard_names <- c(
   "EEID" = "ID",
-  "Shift Date" = "Date", 
+  "Shift Date" = "Date",
   "Punch_In" = "In",
   "Punch_Out" = "Out",
   "Hours_Worked" = "Hours",
@@ -38,10 +146,10 @@ for(col in names(time1)) {
   cat(col, "\n")
 }
 
-setDT(time1)
-
 
 # ----- TIME DATA:  Convert data types ------------------------------------------
+
+setDT(time1)
 
 date_cols <- c("Date")
 for(col in date_cols) {
@@ -164,7 +272,7 @@ if(length(existing_cols) > 0) {
     cat("  Unique duplicate groups:", uniqueN(time_duplicates[, ..existing_cols]), "\n")
     
     # Option to remove duplicates (keep first occurrence)
-    REMOVE_DUPLICATES <- FALSE  # Set to FALSE to keep duplicates
+    REMOVE_DUPLICATES <- TRUE  # Set to FALSE to keep duplicates
     
     if(REMOVE_DUPLICATES) {
       before_rows <- nrow(time1)
@@ -245,7 +353,7 @@ standard_names <- c(
   "Employee Name" = "Pay_Name",
   "Employee ID" = "Pay_ID",
   "Pay Period Start" = "Pay_Period_Beg",
-  "Pay Peirod End" = "Pay_Period_End", 
+  "Pay Peirod End" = "Pay_Period_End",
   "Pay Code" = "Pay_Code",
   "Hours" = "Pay_Hours",
   "Rate" = "Pay_Rate",
@@ -381,7 +489,7 @@ cat("Unique pay data employee pay periods:", uniqueN(paste(pay1$Pay_ID, pay1$Pay
 cat("\n=== Duplicate Check ===\n")
 
 # Define columns to check for duplicates
-dup_check_cols <- c("Pay_ID", "Pay_Period_End", "Pay_Rate", "Pay_Amount", "Pay_Hours", "Pay_Code")
+dup_check_cols <- c("Pay_ID", "Pay_Period_End", "Pay_Amount", "Pay_Hours", "Pay_Code")
 
 # Check which columns exist
 existing_cols <- dup_check_cols[dup_check_cols %in% names(pay1)]
@@ -430,29 +538,33 @@ if(length(existing_cols) > 0) {
 # ----- CLASS LIST: Load Class List or create one -------------------------------
 
 # Load raw class data
-class1 <- read_excel("")
+#class1 <- class_list
 
-# # Create a "Class List" from unique list of all time and pay data IDs (then add names)
-# setDT(time1); setDT(pay1)
-# 
-# # Ensure missing name columns exist
-# if (!"Name" %in% names(time1))   time1[,  Name := NA_character_]
-# if (!"Pay_Name" %in% names(pay1)) pay1[, Pay_Name := NA_character_]
-# 
-# # Unique ID list
-# class1 <- data.table(Class_ID = sort(unique(c(time1$ID, pay1$Pay_ID))))
-# 
-# # Extract first non-NA names
-# time_names <- time1[, .(Time_Name = first(na.omit(Name))), by = ID]
-# pay_names <- pay1[, .(Pay_Name  = first(na.omit(Pay_Name))), by = Pay_ID]
-# 
-# # Merge + flags
-# class1 <- merge(class1, time_names, by.x="Class_ID", by.y="ID",     all.x=TRUE)
-# class1 <- merge(class1, pay_names, by.x="Class_ID", by.y="Pay_ID", all.x=TRUE)
-# 
-# class1[, Missing_Time_Name := is.na(Time_Name)]
-# class1[, Missing_Pay_Name  := is.na(Pay_Name)]
-# class1[, Name_Mismatch := !is.na(Time_Name) & !is.na(Pay_Name) & Time_Name != Pay_Name]
+### OR MAKE OUR OWN CLASS LIST ###
+
+# Create a "Class List" from unique list of all time and pay data IDs (then add names)
+setDT(time1); setDT(pay1)
+
+# Ensure missing name columns exist
+if (!"Name" %in% names(time1))   time1[,  Name := NA_character_]
+if (!"Pay_Name" %in% names(pay1)) pay1[, Pay_Name := NA_character_]
+
+# Unique ID list
+class1 <- data.table(Class_ID = sort(unique(c(time1$ID, pay1$Pay_ID))))
+
+# Extract first non-NA names
+time_names <- time1[, .(Time_Name = first(na.omit(Name))), by = ID]
+pay_names <- pay1[, .(Pay_Name  = first(na.omit(Pay_Name))), by = Pay_ID]
+
+# Merge + flags
+class1 <- merge(class1, time_names, by.x="Class_ID", by.y="ID",     all.x=TRUE)
+class1 <- merge(class1, pay_names, by.x="Class_ID", by.y="Pay_ID", all.x=TRUE)
+
+class1[, Missing_Time_Name := is.na(Time_Name)]
+class1[, Missing_Pay_Name  := is.na(Pay_Name)]
+class1[, Name_Mismatch := !is.na(Time_Name) & !is.na(Pay_Name) & Time_Name != Pay_Name]
+
+### OR MAKE OUR OWN CLASS LIST  ###
 
 
 # ----- CLASS LIST: Standardize column names ----------------------------------------------------
@@ -481,7 +593,7 @@ setDT(class1)
 
 # ----- CLASS LIST: Convert data types ----------------------------------------------------------
 
-date_cols <- c("Hire_Date", "Term_Date", "Rehire_Date")
+date_cols <- c("Hire_Date", "Term_Date", "Hire_Date2", "Term_Date2", "Hire_Date3", "Term_Date3")
 for(col in date_cols) {
   if(col %in% names(class1)) {
     class1[, (col) := as.Date(get(col))]
@@ -496,6 +608,7 @@ for(col in numeric_cols) {
     cat("Converted", col, "to numeric format\n")
   }
 }
+
 
 # ----- CLASS LIST: Basic data quality checks ---------------------------------------------------
 cat("\n=== Data Quality Checks ===\n")
@@ -603,26 +716,13 @@ if(length(existing_cols) > 0) {
 }
 
 
-# ----- ALL DATA:   Set Parameters for Case  --------------------------------------------------------------------------
+# ----- ALL DATA:   Filter data based on class and date  --------------------------------------------------------------------------
 
-# Set parameters
-complaint_date   <- as.Date("2025-09-15") #Adjust as needed
-mediation_date   <- as.Date("2026-09-15") #Adjust as needed (for today use Sys.Date())
-use_class_filter <- TRUE   # set FALSE to skip class filtering
+# Filter based on Class Period (and summary of what was removed)
 
-# damage periods
-class_dmgs_start_date <- complaint_date %m-% years(4)
-class_dmgs_end_date   <- mediation_date
-paga_dmgs_start_date  <- (complaint_date %m-% years(1)) - days(65)
-paga_dmgs_end_date    <- mediation_date
-wT_start_date         <- complaint_date %m-% years(3)
-wT_end_date           <- mediation_date
-wsv_start_date        <- complaint_date %m-% years(1)
-wsv_end_date          <- mediation_date
-
+# Convert to data.table if not already
 setDT(time1)
 setDT(pay1)
-setDT(class1)
 
 # Original counts
 base_summary <- data.table(
@@ -630,6 +730,8 @@ base_summary <- data.table(
   records_before = c(nrow(time1), nrow(pay1)),
   ids_before     = c(uniqueN(time1$ID), uniqueN(pay1$Pay_ID))
 )
+
+use_class_filter <- FALSE
 
 # Optional class filter
 if (use_class_filter) {
@@ -691,10 +793,16 @@ summary_removed <- Reduce(
 
 summary_removed
 
-# Save as CSV
-csv_file <- here("output", "Omitted Data.csv")
-fwrite(summary_removed, csv_file)
-cat("✓ Omitted Data saved as CSV:", csv_file, "\n")
+write_csv_and_rds(
+  summary_removed,
+  file.path(OUT_DIR, "IDs & Records Removed.csv")
+)
+
+time1_prefiltered <- time1
+pay1_prefiltered <- pay1
+
+time1 <- time1_filtered
+pay1 <- pay1_filtered
 
 
 # ----- ALL DATA:   Pay calendar ---------------------------------------------------
@@ -785,9 +893,6 @@ time1[, ID_Period_End := paste(ID, Period_End, sep = "_")]
 
 # ----- ALL DATA:   Key_Gps & Data comparison ------------------------------------------------
 
-# Identify key groups (e.g., named plaintiffs or specific employees of interest)
-key_employees <- c("09012012" = "Gato, Chief") 
-
 time1[, Key_Gps := key_employees[as.character(ID)]]
 time1[is.na(Key_Gps), Key_Gps := "Everyone Else"]
 unique(time1$Key_Gps)
@@ -801,133 +906,115 @@ class1[is.na(Class_Key_Gps), Class_Key_Gps := "Everyone Else"]
 unique(class1$Class_Key_Gps)
 
 run_data_comparison(time1, pay1)
+
 employee_period_comparison(time1, pay1)
 
-# Ensure time1 and pay1 are data.tables
-setDT(time1)
-setDT(pay1)
-
-# Create a list of unique IDs from time1 and pay1
-time_ids <- unique(time1[, .(ID, Name, Source = "Time Data")])
-
-# Summarize time1 by ID
-time_ids <- time_ids[, .(
-  Name = first(Name),  # Take the first Name for each ID
-  Source = first(Source)
-), by = ID]
-
-pay_ids <- unique(pay1[, .(Pay_ID, Pay_Name, Source = "Pay Data")])
-
-# Rename Pay_ID to ID in pay_ids for consistency
-setnames(pay_ids, "Pay_ID", "ID")
-
-# Merge the two datasets to combine all unique IDs
-all_ids <- merge(time_ids, pay_ids, by = "ID", all = TRUE)
-
-# Combine Source.x and Source.y into a single Source column
-all_ids[, Source := fifelse(!is.na(Source.x) & !is.na(Source.y), 
-                            paste(Source.x, Source.y, sep = "; "),  # Concatenate if both are present
-                            fifelse(!is.na(Source.x), Source.x, Source.y))]  # Use whichever is not NA
-
-# Drop the old Source.x and Source.y columns
-all_ids[, c("Source.x", "Source.y") := NULL]
-
-# Write the result to a CSV file
-write.csv(all_ids, here("output", "All Time and Pay IDs.csv"), row.names = FALSE)
+all_ids <- all_time_pay_class_ids(time1, pay1, class1)
 
 
 # ----- ALL DATA:   Save processed data -----------------------------------------
 
-output_file <- here("data/processed", "time_processed.rds")
-saveRDS(time1, output_file)
-cat("\n✓ Saved processed time data to:", output_file, "\n")
+write_csv_and_rds(
+  time1,
+  file.path(PROCESSED_DIR, "time_processed.csv")
+)
 
-# Also save as CSV for review in Excel if needed
-csv_file <- here("data/processed", "time_processed.csv")
-fwrite(time1, csv_file)
-cat("✓ Time data also saved as CSV:", csv_file, "\n")
+write_csv_and_rds(
+  pay1,
+  file.path(PROCESSED_DIR, "pay_processed.csv")
+)
 
-output_file <- here("data/processed", "pay_processed.rds")
-saveRDS(pay1, output_file)
-cat("\n✓ Saved processed pay data to:", output_file, "\n")
-
-# Also save as CSV for review in Excel if needed
-csv_file <- here("data/processed", "pay_processed.csv")
-fwrite(pay1, csv_file)
-cat("✓ pay data also saved as CSV:", csv_file, "\n")
-
-output_file <- here("data/processed", "class_processed.rds")
-saveRDS(class1, output_file)
-cat("\n✓ Saved processed Class List to:", output_file, "\n")
-
-# Also save as CSV for review in Excel if needed
-csv_file <- here("data/processed", "class_processed.csv")
-fwrite(class1, csv_file)
-cat("✓ Class List also saved as CSV:", csv_file, "\n")
+write_csv_and_rds(
+  class1,
+  file.path(PROCESSED_DIR, "class_processed.csv")
+)
 
 
-# -------------------------------------------------------------------- Random Sample (if needed) ---------------------------------------------------------------
+# ----- ALL DATA:   Random sample generator (if needed) -----------------------------------------
 
-# # REQUIRED: Set your parameters here
-# case_name <- "Perez, Nathan v APEC"  # Change this for each case
-# pct <- 0.25                          # Change this for different sample size (0.2 = 20%)
-# seed_value <- 99999                  # Use case number
+# # pct <- 0.25                          # Change this for different sample size (0.25 = 25%)
+# # seed_value <- 99999                  # Use case number for reproducibility
+# #
+# # NOTE:
+# # • Files will now be written by default to OUT_DIR (absolute path)
+# # • You can override with: output_dir = "C:/your/custom/folder"
 # 
 # # Generate random sample and output files
+# # (matches Time + Pay + Class1 by default)
 # sample1 <- generate_random_sample(
-#   all_ids = all_ids,
-#   class1 = class1,
-#   case_name = case_name,
-#   pct = pct,
-#   use_class1 = TRUE,  # TRUE = match all three sources
-#   seed_num = seed_value
+#   all_ids    = all_ids,
+#   class1     = class1,
+#   case_name  = case_name,   # already defined earlier in script
+#   pct        = pct,
+#   use_class1 = TRUE,        # TRUE = match all three sources
+#   seed_num   = seed_value
+#   # output_dir = NULL       # default -> OUT_DIR (absolute)
 # )
 # 
-# # Extract sample_list from sample1
+# # Extract sample_list from returned object
 # sample_list <- sample1$sample_list
 
 
-# -------------------------------------------------------------------- Production files (if needed) ---------------------------------------------------------------
+# ----- ALL DATA:   Anonymized sample production files (if needed) -----------------------------------------
 
-# # Default fields (only used if user does NOT define vectors before calling)
-# default_prod_fields_time <- c("Anon_ID", "Date", "punch_time", "punch_type", "Hours")
-# default_prod_fields_pay  <- c("Pay_Anon_ID", "Pay_Date", "Pay_Period_End",
-#                               "Pay_Code", "Pay_Hours", "Pay_Amount", "Pay_Rate")
+# # Notes:
+# # • If you define default_prod_fields_* vectors BEFORE calling the function,
+# #   those get used (unless you explicitly override via prod_fields_* args).
+# # • Time/Pay outputs are SAMPLE + DATE filtered.
+# # • Class list output is FULL class1 (never filtered), but can include Class_Anon_ID.
+# # • Excel headers are prettified:
+# #     - underscores -> spaces
+# #     - Proper Case
+# #     - Pay_ removed from PAY output headers
+# #     - Class_ removed from CLASS output headers
+# 
+# # --- DEFAULT FIELDS (define once per case) ---
+# 
+# default_prod_fields_time <- c(
+#   "Anon_ID", "Date", "In", "Out", "Hours"
+# )
+# 
+# default_prod_fields_pay <- c(
+#   "Pay_Anon_ID", "Pay_Date", "Pay_Period_End",
+#   "Pay_Code", "Pay_Hours", "Pay_Amount", "Pay_Rate"
+# )
+# 
+# # >>>>> THIS IS THE KEY FIX FOR YOUR CLASS LIST <<<<<
+# default_prod_fields_class <- c(
+#   "Class_Anon_ID",   # optional (NA except sampled IDs)
+#   "Class_ID",
+#   "Class_Name",
+#   "Hire_Date",
+#   "Term_Date"
+# )
+# 
+
+# --- RUN PRODUCTION EXPORT --- 
 # 
 # production_file_summary <- generate_production_files(
-#   time1 = time1,                                   # cleaned/filtered time data for production
-#   pay1 = pay1,                                     # cleaned/filtered pay data for production
-#   sample_list = sample_list,                       # anon ID mapping for sampled employees
-#   class1 = class1,                                 # class list (can be NULL if not used)
-#   case_name = case_name,                           # case name used in output filenames
-#   class_dmgs_start_date = class_dmgs_start_date,   # start date for filtering production files (and in filename)
+#   time1 = time1,
+#   pay1  = pay1,
+#   sample_list = sample_list,
+#   class1 = class1,
+#   case_name = case_name,
+#   class_dmgs_start_date = class_dmgs_start_date,
 #   
-#   prod_fields_time = c("Anon_ID", "Date", "In", "Out", "Hours"),   # columns to include in time production file
-#   prod_fields_pay  = c("Pay_Anon_ID", "Pay_Date", "Pay_Code"),     # columns to include in pay production file
-#
-#   overwrite = FALSE                                 # TRUE = overwrite files if they exist
+#   # Optional inline overrides (edit if you want different columns)
+#   prod_fields_time  = c("Anon_ID", "Date", "In", "Out"),
+#   prod_fields_pay   = c("Pay_Anon_ID", "Pay_Date", "Pay_Code"),
+#   prod_fields_class = c("Class_Anon_ID", "Class_ID"),
+#   
+#   overwrite = FALSE
 # )
+# 
+# # Returned object includes:
+# # production_file_summary$time1_prod
+# # production_file_summary$pay1_prod
+# # production_file_summary$class1_prod
+# # production_file_summary$time_file
+# # production_file_summary$pay_file
+# # production_file_summary$class_file
 
-
-# ==============================================================================
-# CASE METADATA - Used by Dashboard
-# ==============================================================================
-
-# Case information (update these for each case)
-case_name <- "Cardona v Durham D&M, LLC"
-case_no <- "CIVSB2309217"
-sample_size <- "100% or 25% sample (see filters)"  # Text description of sample
-
-# Important dates (update these with actual dates for your case)
-date_filed <- as.Date("2023-09-08")           # Date complaint was filed
-complaint_date <- as.Date("2020-07-30")       # Start of relevant period (complaint date)
-mediation_date <- as.Date("2024-03-15")       # Mediation date
-
-cat("\n=== Case Metadata Loaded ===\n")
-cat("Case Name:", case_name, "\n")
-cat("Case Number:", case_no, "\n")
-cat("Sample Size:", sample_size, "\n")
-cat("Date Filed:", format(date_filed, "%B %d, %Y"), "\n")
-cat("Complaint Date:", format(complaint_date, "%B %d, %Y"), "\n")
-cat("Mediation Date:", format(mediation_date, "%B %d, %Y"), "\n")
-
+# ----- END  -----------------------------------------
+end.time <- Sys.time()
+end.time - start.time    
