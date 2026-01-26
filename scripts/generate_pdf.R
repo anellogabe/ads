@@ -36,10 +36,10 @@ if (!exists("load_metric_spec")) {
     source("functions.R")
   } else if (exists("SCRIPTS_DIR") && file.exists(file.path(SCRIPTS_DIR, "functions.R"))) {
     source(file.path(SCRIPTS_DIR, "functions.R"))
-  } else if (exists("ADS_REPO") && file.exists(file.path(ADS_REPO, "scripts", "functions.R"))) {
-    source(file.path(ADS_REPO, "scripts", "functions.R"))
+  } else if (exists("ADS_SHARED") && file.exists(file.path(ADS_SHARED, "scripts", "functions.R"))) {
+    source(file.path(ADS_SHARED, "scripts", "functions.R"))
   } else {
-    stop("Cannot find functions.R - please source it first or set SCRIPTS_DIR/ADS_REPO")
+    stop("Cannot find functions.R - please source it first or set SCRIPTS_DIR/ADS_SHARED")
   }
 }
 
@@ -92,7 +92,14 @@ generate_report <- function(
   cat("Include Data Comparison:", include_data_comparison, "\n")
   cat("==================================================\n\n")
   
-  paths <- init_case_paths(set_globals = TRUE)
+  # Check if paths already initialized (from clean_data.R)
+  if (!exists("paths") || is.null(paths)) {
+    paths <- init_case_paths(set_globals = TRUE)
+    cat("✓ Case paths initialized\n")
+  } else {
+    cat("✓ Using existing case paths from environment\n")
+  }
+  
   DATA_DIR <- paths$OUT_DIR
   cat("DATA_DIR:", DATA_DIR, "\n\n")
   

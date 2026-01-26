@@ -5,7 +5,6 @@
 # This file contains proprietary information and trade secrets.
 # Unauthorized copying, distribution, or use is strictly prohibited.
 # For authorized use by ANELLO DATA SOLUTIONS LLC contracted analysts only.
-# ==============================================================================
 
 # ----- ALL DATA:                Load Packages & Data ----------------------------------------
 
@@ -36,7 +35,6 @@ pay1   <- readRDS(pay_rds)
 class1 <- readRDS(class_rds)
 
 message("✓ loaded processed data from: ", paths$PROCESSED_DIR)
-
 
 # # Merge time1 with class1 (if needed in order to get key information from Class List)
 # time1 <- merge(
@@ -610,7 +608,6 @@ var_OT_multiplier <- 1.5
 var_DT_multiplier <- 2
 var_half_time_OT_multiplier <- 0.5
 var_half_time1_multiplier <- 1
-rrop_buffer <- 0.05
 
 # --- BONUS-SPECIFIC REGULAR RATE ANALYSIS ---
 
@@ -1799,9 +1796,6 @@ shift_data1[, qtr_hr := fifelse(
   )
 )]
 
-# Shift duration / shift-level clock rounding analysis
-rounding_hrs_cutoff <- 0.25
-
 # Calculate diff (rounded Hours - shift_hrs)
 shift_data1[, diff := fifelse(
   Hours == 0 | is.na(Hours), 0,
@@ -2662,10 +2656,6 @@ pp_data1[, `:=`(
 
 # --- Unpaid overtime and double time ---
 
-# Define buffers (in hours)
-min_ot_buffer <- 0.25
-max_ot_buffer <- 20
-
 # Calculate intermediate columns
 pp_data1[, `:=`(
   unpaid_ot_hrs    = pmax(0, pp_ot - pp_OT_Hrs),
@@ -2780,11 +2770,7 @@ pp_data1[, tot_principal_dmgs_less_prems_and_credits_w :=
 ]
 
 
-# ----- ALL DATA (BY PP):        TOTAL INTEREST (scenario-specific but aggregates all claims' damages) ----------------------
-
-annual_interest_rate      <- 0.07 # 7% prejudgment interest rate
-monthly_interest_rate     <- annual_interest_rate / 12
-interest_thru_date        <- mediation_date
+# ----- ALL DATA (BY PP):        Interest ------------------------------------------------------------
 
 pp_data1[, interest_months := fifelse(
   !is.na(Period_End) & Period_End <= interest_thru_date,
@@ -2874,11 +2860,6 @@ for (flag in names(flag_map)) {
 
 # ----- ALL DATA (BY PP):        Wage statement penalties (class) -----------------------------------------
 
-# Settings
-wsv_initial_pp_penalty     <- 50
-wsv_subsequent_pp_penalty  <- 100
-wsv_cap                    <- 4000
-
 # Order by ID and Period_End
 setorder(pp_data1, ID, Period_End)
 
@@ -2943,10 +2924,6 @@ setnames(
 
 
 # ----- ALL DATA (BY PP):        Waiting time penalties (class) -----------------------------------------
-
-# Settings
-wt_active_days_threshold <- 30
-wt_use_rrop <- TRUE  # FALSE uses final_Base_Rate instead of RROP
 
 # Max Period_End across all data
 max_period_end <- max(pp_data1$Period_End, na.rm = TRUE)
@@ -3073,7 +3050,6 @@ pp_data1[, `:=`(
 
 # ----- ALL DATA (BY PP):        PAGA analysis -----------------------------------------
 
-# --- Settings ---
 # paga_dmgs_start_date must exist (Date)
 # pp_data1 must have: ID, Period_End, active, and your damages cols used below
 
@@ -3082,17 +3058,6 @@ setorder(pp_data1, ID, Period_End)  # or whatever your PP date column is
 pp_data1[, paga_ee_flag := 0L]
 pp_data1[, in_PAGA_period := fifelse(Period_End > paga_dmgs_start_date, 1, 0)]
 pp_data1[in_PAGA_period == 1, paga_ee_flag := as.integer(seq_len(.N) == 1L), by = ID]
-
-initial_pp_penalty        <- 100
-subsequent_pp_penalty     <- 100
-
-initial_pp_penalty_226    <- 250
-subsequent_pp_penalty_226 <- 250
-
-initial_pp_penalty_558    <- 100
-subsequent_pp_penalty_558 <- 100
-
-penalty_1174 <- 500
 
 # --- Helper function (vectorized) ---
 calc_paga_penalty <- function(flag_count, initial, subsequent) {
@@ -3974,10 +3939,8 @@ ee_data1 <- remove_suffixes(
 
 # ----- ALL DATA:                Extrapolation  -----------------------------------------
 
-sample_size # Reminder to set the sample_size_val
+sample_size # Reminder of pre-established sample_size_val
 
-# Sample size (1 = 100%, 0.5 = 50%, etc.)
-sample_size_val <- 1
 class_extrap_factor <- 1 / sample_size_val
 message(sprintf("Class extrap factor = %.2f", class_extrap_factor))
 
