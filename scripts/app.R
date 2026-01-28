@@ -1038,7 +1038,7 @@ ui <- function(data_list, metric_spec) {
   current_year <- format(Sys.Date(), "%Y")
   
   # Version information
-  app_version <- "v1.0.0"
+  app_version <- "v1.0.1"
   
   page_navbar(
     title = div(
