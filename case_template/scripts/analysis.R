@@ -22,9 +22,9 @@ library(purrr)
 library(zoo)
 
 # Load processed data (always load from disk for deterministic analysis)
-time_rds  <- file.path(paths$PROCESSED_DIR, "time_processed.rds")
-pay_rds   <- file.path(paths$PROCESSED_DIR, "pay_processed.rds")
-class_rds <- file.path(paths$PROCESSED_DIR, "class_processed.rds")
+time_rds  <- file.path(PROCESSED_DIR, "time_processed.rds")
+pay_rds   <- file.path(PROCESSED_DIR, "pay_processed.rds")
+class_rds <- file.path(PROCESSED_DIR, "class_processed.rds")
 
 if (!file.exists(time_rds))  stop("Missing: ", time_rds)
 if (!file.exists(pay_rds))   stop("Missing: ", pay_rds)
@@ -34,7 +34,7 @@ time1  <- readRDS(time_rds)
 pay1   <- readRDS(pay_rds)
 class1 <- readRDS(class_rds)
 
-message("✓ loaded processed data from: ", paths$PROCESSED_DIR)
+message("✓ loaded processed data from: ", PROCESSED_DIR)
 
 # # Merge time1 with class1 (if needed in order to get key information from Class List)
 # time1 <- merge(
@@ -560,6 +560,73 @@ pay_code_categories_tbl <- categorize_pay_codes(
   output_csv = file.path(OUT_DIR, "Pay_Code_Categories.csv")
 )
 
+# Join pay code category and move to last column
+rate_type_summary <- pay_code_categories_tbl[rate_type_summary, on = "Pay_Code"]
+setcolorder(rate_type_summary, c(setdiff(names(rate_type_summary), "Pay_Code_Category"), "Pay_Code_Category"))
+
+# rate_type_summary cleanup
+setDT(rate_type_summary)
+
+# Sort
+setorder(rate_type_summary, Pay_Code_Category, Pay_Code)
+
+# Format
+rate_type_summary[, `:=`(
+  
+  Records = fifelse(
+    is.na(Records) | !is.finite(as.numeric(Records)),
+    "-",
+    formatC(as.numeric(Records), format = "f", digits = 0, big.mark = ",")
+  ),
+  
+  Employees = fifelse(
+    is.na(Employees) | !is.finite(as.numeric(Employees)),
+    "-",
+    formatC(as.numeric(Employees), format = "f", digits = 0, big.mark = ",")
+  ),
+  
+  Hours = fifelse(
+    is.na(Hours) | !is.finite(as.numeric(Hours)),
+    "-",
+    formatC(as.numeric(Hours), format = "f", digits = 2, big.mark = ",")
+  ),
+  
+  Amount = fifelse(
+    is.na(Amount) | !is.finite(as.numeric(Amount)),
+    "-",
+    paste0("$", formatC(as.numeric(Amount), format = "f", digits = 2, big.mark = ","))
+  ),
+  
+  Avg_Rate = fifelse(
+    is.na(Avg_Rate) | !is.finite(as.numeric(Avg_Rate)),
+    "-",
+    paste0("$", formatC(as.numeric(Avg_Rate), format = "f", digits = 2, big.mark = ","))
+  ),
+  
+  Avg_Mult = fifelse(
+    is.na(Avg_Mult) | !is.finite(as.numeric(Avg_Mult)),
+    "-",
+    paste0(formatC(as.numeric(Avg_Mult), format = "f", digits = 1), "x")
+  ),
+  
+  Rate_Type_Pct = fifelse(
+    is.na(Rate_Type_Pct) | !is.finite(as.numeric(Rate_Type_Pct)),
+    "-",
+    paste0(sprintf("%.2f", 100 * as.numeric(Rate_Type_Pct)), "%")
+  )
+  
+)]
+
+# Clean column names
+setnames(
+  rate_type_summary,
+  old = names(rate_type_summary),
+  new = gsub("_", " ", names(rate_type_summary), fixed = TRUE)
+)
+
+rate_type_summary
+write_csv_and_rds(rate_type_summary, file.path(OUT_DIR, "Rate_Type_Analysis.csv"))
+
 # Calculate straight time amounts (needed for group_pay_data function)
 pay1[, Straight_Time_Amt := fifelse(
   Reg_Pay_Code == 1 & Hrs_Wkd_Pay_Code == 1 | (Diff_Pay_Code == 1 & Diff_OT_Pay_Code != 1 & Diff_DT_Pay_Code != 1), Pay_Amount,
@@ -567,15 +634,6 @@ pay1[, Straight_Time_Amt := fifelse(
     OT_Pay_Code == 1 & Hrs_Wkd_Pay_Code == 1 | Diff_OT_Pay_Code == 1, Pay_Amount / 1.5,
     fifelse(DT_Pay_Code == 1 & Hrs_Wkd_Pay_Code == 1 | Diff_DT_Pay_Code == 1, Pay_Amount / 2, 0))
 )]
-
-
-# Join pay code category and move to last column
-rate_type_summary <- pay_code_categories_tbl[rate_type_summary, on = "Pay_Code"]
-setcolorder(rate_type_summary, c(setdiff(names(rate_type_summary), "Pay_Code_Category"), "Pay_Code_Category"))
-
-print(rate_type_summary)
-
-write_csv_and_rds(rate_type_summary, file.path(OUT_DIR, "Rate_Type_Analysis.csv"))
 
 
 # ----- PAY DATA:                Separate earnings period aggregations -------------------
@@ -1479,7 +1537,7 @@ print(schedule_counts)
 # Save outputs (absolute via OUT_DIR; writes both CSV + RDS)
 write_csv_and_rds(
   employee_aww_summary,
-  file.path(resolve_out_dir(), "employee_aww_classifications.csv")
+  file.path(OUT_DIR, "employee_aww_classifications.csv")
 )
 
 # Create detailed report for employees on AWW
@@ -1504,7 +1562,7 @@ first_fields_default <- c("Source", "Sheet", "Page", "Bates", "Key_Gps", "ID", "
 #NOTE: Hours field is default "Sum" field but it could be a "Max" field depending on your time data format.
 sum_fields_default <- c("mp", "mp_lt_twenty", "mp_lt_thirty", "mp_thirty", "mp_gt_thirty", "mp_forty_five", 
                         "mp_gt_two_hrs", "mp_gt_four_hrs", "Hours"
-
+                        
                         # Rest period punches in data? Add:
                         #, "rp", "rp_lt_ten", "rp_ten", "rp_gt_ten", "rp_fifteen"
                         
@@ -1748,7 +1806,7 @@ shift_data1[, `:=`(
 #  Standard CA daily OT/DT (non-AWS baseline) 
 shift_data1[, `:=`(
   calc_daily_ot = fifelse(shift_hrs > 12, 4,
-                                      fifelse(shift_hrs > 8, shift_hrs - 8, 0)),
+                          fifelse(shift_hrs > 8, shift_hrs - 8, 0)),
   calc_daily_dt = fifelse(shift_hrs > 12, shift_hrs - 12, 0)
 )]
 
@@ -2408,7 +2466,7 @@ sum_fields_default <- c(
   "mp_lt_twenty",
   "mp_lt_thirty", "mp_thirty", "mp_gt_thirty",
   "mp_gt_two_hrs", "mp_gt_four_hrs",
-
+  
   "MissMP1", "LateMP1", "ShortMP1", "MissMP2", "LateMP2", "ShortMP2",
   "mp1_violation", "mp2_violation",
   
@@ -2632,26 +2690,26 @@ pp_data1[, RROP_ee := {
 
 # Principal damages by claim 
 pp_data1[, `:=`(
-# Meal 
+  # Meal 
   mp_dmgs                 = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp)   | is.na(RROP), NA_real_, mpv_per_pp   * RROP),
   mp_dmgs_w               = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp_w) | is.na(RROP), NA_real_, mpv_per_pp_w * RROP),
   mp_dmgs_less_prems      = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp_less_prems)   | is.na(RROP), NA_real_, mpv_per_pp_less_prems   * RROP),
   mp_dmgs_less_prems_w    = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp_less_prems_w) | is.na(RROP), NA_real_, mpv_per_pp_less_prems_w * RROP),
-# Rest 
+  # Rest 
   rp_dmgs                 = fifelse(rp_dmgs_switch == FALSE | is.na(rpv_per_pp) | is.na(RROP), NA_real_, rpv_per_pp * RROP),
   rp_dmgs_less_prems      = fifelse(rp_dmgs_switch == FALSE | is.na(rpv_per_pp_less_prems) | is.na(RROP), NA_real_, rpv_per_pp_less_prems * RROP),
-# RROP (pulled in from pay1, already at pp level) 
+  # RROP (pulled in from pay1, already at pp level) 
   Net_rrop_dmgs           = fifelse(rep_len(!rrop_dmgs_switch, .N), 0, fcoalesce(Net_rrop_dmgs, 0)),
   Gross_rrop_dmgs         = fifelse(rep_len(!rrop_dmgs_switch, .N), 0, fcoalesce(Gross_rrop_dmgs, 0)),                   
-# Off-the-clock
+  # Off-the-clock
   otc_dmgs                = fifelse(is.na(RROP), 0, otc_hrs_per_shift * Shifts * RROP),                                                   # MUST BE UPDATED
-# Unreimbursed expenses
+  # Unreimbursed expenses
   unreimb_exp_dmgs        = unreimb_exp_per_pp,
-# Clock rounding
+  # Clock rounding
   clock_rounding_dmgs     = fifelse(!clock_rounding_dmgs_switch | is.na(RROP), 0, 0 * RROP),                                              # MUST BE UPDATED
-# Unpaid wages (min wage)
+  # Unpaid wages (min wage)
   min_wage_dmgs           = fifelse(min_wage_dmgs_switch == FALSE | is.na(RROP), 0, 0)
-                                    # e.g., (short_break_reg_hrs * CA_min_wage) + (short_break_ot_hrs * RROP))                                                     
+  # e.g., (short_break_reg_hrs * CA_min_wage) + (short_break_ot_hrs * RROP))                                                     
 )]
 
 # --- Unpaid overtime and double time ---
@@ -2742,8 +2800,8 @@ pay1_credits <- pay1[
 ]
 
 # Join credit values to pp_data1
- setDT(pp_data1)
- setDT(pay1_credits)
+setDT(pp_data1)
+setDT(pay1_credits)
 pp_data1 <- safe_left_join(pp_data1, pay1_credits, by = c("ID_Period_End" = "Pay_ID_Period_End"))
 
 # Default missing credits to 0
@@ -3148,7 +3206,6 @@ paga_scenarios <- list(
   )
 )
 
-
 # ---- PAGA BUILDER FUNCTION 
 
 build_paga_for_scenario <- function(sc) {
@@ -3550,7 +3607,7 @@ sum_fields_default <- c(
   "shift", "mp",
   "mp_lt_twenty", "mp_lt_thirty", "mp_thirty", "mp_gt_thirty",
   "mp_gt_two_hrs", "mp_gt_four_hrs",
-
+  
   # --- Meal violations ---
   "MissMP1", "LateMP1", "ShortMP1", "MissMP2", "LateMP2", "ShortMP2",
   "mp1_violation", "mp2_violation",
@@ -3564,17 +3621,17 @@ sum_fields_default <- c(
   
   # --- Meal damages (pp-level) ---
   "mp_dmgs", "mp_dmgs_w", "mp_dmgs_less_prems", "mp_dmgs_less_prems_w",
-
+  
   # --- Rest damages (pp-level) ---
   "rp_dmgs", "rp_dmgs_less_prems",
-
+  
   # --- RROP ---
   "rrop_by_code_underpayment", "Wage_Diff", "OT_Diff", "DT_Diff", "Meal_Diff", "Rest_Diff", "Sick_Diff",
   "OT_Overpayment", "DT_Overpayment", "Meal_Overpayment", "Rest_Overpayment", "Sick_Overpayment",
   "OT_rrop_dmgs", "DT_rrop_dmgs", "Meal_rrop_dmgs", "Rest_rrop_dmgs", "Sick_rrop_dmgs",
   "Gross_Overpayment", "Gross_rrop_dmgs", "Net_Overpayment", "Net_rrop_dmgs",
   "rrop_any_underpayment", "rrop_net_underpayment",
-
+  
   # --- Other damages ---
   "otc_dmgs", 
   "unreimb_exp_dmgs",
@@ -4149,30 +4206,14 @@ export_metrics(final_table, base_name = "Analysis")
 
 # ----- ALL DATA:                Generate PDF report -------------------------------------------------------------
 
-# STANDALONE PDF REPORT GENERATOR
-# Run this script directly without launching the dashboard
-#
-# Usage:
-source(file.path(ADS_REPO, "scripts", "generate_pdf.R"), local = FALSE, chdir = FALSE)
-generate_report()
 
-#   generate_report(sections = "time")                   
-#   generate_report(sections = c("time", "pay"))         
-#   generate_report(include_extrap = TRUE)               
-#   generate_report(include_appendix = TRUE)             
-#   generate_report(include_data_comparison = TRUE)      
-#   generate_report(output_file = "My_Report.pdf")     
+generate_report(include_extrap = TRUE,
+                include_appendix = TRUE,
+                include_data_comparison = TRUE)
 
-# generate_report()                     # All sections\n")
-# generate_report(sections = 'time')    # Time only\n")
-# generate_report(sections = 'class')   # Class only\n")
-# generate_report(sections = 'paga')    # PAGA only\n\n")
-
-# generate_full_report()                # generate_time_report()\n")
-# generate_pay_report()                 # generate_time_pay_report()\n")
-# generate_class_report()               # generate_paga_report()\n")
-# generate_damages_report()             # generate_no_damages_report()\n\n")
-
+# generate_paga_report(include_extrap = TRUE,
+#                 include_appendix = TRUE,
+#                 include_data_comparison = TRUE)
 
 # ----- END  -----------------------------------------
 end.time <- Sys.time()

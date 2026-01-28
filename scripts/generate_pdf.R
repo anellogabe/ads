@@ -36,10 +36,10 @@ if (!exists("load_metric_spec")) {
     source("functions.R")
   } else if (exists("SCRIPTS_DIR") && file.exists(file.path(SCRIPTS_DIR, "functions.R"))) {
     source(file.path(SCRIPTS_DIR, "functions.R"))
-  } else if (exists("ADS_REPO") && file.exists(file.path(ADS_REPO, "scripts", "functions.R"))) {
-    source(file.path(ADS_REPO, "scripts", "functions.R"))
+  } else if (exists("ADS_SHARED") && file.exists(file.path(ADS_SHARED, "scripts", "functions.R"))) {
+    source(file.path(ADS_SHARED, "scripts", "functions.R"))
   } else {
-    stop("Cannot find functions.R - please source it first or set SCRIPTS_DIR/ADS_REPO")
+    stop("Cannot find functions.R - please source it first or set SCRIPTS_DIR/ADS_SHARED")
   }
 }
 
@@ -91,16 +91,8 @@ generate_report <- function(
   cat("Include Appendix:", include_appendix, "\n")
   cat("Include Data Comparison:", include_data_comparison, "\n")
   cat("==================================================\n\n")
-
-  # Check if paths already initialized (from clean_data.R)
-  if (!exists("paths") || is.null(paths)) {
-    paths <- init_case_paths(set_globals = TRUE)
-    cat("✓ Case paths initialized\n")
-  } else {
-    cat("✓ Using existing case paths from environment\n")
-  }
-
-  DATA_DIR <- paths$OUT_DIR
+  
+  DATA_DIR <- OUT_DIR
   cat("DATA_DIR:", DATA_DIR, "\n\n")
   
   progress("Loading data for case info")
@@ -125,7 +117,7 @@ generate_report <- function(
     class1
   } else {
     tryCatch({
-      class_file <- file.path(paths$PROCESSED_DIR, "class_processed.rds")
+      class_file <- file.path(PROCESSED_DIR, "class_processed.rds")
       if (file.exists(class_file)) readRDS(class_file) else NULL
     }, error = function(e) NULL)
   }
@@ -138,7 +130,7 @@ generate_report <- function(
   } else if (exists("metric_spec") && is.data.table(metric_spec)) {
     metric_spec <- copy(metric_spec)
   } else {
-    spec_path <- file.path(paths$CASE_DIR, "scripts", "metrics_spec.csv")
+    spec_path <- file.path(CASE_DIR, "scripts", "metrics_spec.csv")
     if (!file.exists(spec_path)) stop("Cannot find metrics_spec.csv and no metrics_spec in environment")
     metric_spec <- fread(spec_path)
     setDT(metric_spec)
