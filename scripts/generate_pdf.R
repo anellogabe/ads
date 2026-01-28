@@ -117,7 +117,7 @@ generate_report <- function(
     class1
   } else {
     tryCatch({
-      class_file <- file.path(paths$PROCESSED_DIR, "class_processed.rds")
+      class_file <- file.path(PROCESSED_DIR, "class_processed.rds")
       if (file.exists(class_file)) readRDS(class_file) else NULL
     }, error = function(e) NULL)
   }
@@ -130,7 +130,7 @@ generate_report <- function(
   } else if (exists("metric_spec") && is.data.table(metric_spec)) {
     metric_spec <- copy(metric_spec)
   } else {
-    spec_path <- file.path(paths$CASE_DIR, "scripts", "metrics_spec.csv")
+    spec_path <- file.path(CASE_DIR, "scripts", "metrics_spec.csv")
     if (!file.exists(spec_path)) stop("Cannot find metrics_spec.csv and no metrics_spec in environment")
     metric_spec <- fread(spec_path)
     setDT(metric_spec)
