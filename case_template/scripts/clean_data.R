@@ -28,51 +28,38 @@ library(openxlsx)
 library(stringr)
 library(purrr)
 
+CASE_DIR <- "YOUR_CASE_FOLDER_FILE_PATH"
 
-# --- Source ADS Shared Functions (OneDrive) ---
+CASE_DIR <- normalizePath(CASE_DIR, winslash = "/", mustWork = TRUE)
 
-# IMPORTANT: Update this path to match YOUR OneDrive location
-# Default path:
-# C:/Users/[USERNAME]/OneDrive - anellodatasolutions.com/Documents/0. ADS/ADS_Shared
+RAW_DIR       <- file.path(CASE_DIR, "data", "raw")
+PROCESSED_DIR <- file.path(CASE_DIR, "data", "processed")
+OUT_DIR       <- file.path(CASE_DIR, "output")
+SCRIPTS_DIR   <- file.path(CASE_DIR, "scripts")
 
+dir.create(RAW_DIR,       recursive = TRUE, showWarnings = FALSE)
+dir.create(PROCESSED_DIR, recursive = TRUE, showWarnings = FALSE)
+dir.create(OUT_DIR,       recursive = TRUE, showWarnings = FALSE)
+dir.create(SCRIPTS_DIR,   recursive = TRUE, showWarnings = FALSE)
+
+message("CASE_DIR      = ", CASE_DIR)
+message("RAW_DIR       = ", RAW_DIR)
+message("PROCESSED_DIR = ", PROCESSED_DIR)
+message("OUT_DIR       = ", OUT_DIR)
+message("SCRIPTS_DIR   = ", SCRIPTS_DIR)
+
+
+# Set ADS_Shared and load functions
 ADS_SHARED <- Sys.getenv("ADS_SHARED",
                          unset = "C:/Users/Gabe/OneDrive - anellodatasolutions.com/Documents/0. ADS/ADS_Shared")
 
-# Verify ADS_Shared folder exists
-if (!dir.exists(ADS_SHARED)) {
-  stop("\n\nERROR: Cannot find ADS_Shared folder at:\n  ", ADS_SHARED,
-       "\n\nPlease either:",
-       "\n  1. Update the ADS_SHARED path above (line 28) to match your OneDrive location",
-       "\n  2. Set the ADS_SHARED environment variable",
-       "\n\nCheck OneDrive sync status if the folder should exist.\n")
-}
 
-# Source core ADS functions and PDF generator
-
+# Run core functions and PDF generator scripts
 source(file.path(ADS_SHARED, "scripts", "functions.R"), local = FALSE, chdir = FALSE)
 cat("✓ ADS functions loaded successfully\n\n")
 
-source(file.path(ADS_REPO, "scripts", "generate_pdf.R"), local = FALSE, chdir = FALSE)
+source(file.path(ADS_SHARED, "scripts", "generate_pdf.R"), local = FALSE, chdir = FALSE)
 cat("✓ ADS generate PDF loaded successfully\n\n")
-
-# --- Set Case Directory ---
-
-# IMPORTANT: Update this path for EACH case
-# This should be the root folder for THIS case (contains data/ and output/ folders)
-#
-# Examples:
-#   set_case_dir("C:/Users/[USERNAME]/OneDrive/Cases/[CASE_NAME]/Analysis/CASE_R")
-
-set_case_dir("C:/Users/Amnon/OneDrive - Employment Research Corporation/Cases/34000s/34146 Ulloa v Securitas/Analysis/34146_R")
-
-# Initialize case paths (creates data/raw, data/processed, output folders if needed)
-paths <- init_case_paths(set_globals = TRUE)
-
-cat("\n✓ Case directory set:\n  ", paths$CASE_DIR, "\n")
-cat("✓ Data directories:\n")
-cat("    Raw:       ", paths$RAW_DIR, "\n")
-cat("    Processed: ", paths$PROCESSED_DIR, "\n")
-cat("    Output:    ", paths$OUT_DIR, "\n\n")
 
 
 # ----- ALL DATA:   Case configuration --------------------------

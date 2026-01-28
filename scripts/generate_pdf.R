@@ -92,15 +92,7 @@ generate_report <- function(
   cat("Include Data Comparison:", include_data_comparison, "\n")
   cat("==================================================\n\n")
   
-  # Check if paths already initialized (from clean_data.R)
-  if (!exists("paths") || is.null(paths)) {
-    paths <- init_case_paths(set_globals = TRUE)
-    cat("✓ Case paths initialized\n")
-  } else {
-    cat("✓ Using existing case paths from environment\n")
-  }
-  
-  DATA_DIR <- paths$OUT_DIR
+  DATA_DIR <- OUT_DIR
   cat("DATA_DIR:", DATA_DIR, "\n\n")
   
   progress("Loading data for case info")
