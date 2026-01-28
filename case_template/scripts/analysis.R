@@ -22,9 +22,9 @@ library(purrr)
 library(zoo)
 
 # Load processed data (always load from disk for deterministic analysis)
-time_rds  <- file.path(paths$PROCESSED_DIR, "time_processed.rds")
-pay_rds   <- file.path(paths$PROCESSED_DIR, "pay_processed.rds")
-class_rds <- file.path(paths$PROCESSED_DIR, "class_processed.rds")
+time_rds  <- file.path(PROCESSED_DIR, "time_processed.rds")
+pay_rds   <- file.path(PROCESSED_DIR, "pay_processed.rds")
+class_rds <- file.path(PROCESSED_DIR, "class_processed.rds")
 
 if (!file.exists(time_rds))  stop("Missing: ", time_rds)
 if (!file.exists(pay_rds))   stop("Missing: ", pay_rds)
@@ -34,7 +34,7 @@ time1  <- readRDS(time_rds)
 pay1   <- readRDS(pay_rds)
 class1 <- readRDS(class_rds)
 
-message("✓ loaded processed data from: ", paths$PROCESSED_DIR)
+message("✓ loaded processed data from: ", PROCESSED_DIR)
 
 # # Merge time1 with class1 (if needed in order to get key information from Class List)
 # time1 <- merge(
@@ -560,6 +560,73 @@ pay_code_categories_tbl <- categorize_pay_codes(
   output_csv = file.path(OUT_DIR, "Pay_Code_Categories.csv")
 )
 
+# Join pay code category and move to last column
+rate_type_summary <- pay_code_categories_tbl[rate_type_summary, on = "Pay_Code"]
+setcolorder(rate_type_summary, c(setdiff(names(rate_type_summary), "Pay_Code_Category"), "Pay_Code_Category"))
+
+# rate_type_summary cleanup
+setDT(rate_type_summary)
+
+# Sort
+setorder(rate_type_summary, Pay_Code_Category, Pay_Code)
+
+# Format
+rate_type_summary[, `:=`(
+  
+  Records = fifelse(
+    is.na(Records) | !is.finite(as.numeric(Records)),
+    "-",
+    formatC(as.numeric(Records), format = "f", digits = 0, big.mark = ",")
+  ),
+  
+  Employees = fifelse(
+    is.na(Employees) | !is.finite(as.numeric(Employees)),
+    "-",
+    formatC(as.numeric(Employees), format = "f", digits = 0, big.mark = ",")
+  ),
+  
+  Hours = fifelse(
+    is.na(Hours) | !is.finite(as.numeric(Hours)),
+    "-",
+    formatC(as.numeric(Hours), format = "f", digits = 2, big.mark = ",")
+  ),
+  
+  Amount = fifelse(
+    is.na(Amount) | !is.finite(as.numeric(Amount)),
+    "-",
+    paste0("$", formatC(as.numeric(Amount), format = "f", digits = 2, big.mark = ","))
+  ),
+  
+  Avg_Rate = fifelse(
+    is.na(Avg_Rate) | !is.finite(as.numeric(Avg_Rate)),
+    "-",
+    paste0("$", formatC(as.numeric(Avg_Rate), format = "f", digits = 2, big.mark = ","))
+  ),
+  
+  Avg_Mult = fifelse(
+    is.na(Avg_Mult) | !is.finite(as.numeric(Avg_Mult)),
+    "-",
+    paste0(formatC(as.numeric(Avg_Mult), format = "f", digits = 1), "x")
+  ),
+  
+  Rate_Type_Pct = fifelse(
+    is.na(Rate_Type_Pct) | !is.finite(as.numeric(Rate_Type_Pct)),
+    "-",
+    paste0(sprintf("%.2f", 100 * as.numeric(Rate_Type_Pct)), "%")
+  )
+  
+)]
+
+# Clean column names
+setnames(
+  rate_type_summary,
+  old = names(rate_type_summary),
+  new = gsub("_", " ", names(rate_type_summary), fixed = TRUE)
+)
+
+rate_type_summary
+write_csv_and_rds(rate_type_summary, file.path(OUT_DIR, "Rate_Type_Analysis.csv"))
+
 # Calculate straight time amounts (needed for group_pay_data function)
 pay1[, Straight_Time_Amt := fifelse(
   Reg_Pay_Code == 1 & Hrs_Wkd_Pay_Code == 1 | (Diff_Pay_Code == 1 & Diff_OT_Pay_Code != 1 & Diff_DT_Pay_Code != 1), Pay_Amount,
@@ -567,15 +634,6 @@ pay1[, Straight_Time_Amt := fifelse(
     OT_Pay_Code == 1 & Hrs_Wkd_Pay_Code == 1 | Diff_OT_Pay_Code == 1, Pay_Amount / 1.5,
     fifelse(DT_Pay_Code == 1 & Hrs_Wkd_Pay_Code == 1 | Diff_DT_Pay_Code == 1, Pay_Amount / 2, 0))
 )]
-
-
-# Join pay code category and move to last column
-rate_type_summary <- pay_code_categories_tbl[rate_type_summary, on = "Pay_Code"]
-setcolorder(rate_type_summary, c(setdiff(names(rate_type_summary), "Pay_Code_Category"), "Pay_Code_Category"))
-
-print(rate_type_summary)
-
-write_csv_and_rds(rate_type_summary, file.path(OUT_DIR, "Rate_Type_Analysis.csv"))
 
 
 # ----- PAY DATA:                Separate earnings period aggregations -------------------
@@ -1479,7 +1537,7 @@ print(schedule_counts)
 # Save outputs (absolute via OUT_DIR; writes both CSV + RDS)
 write_csv_and_rds(
   employee_aww_summary,
-  file.path(resolve_out_dir(), "employee_aww_classifications.csv")
+  file.path(OUT_DIR, "employee_aww_classifications.csv")
 )
 
 # Create detailed report for employees on AWW
@@ -4149,30 +4207,14 @@ export_metrics(final_table, base_name = "Analysis")
 
 # ----- ALL DATA:                Generate PDF report -------------------------------------------------------------
 
-# STANDALONE PDF REPORT GENERATOR
-# Run this script directly without launching the dashboard
-#
-# Usage:
-source(file.path(ADS_REPO, "scripts", "generate_pdf.R"), local = FALSE, chdir = FALSE)
-generate_report()
 
-#   generate_report(sections = "time")                   
-#   generate_report(sections = c("time", "pay"))         
-#   generate_report(include_extrap = TRUE)               
-#   generate_report(include_appendix = TRUE)             
-#   generate_report(include_data_comparison = TRUE)      
-#   generate_report(output_file = "My_Report.pdf")     
+generate_report(include_extrap = TRUE,
+                include_appendix = TRUE,
+                include_data_comparison = TRUE)
 
-# generate_report()                     # All sections\n")
-# generate_report(sections = 'time')    # Time only\n")
-# generate_report(sections = 'class')   # Class only\n")
-# generate_report(sections = 'paga')    # PAGA only\n\n")
-
-# generate_full_report()                # generate_time_report()\n")
-# generate_pay_report()                 # generate_time_pay_report()\n")
-# generate_class_report()               # generate_paga_report()\n")
-# generate_damages_report()             # generate_no_damages_report()\n\n")
-
+# generate_paga_report(include_extrap = TRUE,
+#                 include_appendix = TRUE,
+#                 include_data_comparison = TRUE)
 
 # ----- END  -----------------------------------------
 end.time <- Sys.time()
