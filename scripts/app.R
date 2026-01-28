@@ -949,38 +949,6 @@ filter_sidebar <- function(data_list) {
     
     hr(),
     
-    hr(),
-    
-    checkboxInput("show_extrapolation", "Show Extrapolated Values", value = FALSE),
-    
-    hr(),
-    
-    actionButton("apply_filters", "Apply Filters", class = "btn-primary w-100"),
-    actionButton("reset_filters", "Reset All Filters", class = "btn-outline-secondary w-100 mt-2"),
-    
-    hr(),
-    
-    actionButton("apply_filters", "Apply Filters", class = "btn-primary w-100"),
-    actionButton("reset_filters", "Reset All Filters", class = "btn-outline-secondary w-100 mt-2"),
-    
-    hr(),
-    
-    hr(),
-    
-    checkboxInput("show_extrapolation", "Show Extrapolated Values", value = FALSE),
-    
-    hr(),
-    
-    actionButton("apply_filters", "Apply Filters", class = "btn-primary w-100"),
-    actionButton("reset_filters", "Reset All Filters", class = "btn-outline-secondary w-100 mt-2"),
-    
-    hr(),
-    
-    actionButton("apply_filters", "Apply Filters", class = "btn-primary w-100"),
-    actionButton("reset_filters", "Reset All Filters", class = "btn-outline-secondary w-100 mt-2"),
-    
-    hr(),
-    
     # Toggle extrapolation columns
     checkboxInput("toggle_extrap_cols", "Show Extrapolated Values", value = TRUE),
     
