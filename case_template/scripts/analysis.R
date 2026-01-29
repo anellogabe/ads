@@ -782,7 +782,7 @@ pay1[, `:=`(
 ), by = .(Pay_ID, Pay_Date_Rev)]
 
 rate_cols <- c("Base_Rate", "RROP")
-pp_data1[, paste0(rate_cols, "_orig") := .SD, .SDcols = rate_cols]
+pay1[, paste0(rate_cols, "_orig") := .SD, .SDcols = rate_cols]
 
 # Helpers
 inb <- function(x) !is.na(x) & x >= min_rate & x <= max_rate
@@ -790,36 +790,36 @@ mu_good <- function(x) { g <- inb(x); if (any(g)) mean(x[g]) else NA_real_ }
 diff_na <- function(a, b) (is.na(a) != is.na(b)) | (!is.na(a) & !is.na(b) & a != b)
 
 # Global means from in-bounds values
-glob <- pp_data1[, lapply(.SD, mu_good), .SDcols = rate_cols]
+glob <- pay1[, lapply(.SD, mu_good), .SDcols = rate_cols]
 setnames(glob, rate_cols, paste0(rate_cols, "_mu_g"))
-pp_data1[, (names(glob)) := glob[rep(1L, .N)]]
+pay1[, (names(glob)) := glob[rep(1L, .N)]]
 
 # Per-ID means from in-bounds values
-idmu <- pp_data1[, lapply(.SD, mu_good), by = ID, .SDcols = rate_cols]
+idmu <- pay1[, lapply(.SD, mu_good), by = ID, .SDcols = rate_cols]
 setnames(idmu, rate_cols, paste0(rate_cols, "_mu_id"))
-pp_data1 <- idmu[pp_data1, on = "ID"]
+pay1 <- idmu[pay1, on = "ID"]
 
 # Pass 1 (bad/NA -> ID mean if ID mean in-bounds)
 # Pass 2 (remaining bad/NA -> global mean)
 for (cc in rate_cols) {
   mu_id <- paste0(cc, "_mu_id"); mu_g <- paste0(cc, "_mu_g")
-  pp_data1[!inb(get(cc)) & inb(get(mu_id)), (cc) := get(mu_id)]
-  pp_data1[!inb(get(cc)) & inb(get(mu_g)),  (cc) := get(mu_g)]
+  pay1[!inb(get(cc)) & inb(get(mu_id)), (cc) := get(mu_id)]
+  pay1[!inb(get(cc)) & inb(get(mu_g)),  (cc) := get(mu_g)]
 }
 
 # Summary of what changed (and where it landed)
 rates_summary_tbl <- rbindlist(lapply(rate_cols, function(cc) {
   orig <- paste0(cc, "_orig"); mu_id <- paste0(cc, "_mu_id"); mu_g <- paste0(cc, "_mu_g")
-  chg <- diff_na(pp_data1[[orig]], pp_data1[[cc]])
+  chg <- diff_na(pay1[[orig]], pay1[[cc]])
   data.table(
     Column = cc,
-    Rows_Total = nrow(pp_data1),
-    Rows_Orig_BadOrNA = sum(!inb(pp_data1[[orig]])),
+    Rows_Total = nrow(pay1),
+    Rows_Orig_BadOrNA = sum(!inb(pay1[[orig]])),
     Rows_Changed = sum(chg),
-    Rows_Set_To_ID_Mean = sum(chg & !is.na(pp_data1[[mu_id]]) & abs(pp_data1[[cc]] - pp_data1[[mu_id]]) < 1e-12),
-    Rows_Set_To_Global_Mean = sum(chg & !is.na(pp_data1[[mu_g]])  & abs(pp_data1[[cc]] - pp_data1[[mu_g]])  < 1e-12),
-    IDs_Total = uniqueN(pp_data1$ID),
-    IDs_No_Good_Values = pp_data1[, .(has_good = any(inb(get(cc)))), by = ID][has_good == FALSE, .N]
+    Rows_Set_To_ID_Mean = sum(chg & !is.na(pay1[[mu_id]]) & abs(pay1[[cc]] - pay1[[mu_id]]) < 1e-12),
+    Rows_Set_To_Global_Mean = sum(chg & !is.na(pay1[[mu_g]])  & abs(pay1[[cc]] - pay1[[mu_g]])  < 1e-12),
+    IDs_Total = uniqueN(pay1$ID),
+    IDs_No_Good_Values = pay1[, .(has_good = any(inb(get(cc)))), by = ID][has_good == FALSE, .N]
   )
 }))
 
