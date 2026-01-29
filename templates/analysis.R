@@ -1,11 +1,3 @@
-# ==============================================================================
-# PROPRIETARY AND CONFIDENTIAL
-# Anello Data Solutions LLC
-# 
-# This file contains proprietary information and trade secrets.
-# Unauthorized copying, distribution, or use is strictly prohibited.
-# For authorized use by ANELLO DATA SOLUTIONS LLC contracted analysts only.
-
 # ----- ALL DATA:                Load Packages & Data ----------------------------------------
 
 start.time <- Sys.time()
@@ -19,7 +11,42 @@ library(readxl)
 library(openxlsx)
 library(stringr)
 library(purrr)
-library(zoo)
+
+# DEV SWITCHES
+RUN_CLEAN_DATA_FIRST <- FALSE
+STOP_AFTER_CLEAN     <- FALSE
+
+# Load ADS engine + paths
+ADS_REPO <- normalizePath(Sys.getenv("ADS_REPO"), winslash = "/", mustWork = TRUE)
+source(file.path(ADS_REPO, "scripts", "functions.R"), local = FALSE)
+
+# Detects the folder where this specific script is saved
+if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
+  current_path <- rstudioapi::getActiveDocumentContext()$path
+} else {
+  current_path <- substitute(expect_true(is.character(get_script_path()))) # Fallback
+}
+
+# Set CASE_DIR to the parent directory of the 'scripts' folder
+CASE_DIR <- dirname(dirname(normalizePath(current_path, winslash = "/")))
+assign("CASE_DIR", CASE_DIR, envir = .GlobalEnv)
+
+# Now initialize the paths using the detected CASE_DIR
+paths <- init_case_paths(case_dir = CASE_DIR, set_globals = TRUE)
+
+# Optional: run clean_data.R (dev convenience)
+clean_script <- file.path(CASE_DIR, "scripts", "clean_data.R")
+
+if (RUN_CLEAN_DATA_FIRST) {
+  if (!file.exists(clean_script)) stop("clean_data.R not found at: ", clean_script)
+  
+  message("↻ RUN_CLEAN_DATA_FIRST=TRUE: sourcing ", clean_script)
+  source(clean_script, local = FALSE)
+  
+  if (STOP_AFTER_CLEAN) {
+    stop("Stopped after clean_data.R (STOP_AFTER_CLEAN=TRUE)")
+  }
+}
 
 # Load processed data (always load from disk for deterministic analysis)
 time_rds  <- file.path(PROCESSED_DIR, "time_processed.rds")
@@ -35,6 +62,7 @@ pay1   <- readRDS(pay_rds)
 class1 <- readRDS(class_rds)
 
 message("✓ loaded processed data from: ", PROCESSED_DIR)
+
 
 # # Merge time1 with class1 (if needed in order to get key information from Class List)
 # time1 <- merge(
@@ -56,50 +84,60 @@ message("✓ loaded processed data from: ", PROCESSED_DIR)
 
 
 # ----- ALL DATA:                DEV only - test subset of data (if needed) --------------------------
-
 TEST_SUBSET <- FALSE
 SEED_VAL    <- 99999
-
 # Choose ONE of these (leave the others as NA/NULL)
 # This prioritizes TEST_IDS if provided. To use random sampling, set TEST_IDS <- NULL.
+# The intersect() ensures only filter to IDs that exist, with a warning if some are missing.
 TEST_N      <- NA
-TEST_PCT    <- .03
-TEST_IDS    <- NULL # e.g NULL or c(561405, 421424) specific IDs to keep (numeric or character)
+TEST_PCT    <- 1
+TEST_IDS    <- NULL #c(561405, 421424)  # specific IDs to keep (numeric or character)
 
-if (isTRUE(TEST_SUBSET)) {
+if (TEST_SUBSET) {
   
   if (!is.null(TEST_IDS) && length(TEST_IDS) > 0) {
-    
+    # Extract ID vector from data.table
     id_vec <- all_ids$ID
-    test_ids_typed <- if (is.numeric(id_vec)) as.numeric(TEST_IDS) else as.character(TEST_IDS)
+    
+    # Coerce TEST_IDS to match the type
+    if (is.numeric(id_vec)) {
+      test_ids_typed <- as.numeric(TEST_IDS)
+    } else {
+      test_ids_typed <- as.character(TEST_IDS)
+    }
     
     ids_to_keep <- intersect(test_ids_typed, id_vec)
-    if (length(ids_to_keep) == 0) stop("None of the specified TEST_IDS found in all_ids")
     
+    if (length(ids_to_keep) == 0) {
+      stop("None of the specified TEST_IDS found in all_ids")
+    }
     if (length(ids_to_keep) < length(TEST_IDS)) {
-      warning(sprintf("%d of %d TEST_IDS not found in data",
+      warning(sprintf("%d of %d TEST_IDS not found in data", 
                       length(TEST_IDS) - length(ids_to_keep), length(TEST_IDS)))
     }
     
-    pay1  <- pay1[Pay_ID %in% ids_to_keep]
-    time1 <- time1[ID %in% ids_to_keep]
+    pay1   <- pay1[Pay_ID %in% ids_to_keep]
+    time1  <- time1[ID %in% ids_to_keep]
+    class1 <- class1[Class_ID %in% ids_to_keep]
     
-    message(sprintf("⚠ DEV MODE: Filtered to %d specified ID(s): %s",
-                    length(ids_to_keep), paste(ids_to_keep, collapse = ", ")))
-    
+    message(sprintf("Filtered to %d specified ID(s): %s", 
+                    length(ids_to_keep), 
+                    paste(ids_to_keep, collapse = ", ")))
   } else {
-    
+    # Existing random sample logic
     tmp <- run_test_sample_from_all_ids(
       all_ids  = all_ids,
       pay1     = pay1,
       time1    = time1,
+      class1   = class1,
       test_n   = TEST_N,
       test_pct = TEST_PCT,
       seed_val = SEED_VAL
     )
     
-    pay1  <- tmp$pay1
-    time1 <- tmp$time1
+    pay1   <- tmp$pay1
+    time1  <- tmp$time1
+    class1 <- tmp$class1
   }
 }
 
@@ -237,18 +275,92 @@ print(sorted_pay_codes)
 # updated_sorted_pay_codes <- sort(unique(pay1$Pay_Code))
 # print(updated_sorted_pay_codes)
 
+setDT(pay1)
+
+pay1[, Pay_Code_Orig := Pay_Code]
+
+pay1[, Pay_Code := {
+  x <- trimws(Pay_Code)
+  x <- gsub("^E\\s+", "", x)
+  x <- gsub("\\s+US$", "", x)
+  x <- gsub("\\s+US\\s+WFM.*$", "", x)
+  x <- gsub("\\s+WFM.*$", "", x)
+  x <- gsub("\\s*\\(.*?Payroll.*?\\)", "", x, perl = TRUE)
+  x <- gsub("\\s*\\(.*?PETERMAN.*?\\)", "", x, perl = TRUE)
+  x <- gsub("\\s*-.*$", "", x)
+  x <- gsub("\\s{2,}", " ", x)
+  trimws(x)
+}]
+
+pay1[, Pay_Code := {
+  x <- Pay_Code
+  only_hours <- grepl("^\\s*(Hrs|Hours)\\s*$", x, ignore.case = TRUE)
+  x[!only_hours] <- gsub("\\b(Hrs|Hours)\\b", "", x[!only_hours], ignore.case = TRUE)
+  x <- gsub("\\s{2,}", " ", x)
+  trimws(x)
+}]
+
+pay1[Pay_Code %in% c("SBus Aide"),           Pay_Code := "Bus Aide"]
+pay1[Pay_Code %in% c("SBus Washing"),        Pay_Code := "Bus Washing"]
+pay1[Pay_Code %in% c("SClassroom"),          Pay_Code := "Classroom"]
+pay1[Pay_Code %in% c("SDry Run"),            Pay_Code := "Dry Run"]
+pay1[Pay_Code %in% c("SField Trip"),         Pay_Code := "Field Trip"]
+pay1[Pay_Code %in% c("SGuaranteed"),         Pay_Code := "Guaranteed"]
+pay1[Pay_Code %in% c("SHoliday"),            Pay_Code := "Holiday"]
+pay1[Pay_Code %in% c("SHome to School"),     Pay_Code := "Home to School"]
+pay1[Pay_Code %in% c("SSafety Meeting"),     Pay_Code := "Safety and Accident Meeting"]
+pay1[Pay_Code %in% c("SStandby or Cover"),   Pay_Code := "Standby or Cover"]
+pay1[Pay_Code %in% c("SRegular"),            Pay_Code := "Regular"]
+pay1[Pay_Code %in% c("SRegular US (WFM ONLY)"),            Pay_Code := "SRg US"]
+
+
+pay1[Pay_Code %in% c("REG", "Regular Wages", "Regular Hours"), Pay_Code := "Regular"]
+pay1[Pay_Code %in% c("Maint Support", "Maintenance Support", "Maintenance"), Pay_Code := "Maintenance"]
+pay1[Pay_Code %in% c("Misc Ops Supp", "Misc Operations Support"), Pay_Code := "Misc Operations Support"]
+pay1[Pay_Code %in% c("Misc Net Amt", "Misc Net Amount"), Pay_Code := "Misc Net Amount"]
+pay1[Pay_Code %in% c("Home to Schl", "Home to School DOT"), Pay_Code := "Home to School"]
+pay1[Pay_Code %in% c("Home to Schl Prime", "Home To School Prime"), Pay_Code := "Home to School Prime"]
+pay1[Pay_Code %in% c("Rideshare", "Rideshare Calif", "Rideshare California"), Pay_Code := "Rideshare"]
+
+pay1[Pay_Code %in% c("Overtime Straight"), Pay_Code := "Overtime"]
+
+pay1[Pay_Code %in% c("OT HT Premium", "Overtime HT Premium"), Pay_Code := "OT Premium"]
+pay1[Pay_Code == "OT Premium Double US California/Compass Only", Pay_Code := "OT Premium Double"]
+
+pay1[Pay_Code == "California Meal Break", Pay_Code := "Meal Break"]
+pay1[Pay_Code == "California Rest Break", Pay_Code := "Rest Break"]
+
+pay1[Pay_Code == "Sick Taken US ONLY CODE TO BE USED FOR STATE SICK PLANS", Pay_Code := "Sick"]
+pay1[Pay_Code == "CA COVID Pay", Pay_Code := "COVID Pay"]
+
+pay1[Pay_Code == "DR Light Duty", Pay_Code := "Light Duty"]
+pay1[Pay_Code == "Driver Eval", Pay_Code := "Driver Evaluation"]
+pay1[Pay_Code == "Admin Driving", Pay_Code := "Administrator Driving"]
+
+pay1[grepl("^Per Diem", Pay_Code),     Pay_Code := "Per Diem"]
+pay1[grepl("^Workers Comp", Pay_Code), Pay_Code := "Workers Comp"]
+pay1[grepl("^Van", Pay_Code),          Pay_Code := "Van"]
+
+updated_sorted_pay_codes <- sort(unique(pay1$Pay_Code))
+print(updated_sorted_pay_codes)
+
 # Define pay code groups (use exact values or patterns - see "mode = " below)
 # NOTE: Adapt these to match your actual pay codes
-reg_pay_codes     <- c("reg", "train", "meeting", "retro")
-ot_pay_codes      <- c("overtime", "over time", "ot straight", "ovt", "ot premium")
-dt_pay_codes      <- c("double", "dt")
-bon_pay_codes     <- c("comm", "bon", "spiff", "award", "awd", "bns")
-meal_pay_codes    <- c("meal", "brkm", "camp")
-rest_pay_codes    <- c("rest", "brkr", "")
+reg_pay_codes     <- c("home", "aid", "charter", "class", "safety", "shuttl", "stde", "stdr", "stib", "stmt", "stot", 
+                       "strc", "train", "field", "washing", "fueling", "home2sch", "reg", "rop",
+                       "1xq", "meeting", "clerical", "park out", "Wheelchair", "Dry Run", "Misc Operations Support",
+                       "Maintenance", "Route Writer", "Transfer Driving", "Recruitment", "Light Duty", "Dispatching",
+                       "Admin", "Driver Evaluation", "Administrator Driving", "Office", "Van"
+)
+ot_pay_codes      <- c("overtime", "otstraight", "ot straight", "ovt", "ot premium")
+dt_pay_codes      <- c("double")
+bon_pay_codes     <- c("Commission", "Bonus")
+meal_pay_codes    <- c("meal", "brkm", "dhpb")
+rest_pay_codes    <- c("rest")
 diff_pay_codes    <- c("diff")
-diff_ot_pay_codes <- c("DO NOT USE THIS")
-diff_dt_pay_codes <- c("DO NOT USE THIS")
-sick_pay_codes    <- c("sick")
+diff_ot_pay_codes <- c("diffot")
+diff_dt_pay_codes <- c("diffdt")
+sick_pay_codes    <- c("sick", "ccvd", "covid")
 
 # Configure matching mode
 pay_code_config <- list(
@@ -560,73 +672,6 @@ pay_code_categories_tbl <- categorize_pay_codes(
   output_csv = file.path(OUT_DIR, "Pay_Code_Categories.csv")
 )
 
-# Join pay code category and move to last column
-rate_type_summary <- pay_code_categories_tbl[rate_type_summary, on = "Pay_Code"]
-setcolorder(rate_type_summary, c(setdiff(names(rate_type_summary), "Pay_Code_Category"), "Pay_Code_Category"))
-
-# rate_type_summary cleanup
-setDT(rate_type_summary)
-
-# Sort
-setorder(rate_type_summary, Pay_Code_Category, Pay_Code)
-
-# Format
-rate_type_summary[, `:=`(
-  
-  Records = fifelse(
-    is.na(Records) | !is.finite(as.numeric(Records)),
-    "-",
-    formatC(as.numeric(Records), format = "f", digits = 0, big.mark = ",")
-  ),
-  
-  Employees = fifelse(
-    is.na(Employees) | !is.finite(as.numeric(Employees)),
-    "-",
-    formatC(as.numeric(Employees), format = "f", digits = 0, big.mark = ",")
-  ),
-  
-  Hours = fifelse(
-    is.na(Hours) | !is.finite(as.numeric(Hours)),
-    "-",
-    formatC(as.numeric(Hours), format = "f", digits = 2, big.mark = ",")
-  ),
-  
-  Amount = fifelse(
-    is.na(Amount) | !is.finite(as.numeric(Amount)),
-    "-",
-    paste0("$", formatC(as.numeric(Amount), format = "f", digits = 2, big.mark = ","))
-  ),
-  
-  Avg_Rate = fifelse(
-    is.na(Avg_Rate) | !is.finite(as.numeric(Avg_Rate)),
-    "-",
-    paste0("$", formatC(as.numeric(Avg_Rate), format = "f", digits = 2, big.mark = ","))
-  ),
-  
-  Avg_Mult = fifelse(
-    is.na(Avg_Mult) | !is.finite(as.numeric(Avg_Mult)),
-    "-",
-    paste0(formatC(as.numeric(Avg_Mult), format = "f", digits = 1), "x")
-  ),
-  
-  Rate_Type_Pct = fifelse(
-    is.na(Rate_Type_Pct) | !is.finite(as.numeric(Rate_Type_Pct)),
-    "-",
-    paste0(sprintf("%.2f", 100 * as.numeric(Rate_Type_Pct)), "%")
-  )
-  
-)]
-
-# Clean column names
-setnames(
-  rate_type_summary,
-  old = names(rate_type_summary),
-  new = gsub("_", " ", names(rate_type_summary), fixed = TRUE)
-)
-
-rate_type_summary
-write_csv_and_rds(rate_type_summary, file.path(OUT_DIR, "Rate_Type_Analysis.csv"))
-
 # Calculate straight time amounts (needed for group_pay_data function)
 pay1[, Straight_Time_Amt := fifelse(
   Reg_Pay_Code == 1 & Hrs_Wkd_Pay_Code == 1 | (Diff_Pay_Code == 1 & Diff_OT_Pay_Code != 1 & Diff_DT_Pay_Code != 1), Pay_Amount,
@@ -634,6 +679,15 @@ pay1[, Straight_Time_Amt := fifelse(
     OT_Pay_Code == 1 & Hrs_Wkd_Pay_Code == 1 | Diff_OT_Pay_Code == 1, Pay_Amount / 1.5,
     fifelse(DT_Pay_Code == 1 & Hrs_Wkd_Pay_Code == 1 | Diff_DT_Pay_Code == 1, Pay_Amount / 2, 0))
 )]
+
+
+# Join pay code category and move to last column
+rate_type_summary <- pay_code_categories_tbl[rate_type_summary, on = "Pay_Code"]
+setcolorder(rate_type_summary, c(setdiff(names(rate_type_summary), "Pay_Code_Category"), "Pay_Code_Category"))
+
+print(rate_type_summary)
+
+write_csv_and_rds(rate_type_summary, file.path(OUT_DIR, "Rate_Type_Analysis.csv"))
 
 
 # ----- PAY DATA:                Separate earnings period aggregations -------------------
@@ -666,6 +720,7 @@ var_OT_multiplier <- 1.5
 var_DT_multiplier <- 2
 var_half_time_OT_multiplier <- 0.5
 var_half_time1_multiplier <- 1
+rrop_buffer <- 0.05
 
 # --- BONUS-SPECIFIC REGULAR RATE ANALYSIS ---
 
@@ -746,85 +801,6 @@ pay1[, RROP := fifelse(
   Base_Rate1
 )]
 
-# Calculate RROP with grouped fallback
-pay1[, RROP := ifelse(
-  pp_Hrs_Wkd > 0,
-  (pp_Straight_Time_Amt + pp_Oth_RROP_Amt) / pp_Hrs_Wkd,
-  {
-    r <- c(Base_Rate1, Base_Rate2, Base_Rate3)
-    if (all(is.na(r))) NA_real_ else mean(r, na.rm = TRUE)
-  }
-), by = Pay_ID_Period_End]
-
-# avg base rate per Pay_ID_Period_End (row-level mean of Base_Rate 1-3, then group mean)
-pay1[, base_rate_avg := rowMeans(.SD, na.rm = TRUE), .SDcols = c("Base_Rate1","Base_Rate2","Base_Rate3")]
-
-pay1[, base_rate_pp_avg := {
-  x <- base_rate_avg
-  if (all(is.na(x))) NA_real_ else mean(x, na.rm = TRUE)
-}, by = Pay_ID_Period_End]
-
-# Replace RROP if it's below that avg (only when both are non-missing)
-pay1[!is.na(RROP) & !is.na(base_rate_pp_avg) & RROP < base_rate_pp_avg, RROP := base_rate_pp_avg]
-
-pay1[, c("base_rate_avg","base_rate_pp_avg") := NULL]
-
-# Calculate expected vs actual wages
-pay1[, `:=`(
-  Calc_Tot_Wages = pp_Straight_Time_Amt + 
-    (RROP * pp_OT_Hrs * var_half_time_OT_multiplier) +
-    (RROP * pp_DT_Hrs) + 
-    (RROP * pp_Meal_Prem_Hrs) + 
-    (RROP * pp_Rest_Prem_Hrs) + 
-    (RROP * pp_Sick_Hrs) +
-    pp_Oth_RROP_Amt + pp_Oth_Amt,
-  Actual_Wages = sum(Pay_Amount, na.rm = TRUE)
-), by = .(Pay_ID, Pay_Date_Rev)]
-
-rate_cols <- c("Base_Rate", "RROP")
-pp_data1[, paste0(rate_cols, "_orig") := .SD, .SDcols = rate_cols]
-
-# Helpers
-inb <- function(x) !is.na(x) & x >= min_rate & x <= max_rate
-mu_good <- function(x) { g <- inb(x); if (any(g)) mean(x[g]) else NA_real_ }
-diff_na <- function(a, b) (is.na(a) != is.na(b)) | (!is.na(a) & !is.na(b) & a != b)
-
-# Global means from in-bounds values
-glob <- pp_data1[, lapply(.SD, mu_good), .SDcols = rate_cols]
-setnames(glob, rate_cols, paste0(rate_cols, "_mu_g"))
-pp_data1[, (names(glob)) := glob[rep(1L, .N)]]
-
-# Per-ID means from in-bounds values
-idmu <- pp_data1[, lapply(.SD, mu_good), by = ID, .SDcols = rate_cols]
-setnames(idmu, rate_cols, paste0(rate_cols, "_mu_id"))
-pp_data1 <- idmu[pp_data1, on = "ID"]
-
-# Pass 1 (bad/NA -> ID mean if ID mean in-bounds)
-# Pass 2 (remaining bad/NA -> global mean)
-for (cc in rate_cols) {
-  mu_id <- paste0(cc, "_mu_id"); mu_g <- paste0(cc, "_mu_g")
-  pp_data1[!inb(get(cc)) & inb(get(mu_id)), (cc) := get(mu_id)]
-  pp_data1[!inb(get(cc)) & inb(get(mu_g)),  (cc) := get(mu_g)]
-}
-
-# Summary of what changed (and where it landed)
-rates_summary_tbl <- rbindlist(lapply(rate_cols, function(cc) {
-  orig <- paste0(cc, "_orig"); mu_id <- paste0(cc, "_mu_id"); mu_g <- paste0(cc, "_mu_g")
-  chg <- diff_na(pp_data1[[orig]], pp_data1[[cc]])
-  data.table(
-    Column = cc,
-    Rows_Total = nrow(pp_data1),
-    Rows_Orig_BadOrNA = sum(!inb(pp_data1[[orig]])),
-    Rows_Changed = sum(chg),
-    Rows_Set_To_ID_Mean = sum(chg & !is.na(pp_data1[[mu_id]]) & abs(pp_data1[[cc]] - pp_data1[[mu_id]]) < 1e-12),
-    Rows_Set_To_Global_Mean = sum(chg & !is.na(pp_data1[[mu_g]])  & abs(pp_data1[[cc]] - pp_data1[[mu_g]])  < 1e-12),
-    IDs_Total = uniqueN(pp_data1$ID),
-    IDs_No_Good_Values = pp_data1[, .(has_good = any(inb(get(cc)))), by = ID][has_good == FALSE, .N]
-  )
-}))
-
-rates_summary_tbl
-
 # Calculate expected vs actual wages
 pay1[, `:=`(
   Calc_Tot_Wages = pp_Straight_Time_Amt + 
@@ -900,37 +876,68 @@ time1[, Week_End_Day := weekdays(Week_End)]
 time1[, ID_Week_End := paste(ID, Week_End, sep = "-")]
 
 
-# ----- TIME DATA:               Flag time off weeks, then filter out non work hrs records --------
+# ----- TIME DATA:               Flag time off weeks, then filter out non work hrs records, split shifts, 5 hr guarantees --------
 
 # Sort by ID and Date
 setorder(time1, ID, Date)
-
-# Week end day mapping for floor_date() and ceiling_date()
-# week_end = 1  ->  Sunday
-# week_end = 2  ->  Monday
-# week_end = 3  ->  Tuesday
-# week_end = 4  ->  Wednesday
-# week_end = 5  ->  Thursday
-# week_end = 6  ->  Friday
-# week_end = 7  ->  Saturday
-workweek_value = 5
-
 setDT(time1)
 
-# Add week ending date ADJUST AS NEEDED BASED ON THE PAY DATA
-time1[, Week_End := floor_date(Date, "week", week_start = workweek_value) + days(6)]
+# Split_Shift
+time1[, split_shift_mark := fifelse(time1$Paycode_Name=="SPLT--SPLIT SHIFT", 1, 0)]
+time1[, split_shift_mark := fifelse(is.na(split_shift_mark), 0, split_shift_mark)]
+time1[, split_shift := cumsum(split_shift_mark), by = ID_Date]
+time1[, split_shift := fifelse(split_shift>=1, 1, 0), by = ID_Date]
 
-# Add day of week name to verify
-time1[, Week_End_Day := weekdays(Week_End)]
+# DIHG 5 HOUR GUARANTEE
+time1[, five_hour_guarantee_mark := fifelse(time1$Paycode_Name=="DIHG--GUARANTEE", 1, 0)]
+time1[, five_hour_guarantee_mark := fifelse(is.na(five_hour_guarantee_mark), 0, five_hour_guarantee_mark)]
+time1[, five_hour_guarantee:= cumsum(five_hour_guarantee_mark), by = ID_Date]
+time1[, five_hour_guarantee := fifelse(five_hour_guarantee>=1, 1, 0), by = ID_Date]
 
-time1[, ID_Week_End := paste(ID, Week_End, sep = "-")]
+# Ensure Hours is numeric (optional but usually wise)
+time1[, Hours := as.numeric(Hours)]
 
-# Flag weeks with time off, then remove time off records
-time1[, wk_time_off := fifelse(any(Code == "PTO"), TRUE,FALSE), by = "ID_Week_End"]
+# Split Shift hrs (sum Hours for ID_Date when any split shift exists in that day) ---
+time1[
+  , split_shift_hrs := sum(fifelse(Paycode_Name == "SPLT--SPLIT SHIFT", Hours, 0), na.rm = TRUE),
+  by = ID_Date
+]
 
-# Filter out time off rows
+# Guarantee hrs (sum Hours for ID_Date when any DIHG guarantee exists in that day) ---
+time1[
+  , guarantee_hrs := sum(fifelse(Paycode_Name == "DIHG--GUARANTEE", Hours, 0), na.rm = TRUE),
+  by = ID_Date
+]
+
+# PTO hrs (sum Hours for ID_Date where Paycode_Name OR Paycode_Name2 contains "pto", case-insensitive) ---
+time1[
+  , pto_hrs := sum(fifelse(
+    grepl("pto", Paycode_Name, ignore.case = TRUE) | grepl("pto", Paycode_Name2, ignore.case = TRUE), 
+    Hours, 0), na.rm = TRUE),
+  by = ID_Date
+]
+
+EXCLUDE_pay_codes <- c("pto", "dihg")
+
+Time_code_config <- list(
+  EXCLUDE = list(codes = EXCLUDE_pay_codes, mode = "contains")
+)
+
+for (type_name in names(Time_code_config)) {
+  config <- Time_code_config[[type_name]]
+  col_name <- paste0(type_name, "_Time_Code")
+  time1[, (col_name) := as.integer(
+    match_pay_codes(Paycode_Name, config$codes, config$mode) == 1 |
+      match_pay_codes(Paycode_Name2, config$codes, config$mode) == 1
+  )]
+}
+
+# Flag weeks where ANY record in that week has PTO/excluded time
+time1[, wk_time_off := as.integer(sum(pto_hrs, na.rm = TRUE) > 0), by = ID_Week_End]
+
+# Filter out time off records, but keep work code rows OR NA codes
 nrow(time1) #_______
-time1 = time1[Code != "PTO"]
+time1 <- time1[EXCLUDE_Time_Code != 1 ]
 nrow(time1) #_______
 
 
@@ -1124,7 +1131,7 @@ cat("  NA In:", time1[is.na(In), .N], "| NA Out:", time1[is.na(Out), .N], "\n")
 # Safe for both placeholder-merged rows and true datetime rows.
 time1[!is.na(In) & !is.na(Out) & Out < In, Out := Out + days(1)]
 
-new_shift_cutoff <- 4  #  *****  Hours between punches to consider separate shifts (ADJUST AS NEEDED)  ******** -----
+new_shift_cutoff <- 7  #  *****  Hours between punches to consider separate shifts (ADJUST AS NEEDED)  ******** -----
 
 # Sort by employee and time
 setorder(time1, ID, Date, In, Out)
@@ -1297,6 +1304,7 @@ time1[, shift := fifelse(ID != shift(ID), 1,
                          fifelse(hrs_from_prev > new_shift_cutoff & punch_type == "in", 1, 0))]
 time1[, shift := fifelse(is.na(shift), 1, shift)]
 
+# Optional logic to split shifts with double punch_types (broken shifts split from non-broken shifts)
 # Default is 16 hrs (adjust as necessary)
 time1[, shift := fifelse(hrs_from_prev > 16, 1, shift)]
 
@@ -1331,9 +1339,6 @@ time1[, shift_hrs := sum(hrs_wkd), by = ID_Shift]
 time1[, mp_hrs := fifelse(mp == 1, hrs_from_prev, 0)]
 
 # Meal period length flags
-time1[, mp_one_min := fifelse(mp == 1 & mp_hrs > 0 & mp_hrs <= (2/60), 1L, 0L)]
-sum(time1$mp_one_min, na.rm = TRUE)
-
 time1[, mp_lt_twenty := fifelse(mp == 1 & mp_hrs > 0 & mp_hrs < (20/60), 1L, 0L)]
 time1[, mp_lt_thirty := fifelse(mp == 1 & mp_hrs > 0 & mp_hrs < 0.5, 1L, 0L)]
 time1[, mp_thirty     := fifelse(mp == 1 & mp_hrs == 0.5, 1L, 0L)]
@@ -1510,6 +1515,13 @@ time1[, mp2_mins_late := fifelse(hrs_to_mp2 > 10, round((hrs_to_mp2 - 10) * 60),
 # ), by = ID_Shift]
 
 
+# ----- TIME DATA:              Calculated unpaid short break (<20mins) analysis -----------------------------------------
+
+time1[, short_break_hrs     := fifelse(mp_hrs < (20/60), mp_hrs, 0)]
+time1[, short_break_reg_hrs := fifelse(mp_hrs < (20/60) & shift_hrs >= 8, mp_hrs, 0)]
+time1[, short_break_ot_hrs  := fifelse(mp_hrs < (20/60) & shift_hrs <  8, mp_hrs, 0)]
+
+
 # ----- TIME DATA:               Weekly summary and Alternative Workweek Analysis --------------
 
 # Weekly summary without weeks with time off for clean AWW review
@@ -1600,7 +1612,7 @@ print(schedule_counts)
 # Save outputs (absolute via OUT_DIR; writes both CSV + RDS)
 write_csv_and_rds(
   employee_aww_summary,
-  file.path(OUT_DIR, "employee_aww_classifications.csv")
+  file.path(resolve_out_dir(), "employee_aww_classifications.csv")
 )
 
 # Create detailed report for employees on AWW
@@ -1620,11 +1632,16 @@ names(time1)
 
 # Define fields globally
 first_fields_default <- c("Source", "Sheet", "Page", "Bates", "Key_Gps", "ID", "Name", "ID_Date", "Date", 
+                          "Location_Name", "Executive_Area", "Area", "Region",
                           "ID_Period_End", "Week_End", "ID_Week_End", "wk_time_off", "Period_Beg", "Period_End")
 
 #NOTE: Hours field is default "Sum" field but it could be a "Max" field depending on your time data format.
 sum_fields_default <- c("mp", "mp_lt_twenty", "mp_lt_thirty", "mp_thirty", "mp_gt_thirty", "mp_forty_five", 
-                        "mp_gt_two_hrs", "mp_gt_four_hrs", "Hours"
+                        "mp_gt_two_hrs", "mp_gt_four_hrs", "Hours",
+                        
+                        "split_shift", "five_hour_guarantee", "split_shift_hrs", "guarantee_hrs", "pto_hrs"
+                        
+                        ,"short_break_hrs", "short_break_reg_hrs", "short_break_ot_hrs"
                         
                         # Rest period punches in data? Add:
                         #, "rp", "rp_lt_ten", "rp_ten", "rp_gt_ten", "rp_fifteen"
@@ -1672,9 +1689,9 @@ setDT(shift_data1)
 setorder(shift_data1, ID, Date)
 
 # Filter out zero hour shifts and shifts > 20 hrs (adjust as needed)
-nrow(shift_data1) #________
+nrow(shift_data1) #872428
 shift_data1 <- shift_data1[shift_hrs > 0 & shift_hrs <= 20]
-nrow(shift_data1) #________
+nrow(shift_data1) #872215
 
 # Shift flag (each row = shift, so always "1" assuming it has hours (zero hour "shifts" were just filtered out))
 shift_data1[, shift := as.integer(shift_hrs > 0)]
@@ -1787,7 +1804,10 @@ shift_data1[, rpv_shift := mpv_shift]
 
 shift_data1[, `:=` (
   wk_shift_hrs = sum(shift_hrs, na.rm = TRUE),
-  wk_Hours = sum(Hours, na.rm = TRUE)
+  wk_Hours = sum(Hours, na.rm = TRUE),
+  wk_short_break_hrs = sum(short_break_hrs, na.rm = TRUE),
+  wk_short_break_reg_hrs = sum(short_break_reg_hrs, na.rm = TRUE),
+  wk_short_break_ot_hrs = sum(short_break_ot_hrs, na.rm = TRUE)
 ), by = ID_Week_End]
 
 
@@ -1813,7 +1833,10 @@ shift_data1[, `:=`(
   # auto_mpv_per_pp_w = sum(auto_mpv_shift_w, na.rm = TRUE),
   rpv_per_pp = sum(rpv_shift, na.rm = TRUE),
   pp_shift_hrs = sum(shift_hrs, na.rm = TRUE),
-  pp_Hours = sum(Hours, na.rm = TRUE)
+  pp_Hours = sum(Hours, na.rm = TRUE),
+  pp_short_break_hrs = sum(short_break_hrs, na.rm = TRUE),
+  pp_short_break_reg_hrs = sum(short_break_reg_hrs, na.rm = TRUE),
+  pp_short_break_ot_hrs = sum(short_break_ot_hrs, na.rm = TRUE)
 ), by = .(ID, Period_End)]
 
 
@@ -1869,7 +1892,7 @@ shift_data1[, `:=`(
 #  Standard CA daily OT/DT (non-AWS baseline) 
 shift_data1[, `:=`(
   calc_daily_ot = fifelse(shift_hrs > 12, 4,
-                          fifelse(shift_hrs > 8, shift_hrs - 8, 0)),
+                                      fifelse(shift_hrs > 8, shift_hrs - 8, 0)),
   calc_daily_dt = fifelse(shift_hrs > 12, shift_hrs - 12, 0)
 )]
 
@@ -1916,6 +1939,9 @@ shift_data1[, qtr_hr := fifelse(
     (round(Hours, 2) - floor(Hours)) %in% c(0, 0.25, 0.5, 0.75), 1L, 0L
   )
 )]
+
+# Shift duration / shift-level clock rounding analysis
+rounding_hrs_cutoff <- 0.25
 
 # Calculate diff (rounded Hours - shift_hrs)
 shift_data1[, diff := fifelse(
@@ -2468,7 +2494,8 @@ shift_data1[, c(
 setDT(pay1)
 
 # Define fields globally
-first_fields_default <- c("Pay_Source", "Pay_Name", "Pay_ID", "Pay_Key_Gps", "Pay_Date", "Pay_Period_End", "Pay_ID_Current_Qtr")
+first_fields_default <- c("Pay_Source", "Pay_Name", "Pay_ID", "Pay_Key_Gps", "Pay_Date", "Pay_Period_End", "Pay_ID_Current_Qtr",
+                          "Sample", "Class_Job", "Hire_Date", "Term_Date", "Subclass(es)")
 sum_fields_default <- c("Pay_Hours", "Pay_Amount")
 max_fields_default <- c("pp_Base_Rate", "RROP", "double_CA_min_wage", "CA_min_wage", 
                         "pp_Hrs_Wkd", "pp_Reg_Hrs", "pp_OT_Hrs", "pp_DT_Hrs", "pp_Meal_Prem_Hrs", 
@@ -2521,14 +2548,20 @@ setnames(pp_pay1, "Pay_ID_Period_End", "ID_Period_End", skip_absent = TRUE)
 setDT(shift_data1)
 
 # Fields
-first_fields_default <- c("Source", "Sheet", "Key_Gps", "ID", "Name", "ID_Date", "Period_Beg", "Period_End")
+first_fields_default <- c(
+  "Source", "Sheet", "Key_Gps", "ID", "Name", "ID_Date", "Period_Beg", "Period_End", 
+  "Location_Name", "Executive_Area", "Area", "Region"
+)
 
 sum_fields_default <- c(
   "shift", "shift_hrs", "Hours", "mp",
   
   "mp_lt_twenty",
   "mp_lt_thirty", "mp_thirty", "mp_gt_thirty",
-  "mp_gt_two_hrs", "mp_gt_four_hrs",
+  "mp_gt_two_hrs", "mp_gt_four_hrs"
+  
+  ,"short_break_hrs", "short_break_reg_hrs", "short_break_ot_hrs",
+  "split_shift", "five_hour_guarantee", "split_shift_hrs", "guarantee_hrs", "pto_hrs",
   
   "MissMP1", "LateMP1", "ShortMP1", "MissMP2", "LateMP2", "ShortMP2",
   "mp1_violation", "mp2_violation",
@@ -2578,8 +2611,7 @@ pp_shift_data1 <- remove_suffixes(
   suffixes = c("_sum", "_max", "_min", "_mean", "_median")
 )
 
-# --- join and reconcile ----
-
+# --- Full outer join: keep all shift rows + all pay-period rows (1 row per ID_Period_End) ---
 setDT(pp_shift_data1)
 setDT(pp_pay1)
 
@@ -2615,121 +2647,19 @@ pp_data1[, .(
 pp_data1[, `:=`(
   ID         = fcoalesce(ID, Pay_ID),
   Key_Gps    = fcoalesce(Key_Gps, Pay_Key_Gps),
-  Period_End = fcoalesce(Period_End, Pay_Period_End)
+  Period_End = fcoalesce(Period_End, Pay_Period_End),
+  RROP       = fcoalesce(RROP, i.RROP),
+  Base_Rate  = fcoalesce(Base_Rate_Avg, pp_Base_Rate)
 )]
 
 # Remove the now-redundant columns
-pp_data1[, c("Pay_ID", "Pay_Key_Gps", "Pay_Period_End") := NULL]
+pp_data1[, c("Pay_ID", "Pay_Key_Gps", "Pay_Period_End", "i.RROP", "Base_Rate_Avg", "pp_Base_Rate") := NULL]
 
-# EE flag
+# EE FLAG (one row per employee) ---
 setDT(pp_data1)
 setorder(pp_data1, ID, Period_End, Pay_Date, ID_Period_End)
 
 pp_data1[, ee_flag := as.integer(rowid(ID) == 1L)]
-
-# Fill Base_Rate and RROP to rows coming in from time data.
-setorder(pp_data1, ID, ID_Period_End)
-
-fill_cols <- c(
-  "pp_Base_Rate",
-  "RROP",
-  "double_CA_min_wage",
-  "CA_min_wage",
-  "Name",
-  "Pay_Name"
-)
-fill_cols <- intersect(fill_cols, names(pp_data1))
-
-# Split cols by type
-is_num <- vapply(pp_data1[, ..fill_cols], is.numeric, logical(1)) |
-  vapply(pp_data1[, ..fill_cols], is.integer, logical(1))
-
-num_cols  <- fill_cols[is_num]
-char_cols <- setdiff(fill_cols, num_cols)
-
-# Numeric: data.table nafill
-if (length(num_cols)) {
-  pp_data1[, (num_cols) := lapply(.SD, \(x) {
-    x <- data.table::nafill(x, type = "locf")  # down
-    data.table::nafill(x, type = "nocb")      # up
-  }), by = ID, .SDcols = num_cols]
-}
-
-# Character/factor: zoo::na.locf
-if (length(char_cols)) {
-  if (!requireNamespace("zoo", quietly = TRUE)) install.packages("zoo")
-  
-  pp_data1[, (char_cols) := lapply(.SD, \(x) {
-    # normalize factors to character to avoid weirdness
-    if (is.factor(x)) x <- as.character(x)
-    x <- zoo::na.locf(x, na.rm = FALSE)                     # down
-    zoo::na.locf(x, fromLast = TRUE, na.rm = FALSE)         # up
-  }), by = ID, .SDcols = char_cols]
-}
-
-# Fill remaining numeric NAs with overall mean of everyone else (excluding NAs)
-for (cc in num_cols) {
-  mu <- pp_data1[!is.na(get(cc)), mean(get(cc), na.rm = TRUE)]
-  pp_data1[is.na(get(cc)), (cc) := mu]
-}
-
-if ("pp_Base_Rate" %in% names(pp_data1)) setnames(pp_data1, "pp_Base_Rate", "Base_Rate")
-
-# Apply upper and lower rate bounds (Base_Rate and RROP)
-setDT(pp_data1)
-
-rate_min <- 7.25
-rate_max <- 1000
-
-fix_rate_with_ca_min <- function(dt, col, id_col = "ID",
-                                 ca_col = "CA_min_wage",
-                                 min_rate = rate_min,
-                                 max_rate = rate_max) {
-  
-  req_cols <- c(col, id_col, ca_col)
-  if (!all(req_cols %in% names(dt))) {
-    stop("Missing required columns: ",
-         paste(setdiff(req_cols, names(dt)), collapse = ", "))
-  }
-  
-  id_mean <- paste0(col, "_id_mean")
-  
-  # Employee-level mean using ONLY valid in-range rates
-  dt[, (id_mean) := {
-    v <- get(col)
-    v_ok <- v[!is.na(v) & v >= min_rate & v <= max_rate]
-    if (length(v_ok) == 0) NA_real_ else mean(v_ok)
-  }, by = id_col]
-  
-  # Rows that need replacement
-  bad_rows <- is.na(dt[[col]]) |
-    dt[[col]] < min_rate |
-    dt[[col]] > max_rate
-  
-  # Hard stop if CA_min_wage missing where required
-  if (any(bad_rows & is.na(dt[[ca_col]]))) {
-    stop(
-      "CA_min_wage is NA for rows requiring rate replacement in column: ",
-      col
-    )
-  }
-  
-  # Replace invalid values
-  dt[bad_rows, (col) := fifelse(
-    !is.na(get(id_mean)), get(id_mean),
-    get(ca_col)
-  )]
-  
-  dt[, (id_mean) := NULL]
-  invisible(NULL)
-}
-
-# Apply to both
-fix_rate_with_ca_min(pp_data1, "Base_Rate")
-fix_rate_with_ca_min(pp_data1, "RROP")
-
-# Ensure RROP always as much or more than Base_Rate
-pp_data1[, RROP := pmax(RROP, Base_Rate, na.rm = TRUE)]
 
 
 # ----- ALL DATA (BY PP):        Principal damages -----------------------------------------
@@ -2741,8 +2671,8 @@ rrop_dmgs_switch           <- TRUE
 otc_hrs_per_shift          <- 0 #e.g., (20/60) for 20 mins per shift
 unreimb_exp_per_pp         <- 0
 clock_rounding_dmgs_switch <- FALSE
-unpaid_ot_dmgs_switch      <- FALSE
-min_wage_dmgs_switch       <- FALSE
+unpaid_ot_dmgs_switch      <- TRUE
+min_wage_dmgs_switch       <- TRUE
 
 setDT(pp_data1)
 
@@ -2753,29 +2683,33 @@ pp_data1[, RROP_ee := {
 
 # Principal damages by claim 
 pp_data1[, `:=`(
-  # Meal 
+# Meal 
   mp_dmgs                 = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp)   | is.na(RROP), NA_real_, mpv_per_pp   * RROP),
   mp_dmgs_w               = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp_w) | is.na(RROP), NA_real_, mpv_per_pp_w * RROP),
   mp_dmgs_less_prems      = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp_less_prems)   | is.na(RROP), NA_real_, mpv_per_pp_less_prems   * RROP),
   mp_dmgs_less_prems_w    = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp_less_prems_w) | is.na(RROP), NA_real_, mpv_per_pp_less_prems_w * RROP),
-  # Rest 
+# Rest 
   rp_dmgs                 = fifelse(rp_dmgs_switch == FALSE | is.na(rpv_per_pp) | is.na(RROP), NA_real_, rpv_per_pp * RROP),
   rp_dmgs_less_prems      = fifelse(rp_dmgs_switch == FALSE | is.na(rpv_per_pp_less_prems) | is.na(RROP), NA_real_, rpv_per_pp_less_prems * RROP),
-  # RROP (pulled in from pay1, already at pp level) 
+# RROP (pulled in from pay1, already at pp level) 
   Net_rrop_dmgs           = fifelse(rep_len(!rrop_dmgs_switch, .N), 0, fcoalesce(Net_rrop_dmgs, 0)),
   Gross_rrop_dmgs         = fifelse(rep_len(!rrop_dmgs_switch, .N), 0, fcoalesce(Gross_rrop_dmgs, 0)),                   
-  # Off-the-clock
+# Off-the-clock
   otc_dmgs                = fifelse(is.na(RROP), 0, otc_hrs_per_shift * Shifts * RROP),                                                   # MUST BE UPDATED
-  # Unreimbursed expenses
+# Unreimbursed expenses
   unreimb_exp_dmgs        = unreimb_exp_per_pp,
-  # Clock rounding
+# Clock rounding
   clock_rounding_dmgs     = fifelse(!clock_rounding_dmgs_switch | is.na(RROP), 0, 0 * RROP),                                              # MUST BE UPDATED
-  # Unpaid wages (min wage)
-  min_wage_dmgs           = fifelse(min_wage_dmgs_switch == FALSE | is.na(RROP), 0, 0)
-  # e.g., (short_break_reg_hrs * CA_min_wage) + (short_break_ot_hrs * RROP))                                                     
+# Unpaid wages (min wage)
+  min_wage_dmgs           = fifelse(min_wage_dmgs_switch == FALSE | is.na(RROP) | is.na(short_break_hrs), 0, 
+                                    (short_break_reg_hrs * CA_min_wage) + (short_break_ot_hrs * RROP))                                                     
 )]
 
 # --- Unpaid overtime and double time ---
+
+# Define buffers (in hours)
+min_ot_buffer <- 0.25
+max_ot_buffer <- 20
 
 # Calculate intermediate columns
 pp_data1[, `:=`(
@@ -2863,8 +2797,8 @@ pay1_credits <- pay1[
 ]
 
 # Join credit values to pp_data1
-setDT(pp_data1)
-setDT(pay1_credits)
+ setDT(pp_data1)
+ setDT(pay1_credits)
 pp_data1 <- safe_left_join(pp_data1, pay1_credits, by = c("ID_Period_End" = "Pay_ID_Period_End"))
 
 # Default missing credits to 0
@@ -2891,7 +2825,11 @@ pp_data1[, tot_principal_dmgs_less_prems_and_credits_w :=
 ]
 
 
-# ----- ALL DATA (BY PP):        Interest ------------------------------------------------------------
+# ----- ALL DATA (BY PP):        TOTAL INTEREST (scenario-specific but aggregates all claims' damages) ----------------------
+
+annual_interest_rate      <- 0.07 # 7% prejudgment interest rate
+monthly_interest_rate     <- annual_interest_rate / 12
+interest_thru_date        <- mediation_date
 
 pp_data1[, interest_months := fifelse(
   !is.na(Period_End) & Period_End <= interest_thru_date,
@@ -2981,6 +2919,11 @@ for (flag in names(flag_map)) {
 
 # ----- ALL DATA (BY PP):        Wage statement penalties (class) -----------------------------------------
 
+# Settings
+wsv_initial_pp_penalty     <- 50
+wsv_subsequent_pp_penalty  <- 100
+wsv_cap                    <- 4000
+
 # Order by ID and Period_End
 setorder(pp_data1, ID, Period_End)
 
@@ -3045,6 +2988,10 @@ setnames(
 
 
 # ----- ALL DATA (BY PP):        Waiting time penalties (class) -----------------------------------------
+
+# Settings
+wt_active_days_threshold <- 30
+wt_use_rrop <- TRUE  # FALSE uses final_Base_Rate instead of RROP
 
 # Max Period_End across all data
 max_period_end <- max(pp_data1$Period_End, na.rm = TRUE)
@@ -3171,6 +3118,7 @@ pp_data1[, `:=`(
 
 # ----- ALL DATA (BY PP):        PAGA analysis -----------------------------------------
 
+# --- Settings ---
 # paga_dmgs_start_date must exist (Date)
 # pp_data1 must have: ID, Period_End, active, and your damages cols used below
 
@@ -3179,6 +3127,17 @@ setorder(pp_data1, ID, Period_End)  # or whatever your PP date column is
 pp_data1[, paga_ee_flag := 0L]
 pp_data1[, in_PAGA_period := fifelse(Period_End > paga_dmgs_start_date, 1, 0)]
 pp_data1[in_PAGA_period == 1, paga_ee_flag := as.integer(seq_len(.N) == 1L), by = ID]
+
+initial_pp_penalty        <- 100
+subsequent_pp_penalty     <- 100
+
+initial_pp_penalty_226    <- 250
+subsequent_pp_penalty_226 <- 250
+
+initial_pp_penalty_558    <- 100
+subsequent_pp_penalty_558 <- 100
+
+penalty_1174 <- 500
 
 # --- Helper function (vectorized) ---
 calc_paga_penalty <- function(flag_count, initial, subsequent) {
@@ -3268,6 +3227,7 @@ paga_scenarios <- list(
     is_credits = TRUE
   )
 )
+
 
 # ---- PAGA BUILDER FUNCTION 
 
@@ -3477,25 +3437,24 @@ build_paga_for_scenario <- function(sc) {
                      get(flag_203) * initial_pp_penalty,
                      0)]
   
-  # ---------------- HAS ANY PAGA (PAY PERIOD LEVEL) ----------------
+  # ---------------- HAS ANY PAGA PENALTIES ----------------
+  has_paga <- paste0("has_PAGA_penalties", suf)
   
-  paga_flag_cols <- c(
-    "PAGA_meal_flag",
-    "PAGA_rest_flag",
-    "PAGA_rrop_flag",
-    "PAGA_226_flag",
-    "PAGA_558_flag",
-    "PAGA_1197_1_flag",
-    "PAGA_2802_flag"
-  )
-  
-  pp_data1[, has_paga_penalties :=
+  pp_data1[, (has_paga) :=
              as.integer(
-               in_PAGA_period == 1L &
-                 rowSums(.SD, na.rm = TRUE) > 0
-             ),
-           .SDcols = paga_flag_cols
-  ]
+               paga_ee_flag == 1L &
+                 (
+                   fcoalesce(get(dmg_meal), 0) +
+                     fcoalesce(get(dmg_rest), 0) +
+                     fcoalesce(get(dmg_rrop), 0) +
+                     fcoalesce(get(dmg_226), 0) +
+                     fcoalesce(get(dmg_558), 0) +
+                     fcoalesce(get(dmg_1197), 0) +
+                     fcoalesce(get(dmg_1174), 0) +
+                     fcoalesce(get(dmg_2802), 0) +
+                     fcoalesce(get(dmg_203), 0)
+                 ) > 0
+             )]
   
   # ---------------- PAGA TOTAL ----------------
   paga_tot <- paste0("PAGA_tot", suf)
@@ -3660,7 +3619,9 @@ setDT(pp_data1)
 
 # FIRST fields
 first_fields_default <- c(
-  "Name", "Pay_Name", "Source", "Pay_Source", "Sheet", "Key_Gps", "active"
+  "Name", "Pay_Name", "Source", "Pay_Source", "Sheet", "Key_Gps", "active",
+  "Sample", "Class_Job", "Hire_Date", "Term_Date", "Subclass(es)",
+  "Location_Name", "Executive_Area", "Area", "Region"
 )
 
 # SUM fields
@@ -3670,6 +3631,7 @@ sum_fields_default <- c(
   "shift", "mp",
   "mp_lt_twenty", "mp_lt_thirty", "mp_thirty", "mp_gt_thirty",
   "mp_gt_two_hrs", "mp_gt_four_hrs",
+  "split_shift", "five_hour_guarantee",
   
   # --- Meal violations ---
   "MissMP1", "LateMP1", "ShortMP1", "MissMP2", "LateMP2", "ShortMP2",
@@ -3684,17 +3646,17 @@ sum_fields_default <- c(
   
   # --- Meal damages (pp-level) ---
   "mp_dmgs", "mp_dmgs_w", "mp_dmgs_less_prems", "mp_dmgs_less_prems_w",
-  
+
   # --- Rest damages (pp-level) ---
   "rp_dmgs", "rp_dmgs_less_prems",
-  
+
   # --- RROP ---
   "rrop_by_code_underpayment", "Wage_Diff", "OT_Diff", "DT_Diff", "Meal_Diff", "Rest_Diff", "Sick_Diff",
   "OT_Overpayment", "DT_Overpayment", "Meal_Overpayment", "Rest_Overpayment", "Sick_Overpayment",
   "OT_rrop_dmgs", "DT_rrop_dmgs", "Meal_rrop_dmgs", "Rest_rrop_dmgs", "Sick_rrop_dmgs",
   "Gross_Overpayment", "Gross_rrop_dmgs", "Net_Overpayment", "Net_rrop_dmgs",
   "rrop_any_underpayment", "rrop_net_underpayment",
-  
+
   # --- Other damages ---
   "otc_dmgs", 
   "unreimb_exp_dmgs",
@@ -4059,8 +4021,10 @@ ee_data1 <- remove_suffixes(
 
 # ----- ALL DATA:                Extrapolation  -----------------------------------------
 
-sample_size # Reminder of pre-established sample_size_val
+sample_size # Reminder to set the sample_size_val
 
+# Sample size (1 = 100%, 0.5 = 50%, etc.)
+sample_size_val <- 1
 class_extrap_factor <- 1 / sample_size_val
 message(sprintf("Class extrap factor = %.2f", class_extrap_factor))
 
@@ -4164,50 +4128,74 @@ message(sprintf(" | Extrap EEs = %s | Extrap PPs = %s | Extrap Wks = %s | Extrap
                 format(extrap_paga_pps, big.mark = ",")))
 
 
+
+
 # ----- ALL DATA:                Write CSVs & Metadata Files  -----------------------------------------
 
-# Toggle per table: TRUE = write CSV filtered to Key_Gps; FALSE = write full CSV
-write_key_gps_time  <- FALSE
-write_key_gps_shift <- FALSE
-write_key_gps_pay   <- FALSE
+setDT(pp_data1)
+
+# Generate metadata csv files used to map column types from R to PowerQuery Editor (see Functions.R)
+generate_metadata(ee_data1, "ee_metadata.csv")
+generate_metadata(pp_data1, "pp_metadata.csv")
+generate_metadata(shift_data1, "time_shift_metadata.csv")
+generate_metadata(time1, "time_punch_metadata.csv")
+generate_metadata(pay1, "pay_metadata.csv")
 
 OUT_DIR <- resolve_out_dir()
 
-# Helper: return filtered dt for CSV (or original dt if toggle off / key col missing / empty result)
-filter_for_csv <- function(dt, write_key_gps = FALSE, everyone_else = "Everyone Else") {
-  setDT(dt)
-  
-  if (!isTRUE(write_key_gps)) return(dt)
-  
-  # pick correct key col
-  key_col <- if ("Pay_Key_Gps" %in% names(dt)) "Pay_Key_Gps" else if ("Key_Gps" %in% names(dt)) "Key_Gps" else NA_character_
-  if (is.na(key_col)) return(dt)
-  
-  dt_f <- dt[
-    !is.na(get(key_col)) &
-      get(key_col) != "" &
-      tolower(get(key_col)) != tolower(everyone_else)
-  ]
-  
-  if (nrow(dt_f) == 0) dt else dt_f
+# Toggle per table: TRUE = write Key_Gps filtered, FALSE = write full
+write_key_gps_time  <- TRUE
+write_key_gps_shift <- FALSE
+write_key_gps_pay   <- FALSE
+
+# Helper: build *_p subset (returns NULL if Key_Gps missing)
+make_keygps_p <- function(dt, key_col = "Key_Gps", everyone_else = "Everyone Else") {
+  if (!is.data.table(dt)) dt <- as.data.table(dt)
+  if (!key_col %in% names(dt)) return(NULL)
+  dt[!is.na(get(key_col)) & get(key_col) != everyone_else]
 }
 
-# --- ALWAYS WRITE RDS UNFILTERED (full tables) ---
-saveRDS(time1,       file.path(OUT_DIR, "Time Punch Data.rds"))
-saveRDS(shift_data1, file.path(OUT_DIR, "Time Shift Data.rds"))
-saveRDS(pay1,        file.path(OUT_DIR, "Pay Data.rds"))
-saveRDS(pp_data1,    file.path(OUT_DIR, "Pay Period Level Data.rds"))
-saveRDS(ee_data1,    file.path(OUT_DIR, "Employee Level Data.rds"))
+# Always create *_p objects (so they're available regardless of writing choice)
+time1_p       <- make_keygps_p(time1)
+pay1_p        <- make_keygps_p(pay1)
+shift_data1_p <- make_keygps_p(shift_data1)
 
-# --- CSVs (may be filtered depending on toggles) ---
-fwrite(filter_for_csv(time1,       write_key_gps_time),  file.path(OUT_DIR, "Time Punch Data.csv"), bom = TRUE)
-fwrite(filter_for_csv(shift_data1, write_key_gps_shift), file.path(OUT_DIR, "Time Shift Data.csv"), bom = TRUE)
-fwrite(filter_for_csv(pay1,        write_key_gps_pay),   file.path(OUT_DIR, "Pay Data.csv"), bom = TRUE)
+# Always write these full outputs
+write_csv_and_rds(ee_data1, file.path(OUT_DIR, "Employee Level Data.csv"))
+write_csv_and_rds(pp_data1, file.path(OUT_DIR, "Pay Period Level Data.csv"))
 
-# Always full for these (no filtering)
-fwrite(pp_data1, file.path(OUT_DIR, "Pay Period Level Data.csv"), bom = TRUE)
-fwrite(ee_data1, file.path(OUT_DIR, "Employee Level Data.csv"), bom = TRUE)
+# Time Punch Data
+if (isTRUE(write_key_gps_time) && !is.null(time1_p) && nrow(time1_p) > 0) {
+  write_csv_and_rds(time1_p, file.path(OUT_DIR, "Time Punch Data.csv"))
+  message("Time Punch Data: Key_Gps filtered")
+} else if (isTRUE(write_key_gps_time)) {
+  message("Time Punch Data: Key_Gps filter requested but missing/empty; writing full")
+  write_csv_and_rds(time1, file.path(OUT_DIR, "Time Punch Data.csv"))
+} else {
+  write_csv_and_rds(time1, file.path(OUT_DIR, "Time Punch Data.csv"))
+}
 
+# Time Shift Data
+if (isTRUE(write_key_gps_shift) && !is.null(shift_data1_p) && nrow(shift_data1_p) > 0) {
+  write_csv_and_rds(shift_data1_p, file.path(OUT_DIR, "Time Shift Data.csv"))
+  message("Time Shift Data: Key_Gps filtered")
+} else if (isTRUE(write_key_gps_shift)) {
+  message("Time Shift Data: Key_Gps filter requested but missing/empty; writing full")
+  write_csv_and_rds(shift_data1, file.path(OUT_DIR, "Time Shift Data.csv"))
+} else {
+  write_csv_and_rds(shift_data1, file.path(OUT_DIR, "Time Shift Data.csv"))
+}
+
+# Pay Data
+if (isTRUE(write_key_gps_pay) && !is.null(pay1_p) && nrow(pay1_p) > 0) {
+  write_csv_and_rds(pay1_p, file.path(OUT_DIR, "Pay Data.csv"))
+  message("Pay Data: Key_Gps filtered")
+} else if (isTRUE(write_key_gps_pay)) {
+  message("Pay Data: Key_Gps filter requested but missing/empty; writing full")
+  write_csv_and_rds(pay1, file.path(OUT_DIR, "Pay Data.csv"))
+} else {
+  write_csv_and_rds(pay1, file.path(OUT_DIR, "Pay Data.csv"))
+}
 
 # ----- ALL DATA:                Final Analysis Table-------------------------------------------------------------
 
@@ -4241,42 +4229,21 @@ custom_filters <- setNames(lapply(unique_groups, function(g) {
     time_filter = bquote(Key_Gps == .(g)),
     pay_filter  = bquote(Pay_Key_Gps == .(g)),
     pp_filter   = bquote(Key_Gps == .(g))
-  )
+    )
 }), unique_groups)
 
-extrap_env <- list(
-  class_ees = extrap_class_ees,
-  class_pps = extrap_class_pps,
-  wsv_ees   = extrap_wsv_ees,
-  wsv_pps   = extrap_wsv_pps,
-  class_dmgs_start_date = class_dmgs_start_date
-)
-
+# Run + format + export (CSV + RDS into OUT_DIR/output)
 raw_results <- run_metrics_pipeline(
   time_dt = shift_data1,
   pay_dt  = pay1,
   pp_dt   = pp_data1,
-  ee_dt   = ee_data1,
   spec    = metrics_spec,
-  custom_filters = custom_filters,
-  extrap_env = extrap_env,
-  globals_env = .GlobalEnv
+  custom_filters = custom_filters
 )
 
 final_table <- format_metrics_table(raw_results)
-export_metrics(final_table, base_name = "Analysis")
+export_metrics(final_table, base_name = "Analysis")   # writes: <OUT_DIR>/Analysis.csv + .rds
 
-
-# ----- ALL DATA:                Generate PDF report -------------------------------------------------------------
-
-
-generate_report(include_extrap = TRUE,
-                include_appendix = TRUE,
-                include_data_comparison = TRUE)
-
-# generate_paga_report(include_extrap = TRUE,
-#                 include_appendix = TRUE,
-#                 include_data_comparison = TRUE)
 
 # ----- END  -----------------------------------------
 end.time <- Sys.time()
