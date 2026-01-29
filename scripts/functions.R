@@ -2575,7 +2575,7 @@ generate_metadata <- function(data, file_name,
 # Unified Metrics Pipeline
 # Requires: data.table, lubridate
 
-# ---------------- DENOMINATORS ----------------
+# --- DENOMINATORS ---
 
 denom_functions_time <- list(
   shifts_all              = function(dt) dt[, uniqueN(ID_Shift, na.rm = TRUE)],
@@ -2610,6 +2610,9 @@ denom_functions_pp <- list(
   pp_with_both            = function(dt) dt[has_shift == 1 & has_pay == 1, .N],
   pp_employees            = function(dt) dt[, uniqueN(ID, na.rm = TRUE)],
   pp_pay_periods          = function(dt) dt[, uniqueN(ID_Period_End, na.rm = TRUE)],
+  pp_wsv_employees        = function(dt) uniqueN(dt[Period_End > wsv_start_date, ID], na.rm = TRUE),
+  pp_wsv_pay_periods      = function(dt) uniqueN(dt[Period_End > wsv_start_date, ID_Period_End], na.rm = TRUE),
+  pp_wt_employees         = function(dt) uniqueN(dt[Period_End > wt_start_date & active != 1, ID], na.rm = TRUE),
   pp_paga_employees       = function(dt) uniqueN(dt[in_PAGA_period==1, ID], na.rm = TRUE),
   pp_paga_pay_periods     = function(dt) uniqueN(dt[in_PAGA_period==1, ID_Period_End], na.rm = TRUE),
   pp_with_shifts_gt_5     = function(dt) dt[Shifts_gt_5 > 0, .N],
@@ -2628,7 +2631,7 @@ eval_denom <- function(dt, denom_name) {
   tryCatch(as.numeric(denom_fn(dt)), error = function(e) NA_real_)
 }
 
-# ---------------- SAFE EVALUATION (dt cols + globals) ----------------
+# --- SAFE EVALUATION (dt cols + globals) ---
 # Key fix: do NOT use dt[, eval(parse())] for expressions that can reference global objects.
 # Instead, build an environment with dt columns and parent = globals env.
 
@@ -2675,7 +2678,7 @@ eval_extrap <- function(dt, extrap_expr_str, digits = NA, globals_env = .GlobalE
   coerce_metric_result(res, digits)
 }
 
-# ---------------- CALCULATE METRICS ----------------
+# --- CALCULATE METRICS ---
 
 calculate_metrics <- function(data_list, spec, extrap_env = list(), globals_env = .GlobalEnv) {
   
@@ -2685,7 +2688,7 @@ calculate_metrics <- function(data_list, spec, extrap_env = list(), globals_env 
   get_all_denoms_for_dt <- function(dt) {
     if (is.null(dt) || nrow(dt) == 0) return(list())
     # key by object address (good enough for this pipeline)
-    key <- sprintf("%s_%s", nrow(dt), ncol(dt))
+    key <- data.table::address(dt)
     if (exists(key, envir = denom_cache, inherits = FALSE)) {
       return(get(key, envir = denom_cache, inherits = FALSE))
     }
@@ -2748,7 +2751,7 @@ calculate_metrics <- function(data_list, spec, extrap_env = list(), globals_env 
 }
 
 
-# ---------------- FILTERING HELPERS ----------------
+# --- FILTERING HELPERS ---
 
 filter_data <- function(dt, filter_expr = NULL) {
   if (is.null(dt)) return(NULL)
@@ -2793,7 +2796,7 @@ build_filter_configs <- function(time_dt, pay_dt, pp_dt = NULL, ee_dt = NULL, cu
   configs
 }
 
-# ---------------- PIPELINE ----------------
+# --- PIPELINE ---
 
 run_metrics_pipeline <- function(time_dt, pay_dt, spec,
                                  pp_dt = NULL, ee_dt = NULL,
@@ -2866,7 +2869,7 @@ run_metrics_pipeline <- function(time_dt, pay_dt, spec,
   rbindlist(list(res1, res2), fill = TRUE)
 }
 
-# ---------------- FORMAT OUTPUT ----------------
+# --- FORMAT OUTPUT ---
 
 format_metrics_table <- function(results_dt) {
   dt <- copy(results_dt)

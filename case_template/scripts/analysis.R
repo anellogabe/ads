@@ -739,6 +739,13 @@ if(length(bon_underpay_cols) > 0) {
 
 setDT(pay1)
 
+# Calculate overall RROP
+pay1[, RROP := fifelse(
+  pp_Hrs_Wkd > 0,
+  (pp_Straight_Time_Amt + pp_Oth_RROP_Amt) / pp_Hrs_Wkd,
+  Base_Rate1
+)]
+
 # Calculate RROP with grouped fallback
 pay1[, RROP := ifelse(
   pp_Hrs_Wkd > 0,
@@ -749,7 +756,7 @@ pay1[, RROP := ifelse(
   }
 ), by = Pay_ID_Period_End]
 
-# avg base rate per Pay_ID_Period_End (row-level mean of Base_Rate1-3, then group mean)
+# avg base rate per Pay_ID_Period_End (row-level mean of Base_Rate 1-3, then group mean)
 pay1[, base_rate_avg := rowMeans(.SD, na.rm = TRUE), .SDcols = c("Base_Rate1","Base_Rate2","Base_Rate3")]
 
 pay1[, base_rate_pp_avg := {
@@ -761,6 +768,62 @@ pay1[, base_rate_pp_avg := {
 pay1[!is.na(RROP) & !is.na(base_rate_pp_avg) & RROP < base_rate_pp_avg, RROP := base_rate_pp_avg]
 
 pay1[, c("base_rate_avg","base_rate_pp_avg") := NULL]
+
+# Calculate expected vs actual wages
+pay1[, `:=`(
+  Calc_Tot_Wages = pp_Straight_Time_Amt + 
+    (RROP * pp_OT_Hrs * var_half_time_OT_multiplier) +
+    (RROP * pp_DT_Hrs) + 
+    (RROP * pp_Meal_Prem_Hrs) + 
+    (RROP * pp_Rest_Prem_Hrs) + 
+    (RROP * pp_Sick_Hrs) +
+    pp_Oth_RROP_Amt + pp_Oth_Amt,
+  Actual_Wages = sum(Pay_Amount, na.rm = TRUE)
+), by = .(Pay_ID, Pay_Date_Rev)]
+
+rate_cols <- c("Base_Rate", "RROP")
+pp_data1[, paste0(rate_cols, "_orig") := .SD, .SDcols = rate_cols]
+
+# Helpers
+inb <- function(x) !is.na(x) & x >= min_rate & x <= max_rate
+mu_good <- function(x) { g <- inb(x); if (any(g)) mean(x[g]) else NA_real_ }
+diff_na <- function(a, b) (is.na(a) != is.na(b)) | (!is.na(a) & !is.na(b) & a != b)
+
+# Global means from in-bounds values
+glob <- pp_data1[, lapply(.SD, mu_good), .SDcols = rate_cols]
+setnames(glob, rate_cols, paste0(rate_cols, "_mu_g"))
+pp_data1[, (names(glob)) := glob[rep(1L, .N)]]
+
+# Per-ID means from in-bounds values
+idmu <- pp_data1[, lapply(.SD, mu_good), by = ID, .SDcols = rate_cols]
+setnames(idmu, rate_cols, paste0(rate_cols, "_mu_id"))
+pp_data1 <- idmu[pp_data1, on = "ID"]
+
+# Pass 1 (bad/NA -> ID mean if ID mean in-bounds)
+# Pass 2 (remaining bad/NA -> global mean)
+for (cc in rate_cols) {
+  mu_id <- paste0(cc, "_mu_id"); mu_g <- paste0(cc, "_mu_g")
+  pp_data1[!inb(get(cc)) & inb(get(mu_id)), (cc) := get(mu_id)]
+  pp_data1[!inb(get(cc)) & inb(get(mu_g)),  (cc) := get(mu_g)]
+}
+
+# Summary of what changed (and where it landed)
+rates_summary_tbl <- rbindlist(lapply(rate_cols, function(cc) {
+  orig <- paste0(cc, "_orig"); mu_id <- paste0(cc, "_mu_id"); mu_g <- paste0(cc, "_mu_g")
+  chg <- diff_na(pp_data1[[orig]], pp_data1[[cc]])
+  data.table(
+    Column = cc,
+    Rows_Total = nrow(pp_data1),
+    Rows_Orig_BadOrNA = sum(!inb(pp_data1[[orig]])),
+    Rows_Changed = sum(chg),
+    Rows_Set_To_ID_Mean = sum(chg & !is.na(pp_data1[[mu_id]]) & abs(pp_data1[[cc]] - pp_data1[[mu_id]]) < 1e-12),
+    Rows_Set_To_Global_Mean = sum(chg & !is.na(pp_data1[[mu_g]])  & abs(pp_data1[[cc]] - pp_data1[[mu_g]])  < 1e-12),
+    IDs_Total = uniqueN(pp_data1$ID),
+    IDs_No_Good_Values = pp_data1[, .(has_good = any(inb(get(cc)))), by = ID][has_good == FALSE, .N]
+  )
+}))
+
+rates_summary_tbl
 
 # Calculate expected vs actual wages
 pay1[, `:=`(
@@ -3205,7 +3268,6 @@ paga_scenarios <- list(
     is_credits = TRUE
   )
 )
-
 
 # ---- PAGA BUILDER FUNCTION 
 
