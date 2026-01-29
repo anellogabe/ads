@@ -739,6 +739,13 @@ if(length(bon_underpay_cols) > 0) {
 
 setDT(pay1)
 
+# Calculate overall RROP
+pay1[, RROP := fifelse(
+  pp_Hrs_Wkd > 0,
+  (pp_Straight_Time_Amt + pp_Oth_RROP_Amt) / pp_Hrs_Wkd,
+  Base_Rate1
+)]
+
 # Calculate RROP with grouped fallback
 pay1[, RROP := ifelse(
   pp_Hrs_Wkd > 0,
@@ -749,7 +756,7 @@ pay1[, RROP := ifelse(
   }
 ), by = Pay_ID_Period_End]
 
-# avg base rate per Pay_ID_Period_End (row-level mean of Base_Rate1-3, then group mean)
+# avg base rate per Pay_ID_Period_End (row-level mean of Base_Rate 1-3, then group mean)
 pay1[, base_rate_avg := rowMeans(.SD, na.rm = TRUE), .SDcols = c("Base_Rate1","Base_Rate2","Base_Rate3")]
 
 pay1[, base_rate_pp_avg := {
@@ -761,6 +768,62 @@ pay1[, base_rate_pp_avg := {
 pay1[!is.na(RROP) & !is.na(base_rate_pp_avg) & RROP < base_rate_pp_avg, RROP := base_rate_pp_avg]
 
 pay1[, c("base_rate_avg","base_rate_pp_avg") := NULL]
+
+# Calculate expected vs actual wages
+pay1[, `:=`(
+  Calc_Tot_Wages = pp_Straight_Time_Amt + 
+    (RROP * pp_OT_Hrs * var_half_time_OT_multiplier) +
+    (RROP * pp_DT_Hrs) + 
+    (RROP * pp_Meal_Prem_Hrs) + 
+    (RROP * pp_Rest_Prem_Hrs) + 
+    (RROP * pp_Sick_Hrs) +
+    pp_Oth_RROP_Amt + pp_Oth_Amt,
+  Actual_Wages = sum(Pay_Amount, na.rm = TRUE)
+), by = .(Pay_ID, Pay_Date_Rev)]
+
+rate_cols <- c("Base_Rate", "RROP")
+pay1[, paste0(rate_cols, "_orig") := .SD, .SDcols = rate_cols]
+
+# Helpers
+inb <- function(x) !is.na(x) & x >= min_rate & x <= max_rate
+mu_good <- function(x) { g <- inb(x); if (any(g)) mean(x[g]) else NA_real_ }
+diff_na <- function(a, b) (is.na(a) != is.na(b)) | (!is.na(a) & !is.na(b) & a != b)
+
+# Global means from in-bounds values
+glob <- pay1[, lapply(.SD, mu_good), .SDcols = rate_cols]
+setnames(glob, rate_cols, paste0(rate_cols, "_mu_g"))
+pay1[, (names(glob)) := glob[rep(1L, .N)]]
+
+# Per-ID means from in-bounds values
+idmu <- pay1[, lapply(.SD, mu_good), by = ID, .SDcols = rate_cols]
+setnames(idmu, rate_cols, paste0(rate_cols, "_mu_id"))
+pay1 <- idmu[pay1, on = "ID"]
+
+# Pass 1 (bad/NA -> ID mean if ID mean in-bounds)
+# Pass 2 (remaining bad/NA -> global mean)
+for (cc in rate_cols) {
+  mu_id <- paste0(cc, "_mu_id"); mu_g <- paste0(cc, "_mu_g")
+  pay1[!inb(get(cc)) & inb(get(mu_id)), (cc) := get(mu_id)]
+  pay1[!inb(get(cc)) & inb(get(mu_g)),  (cc) := get(mu_g)]
+}
+
+# Summary of what changed (and where it landed)
+rates_summary_tbl <- rbindlist(lapply(rate_cols, function(cc) {
+  orig <- paste0(cc, "_orig"); mu_id <- paste0(cc, "_mu_id"); mu_g <- paste0(cc, "_mu_g")
+  chg <- diff_na(pay1[[orig]], pay1[[cc]])
+  data.table(
+    Column = cc,
+    Rows_Total = nrow(pay1),
+    Rows_Orig_BadOrNA = sum(!inb(pay1[[orig]])),
+    Rows_Changed = sum(chg),
+    Rows_Set_To_ID_Mean = sum(chg & !is.na(pay1[[mu_id]]) & abs(pay1[[cc]] - pay1[[mu_id]]) < 1e-12),
+    Rows_Set_To_Global_Mean = sum(chg & !is.na(pay1[[mu_g]])  & abs(pay1[[cc]] - pay1[[mu_g]])  < 1e-12),
+    IDs_Total = uniqueN(pay1$ID),
+    IDs_No_Good_Values = pay1[, .(has_good = any(inb(get(cc)))), by = ID][has_good == FALSE, .N]
+  )
+}))
+
+rates_summary_tbl
 
 # Calculate expected vs actual wages
 pay1[, `:=`(
@@ -1562,7 +1625,7 @@ first_fields_default <- c("Source", "Sheet", "Page", "Bates", "Key_Gps", "ID", "
 #NOTE: Hours field is default "Sum" field but it could be a "Max" field depending on your time data format.
 sum_fields_default <- c("mp", "mp_lt_twenty", "mp_lt_thirty", "mp_thirty", "mp_gt_thirty", "mp_forty_five", 
                         "mp_gt_two_hrs", "mp_gt_four_hrs", "Hours"
-                        
+
                         # Rest period punches in data? Add:
                         #, "rp", "rp_lt_ten", "rp_ten", "rp_gt_ten", "rp_fifteen"
                         
@@ -1806,7 +1869,7 @@ shift_data1[, `:=`(
 #  Standard CA daily OT/DT (non-AWS baseline) 
 shift_data1[, `:=`(
   calc_daily_ot = fifelse(shift_hrs > 12, 4,
-                          fifelse(shift_hrs > 8, shift_hrs - 8, 0)),
+                                      fifelse(shift_hrs > 8, shift_hrs - 8, 0)),
   calc_daily_dt = fifelse(shift_hrs > 12, shift_hrs - 12, 0)
 )]
 
@@ -2466,7 +2529,7 @@ sum_fields_default <- c(
   "mp_lt_twenty",
   "mp_lt_thirty", "mp_thirty", "mp_gt_thirty",
   "mp_gt_two_hrs", "mp_gt_four_hrs",
-  
+
   "MissMP1", "LateMP1", "ShortMP1", "MissMP2", "LateMP2", "ShortMP2",
   "mp1_violation", "mp2_violation",
   
@@ -2690,26 +2753,26 @@ pp_data1[, RROP_ee := {
 
 # Principal damages by claim 
 pp_data1[, `:=`(
-  # Meal 
+# Meal 
   mp_dmgs                 = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp)   | is.na(RROP), NA_real_, mpv_per_pp   * RROP),
   mp_dmgs_w               = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp_w) | is.na(RROP), NA_real_, mpv_per_pp_w * RROP),
   mp_dmgs_less_prems      = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp_less_prems)   | is.na(RROP), NA_real_, mpv_per_pp_less_prems   * RROP),
   mp_dmgs_less_prems_w    = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp_less_prems_w) | is.na(RROP), NA_real_, mpv_per_pp_less_prems_w * RROP),
-  # Rest 
+# Rest 
   rp_dmgs                 = fifelse(rp_dmgs_switch == FALSE | is.na(rpv_per_pp) | is.na(RROP), NA_real_, rpv_per_pp * RROP),
   rp_dmgs_less_prems      = fifelse(rp_dmgs_switch == FALSE | is.na(rpv_per_pp_less_prems) | is.na(RROP), NA_real_, rpv_per_pp_less_prems * RROP),
-  # RROP (pulled in from pay1, already at pp level) 
+# RROP (pulled in from pay1, already at pp level) 
   Net_rrop_dmgs           = fifelse(rep_len(!rrop_dmgs_switch, .N), 0, fcoalesce(Net_rrop_dmgs, 0)),
   Gross_rrop_dmgs         = fifelse(rep_len(!rrop_dmgs_switch, .N), 0, fcoalesce(Gross_rrop_dmgs, 0)),                   
-  # Off-the-clock
+# Off-the-clock
   otc_dmgs                = fifelse(is.na(RROP), 0, otc_hrs_per_shift * Shifts * RROP),                                                   # MUST BE UPDATED
-  # Unreimbursed expenses
+# Unreimbursed expenses
   unreimb_exp_dmgs        = unreimb_exp_per_pp,
-  # Clock rounding
+# Clock rounding
   clock_rounding_dmgs     = fifelse(!clock_rounding_dmgs_switch | is.na(RROP), 0, 0 * RROP),                                              # MUST BE UPDATED
-  # Unpaid wages (min wage)
+# Unpaid wages (min wage)
   min_wage_dmgs           = fifelse(min_wage_dmgs_switch == FALSE | is.na(RROP), 0, 0)
-  # e.g., (short_break_reg_hrs * CA_min_wage) + (short_break_ot_hrs * RROP))                                                     
+                                    # e.g., (short_break_reg_hrs * CA_min_wage) + (short_break_ot_hrs * RROP))                                                     
 )]
 
 # --- Unpaid overtime and double time ---
@@ -2800,8 +2863,8 @@ pay1_credits <- pay1[
 ]
 
 # Join credit values to pp_data1
-setDT(pp_data1)
-setDT(pay1_credits)
+ setDT(pp_data1)
+ setDT(pay1_credits)
 pp_data1 <- safe_left_join(pp_data1, pay1_credits, by = c("ID_Period_End" = "Pay_ID_Period_End"))
 
 # Default missing credits to 0
@@ -3607,7 +3670,7 @@ sum_fields_default <- c(
   "shift", "mp",
   "mp_lt_twenty", "mp_lt_thirty", "mp_thirty", "mp_gt_thirty",
   "mp_gt_two_hrs", "mp_gt_four_hrs",
-  
+
   # --- Meal violations ---
   "MissMP1", "LateMP1", "ShortMP1", "MissMP2", "LateMP2", "ShortMP2",
   "mp1_violation", "mp2_violation",
@@ -3621,17 +3684,17 @@ sum_fields_default <- c(
   
   # --- Meal damages (pp-level) ---
   "mp_dmgs", "mp_dmgs_w", "mp_dmgs_less_prems", "mp_dmgs_less_prems_w",
-  
+
   # --- Rest damages (pp-level) ---
   "rp_dmgs", "rp_dmgs_less_prems",
-  
+
   # --- RROP ---
   "rrop_by_code_underpayment", "Wage_Diff", "OT_Diff", "DT_Diff", "Meal_Diff", "Rest_Diff", "Sick_Diff",
   "OT_Overpayment", "DT_Overpayment", "Meal_Overpayment", "Rest_Overpayment", "Sick_Overpayment",
   "OT_rrop_dmgs", "DT_rrop_dmgs", "Meal_rrop_dmgs", "Rest_rrop_dmgs", "Sick_rrop_dmgs",
   "Gross_Overpayment", "Gross_rrop_dmgs", "Net_Overpayment", "Net_rrop_dmgs",
   "rrop_any_underpayment", "rrop_net_underpayment",
-  
+
   # --- Other damages ---
   "otc_dmgs", 
   "unreimb_exp_dmgs",
