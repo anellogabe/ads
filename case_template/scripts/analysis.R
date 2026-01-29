@@ -1625,7 +1625,7 @@ first_fields_default <- c("Source", "Sheet", "Page", "Bates", "Key_Gps", "ID", "
 #NOTE: Hours field is default "Sum" field but it could be a "Max" field depending on your time data format.
 sum_fields_default <- c("mp", "mp_lt_twenty", "mp_lt_thirty", "mp_thirty", "mp_gt_thirty", "mp_forty_five", 
                         "mp_gt_two_hrs", "mp_gt_four_hrs", "Hours"
-                        
+
                         # Rest period punches in data? Add:
                         #, "rp", "rp_lt_ten", "rp_ten", "rp_gt_ten", "rp_fifteen"
                         
@@ -1869,7 +1869,7 @@ shift_data1[, `:=`(
 #  Standard CA daily OT/DT (non-AWS baseline) 
 shift_data1[, `:=`(
   calc_daily_ot = fifelse(shift_hrs > 12, 4,
-                          fifelse(shift_hrs > 8, shift_hrs - 8, 0)),
+                                      fifelse(shift_hrs > 8, shift_hrs - 8, 0)),
   calc_daily_dt = fifelse(shift_hrs > 12, shift_hrs - 12, 0)
 )]
 
@@ -2529,7 +2529,7 @@ sum_fields_default <- c(
   "mp_lt_twenty",
   "mp_lt_thirty", "mp_thirty", "mp_gt_thirty",
   "mp_gt_two_hrs", "mp_gt_four_hrs",
-  
+
   "MissMP1", "LateMP1", "ShortMP1", "MissMP2", "LateMP2", "ShortMP2",
   "mp1_violation", "mp2_violation",
   
@@ -2753,26 +2753,26 @@ pp_data1[, RROP_ee := {
 
 # Principal damages by claim 
 pp_data1[, `:=`(
-  # Meal 
+# Meal 
   mp_dmgs                 = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp)   | is.na(RROP), NA_real_, mpv_per_pp   * RROP),
   mp_dmgs_w               = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp_w) | is.na(RROP), NA_real_, mpv_per_pp_w * RROP),
   mp_dmgs_less_prems      = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp_less_prems)   | is.na(RROP), NA_real_, mpv_per_pp_less_prems   * RROP),
   mp_dmgs_less_prems_w    = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp_less_prems_w) | is.na(RROP), NA_real_, mpv_per_pp_less_prems_w * RROP),
-  # Rest 
+# Rest 
   rp_dmgs                 = fifelse(rp_dmgs_switch == FALSE | is.na(rpv_per_pp) | is.na(RROP), NA_real_, rpv_per_pp * RROP),
   rp_dmgs_less_prems      = fifelse(rp_dmgs_switch == FALSE | is.na(rpv_per_pp_less_prems) | is.na(RROP), NA_real_, rpv_per_pp_less_prems * RROP),
-  # RROP (pulled in from pay1, already at pp level) 
+# RROP (pulled in from pay1, already at pp level) 
   Net_rrop_dmgs           = fifelse(rep_len(!rrop_dmgs_switch, .N), 0, fcoalesce(Net_rrop_dmgs, 0)),
   Gross_rrop_dmgs         = fifelse(rep_len(!rrop_dmgs_switch, .N), 0, fcoalesce(Gross_rrop_dmgs, 0)),                   
-  # Off-the-clock
+# Off-the-clock
   otc_dmgs                = fifelse(is.na(RROP), 0, otc_hrs_per_shift * Shifts * RROP),                                                   # MUST BE UPDATED
-  # Unreimbursed expenses
+# Unreimbursed expenses
   unreimb_exp_dmgs        = unreimb_exp_per_pp,
-  # Clock rounding
+# Clock rounding
   clock_rounding_dmgs     = fifelse(!clock_rounding_dmgs_switch | is.na(RROP), 0, 0 * RROP),                                              # MUST BE UPDATED
-  # Unpaid wages (min wage)
+# Unpaid wages (min wage)
   min_wage_dmgs           = fifelse(min_wage_dmgs_switch == FALSE | is.na(RROP), 0, 0)
-  # e.g., (short_break_reg_hrs * CA_min_wage) + (short_break_ot_hrs * RROP))                                                     
+                                    # e.g., (short_break_reg_hrs * CA_min_wage) + (short_break_ot_hrs * RROP))                                                     
 )]
 
 # --- Unpaid overtime and double time ---
@@ -2863,8 +2863,8 @@ pay1_credits <- pay1[
 ]
 
 # Join credit values to pp_data1
-setDT(pp_data1)
-setDT(pay1_credits)
+ setDT(pp_data1)
+ setDT(pay1_credits)
 pp_data1 <- safe_left_join(pp_data1, pay1_credits, by = c("ID_Period_End" = "Pay_ID_Period_End"))
 
 # Default missing credits to 0
@@ -3670,7 +3670,7 @@ sum_fields_default <- c(
   "shift", "mp",
   "mp_lt_twenty", "mp_lt_thirty", "mp_thirty", "mp_gt_thirty",
   "mp_gt_two_hrs", "mp_gt_four_hrs",
-  
+
   # --- Meal violations ---
   "MissMP1", "LateMP1", "ShortMP1", "MissMP2", "LateMP2", "ShortMP2",
   "mp1_violation", "mp2_violation",
@@ -3684,17 +3684,17 @@ sum_fields_default <- c(
   
   # --- Meal damages (pp-level) ---
   "mp_dmgs", "mp_dmgs_w", "mp_dmgs_less_prems", "mp_dmgs_less_prems_w",
-  
+
   # --- Rest damages (pp-level) ---
   "rp_dmgs", "rp_dmgs_less_prems",
-  
+
   # --- RROP ---
   "rrop_by_code_underpayment", "Wage_Diff", "OT_Diff", "DT_Diff", "Meal_Diff", "Rest_Diff", "Sick_Diff",
   "OT_Overpayment", "DT_Overpayment", "Meal_Overpayment", "Rest_Overpayment", "Sick_Overpayment",
   "OT_rrop_dmgs", "DT_rrop_dmgs", "Meal_rrop_dmgs", "Rest_rrop_dmgs", "Sick_rrop_dmgs",
   "Gross_Overpayment", "Gross_rrop_dmgs", "Net_Overpayment", "Net_rrop_dmgs",
   "rrop_any_underpayment", "rrop_net_underpayment",
-  
+
   # --- Other damages ---
   "otc_dmgs", 
   "unreimb_exp_dmgs",
