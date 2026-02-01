@@ -3109,13 +3109,31 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
 
     # Render detailed general assumptions with actual parameter values
     output$general_assumptions_content <- renderUI({
-      # Get parameter values from environment (with defaults if not available)
+      # Get parameter values from environment
       shift_hrs_cutoff <- if (exists("shift_hrs_cutoff")) shift_hrs_cutoff else 7
       rrop_buffer <- if (exists("rrop_buffer")) rrop_buffer else 0.05
-      rounding_hrs_cutoff <- if (exists("rounding_hrs_cutoff")) rounding_hrs_cutoff else 0.25
       min_ot_buffer <- if (exists("min_ot_buffer")) min_ot_buffer else 0.25
       max_ot_buffer <- if (exists("max_ot_buffer")) max_ot_buffer else 20
       annual_interest_rate <- if (exists("annual_interest_rate")) annual_interest_rate else 0.07
+
+      # PAGA penalties
+      initial_pp_penalty <- if (exists("initial_pp_penalty")) initial_pp_penalty else 100
+      subsequent_pp_penalty <- if (exists("subsequent_pp_penalty")) subsequent_pp_penalty else 100
+      initial_pp_penalty_226 <- if (exists("initial_pp_penalty_226")) initial_pp_penalty_226 else 250
+      subsequent_pp_penalty_226 <- if (exists("subsequent_pp_penalty_226")) subsequent_pp_penalty_226 else 250
+      initial_pp_penalty_558 <- if (exists("initial_pp_penalty_558")) initial_pp_penalty_558 else 100
+      subsequent_pp_penalty_558 <- if (exists("subsequent_pp_penalty_558")) subsequent_pp_penalty_558 else 100
+      penalty_1174 <- if (exists("penalty_1174")) penalty_1174 else 500
+
+      # Sample info
+      sample_size <- if (exists("sample_size")) sample_size else "100%"
+      sample_size_val <- if (exists("sample_size_val")) sample_size_val else 1
+
+      # Extrapolation factors
+      time_extrap_factor <- if (exists("time_extrap_factor")) time_extrap_factor else 1
+      wsv_time_extrap_factor <- if (exists("wsv_time_extrap_factor")) wsv_time_extrap_factor else 1
+      wt_time_extrap_factor <- if (exists("wt_time_extrap_factor")) wt_time_extrap_factor else 1
+      paga_time_extrap_factor <- if (exists("paga_time_extrap_factor")) paga_time_extrap_factor else 1
 
       # Get dates with formatting
       class_start <- if (exists("class_dmgs_start_date") && inherits(class_dmgs_start_date, "Date")) {
@@ -3150,6 +3168,25 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         format(mediation_date, "%B %d, %Y")
       } else "mediation date"
 
+      # Build extrapolation text
+      extrap_text <- if (sample_size_val < 1 || time_extrap_factor < 1) {
+        paste0("<h4>Extrapolation Methodology</h4><ul>",
+               if (sample_size_val < 1) paste0("<li><strong>Population Extrapolation:</strong> Analysis uses a ", sample_size, " sample of the workforce.</li>") else "",
+               if (time_extrap_factor < 1) paste0(
+                 "<li><strong>Temporal Extrapolation:</strong> Data coverage extends from the earliest record date to ", class_end, ". ",
+                 "Extrapolation factors: ",
+                 "Class Period = ", sprintf("%.2f%%", time_extrap_factor * 100),
+                 if (wsv_time_extrap_factor < 1) paste0(", WSV Period = ", sprintf("%.2f%%", wsv_time_extrap_factor * 100)) else "",
+                 if (wt_time_extrap_factor < 1) paste0(", WT Period = ", sprintf("%.2f%%", wt_time_extrap_factor * 100)) else "",
+                 if (paga_time_extrap_factor < 1) paste0(", PAGA Period = ", sprintf("%.2f%%", paga_time_extrap_factor * 100)) else "",
+                 "</li>"
+               ) else "",
+               "<li><strong>Applicability:</strong> Extrapolation only applies to complete analysis results, not to filtered data or individual employee calculations.</li>",
+               "</ul>")
+      } else {
+        ""
+      }
+
       HTML(paste0("
         <div style='line-height: 1.8;'>
           <h4>Data Processing</h4>
@@ -3157,7 +3194,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
             <li><strong>Time Records:</strong> Each shift represents a distinct work period with In/Out punch times. Shifts are analyzed for hours worked, meal periods, and rest periods.</li>
             <li><strong>Pay Records:</strong> Pay data is matched to time data by employee ID and period end date to enable rate validation and damages calculations.</li>
             <li><strong>Missing Data:</strong> Records with missing critical fields (ID, Date) are flagged and may be excluded from analysis.</li>
-            <li><strong>Shift Classification:</strong> Shifts are categorized using a ", shift_hrs_cutoff, "-hour cutoff (shifts ≥ ", shift_hrs_cutoff, " hours may trigger additional meal period requirements).</li>
+            <li><strong>Shift Classification:</strong> Shifts are categorized using a ", shift_hrs_cutoff, "-hour cutoff (see Non Work Hours table).</li>
           </ul>
 
           <h4>Meal & Rest Period Violations</h4>
@@ -3172,27 +3209,25 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
 
           <h4>Regular Rate of Pay (RROP)</h4>
           <ul>
-            <li><strong>Calculation Method:</strong> RROP = (Total straight-time compensation including differential pay + non-discretionary bonuses) ÷ (Total straight-time hours). Overtime premiums and discretionary bonuses are excluded from the calculation.</li>
-            <li><strong>Components Included:</strong> Base wages, shift differentials, non-discretionary bonuses, commissions, piece-rate earnings, and other non-overtime compensation.</li>
-            <li><strong>Bounds:</strong> RROP values outside reasonable range ($7.25 - $1,500) are flagged as potential data quality issues requiring review.</li>
-            <li><strong>De Minimis Buffer:</strong> Under/overpayments below ", rrop_buffer, " ($", rrop_buffer * 100, " cents) are ignored as acceptable rounding differences.</li>
+            <li><strong>Calculation Method:</strong> RROP = (Total straight-time compensation including differential pay + non-discretionary bonuses) ÷ (Total straight-time hours). Overtime premiums, discretionary bonuses, and time off are excluded from the calculation.</li>
+            <li><strong>De Minimis Buffer:</strong> Under/overpayments below ", rrop_buffer, " ($", sprintf("%.0f", rrop_buffer * 100), " cents) are ignored as acceptable rounding differences.</li>
           </ul>
 
           <h4>Overtime & Double Time</h4>
           <ul>
-            <li><strong>Daily OT:</strong> Hours worked over 8 in a single workday must be paid at 1.5x the regular rate (California Labor Code §510).</li>
-            <li><strong>Daily DT:</strong> Hours worked over 12 in a single workday must be paid at 2x the regular rate (California Labor Code §510).</li>
+            <li><strong>Daily OT:</strong> Hours worked over 8 in a single workday must be paid at 1.5x the regular rate.</li>
+            <li><strong>Daily DT:</strong> Hours worked over 12 in a single workday must be paid at 2x the regular rate.</li>
             <li><strong>Weekly OT:</strong> Hours worked over 40 in a workweek must be paid at 1.5x the regular rate (if not already compensated as daily OT/DT).</li>
             <li><strong>7th Day Rules:</strong> Special rules apply for the 7th consecutive day worked in a workweek:<br>
               - First 8 hours on 7th day: 1.5x regular rate (OT)<br>
               - Hours over 8 on 7th day: 2x regular rate (DT)<br>
               These are analyzed separately from standard daily OT/DT calculations.</li>
-            <li><strong>Buffer Thresholds:</strong> OT/DT underpayments below ", min_ot_buffer, " hours are treated as acceptable aberrations (noise). Maximum analysis threshold is ", max_ot_buffer, " hours to exclude extreme outliers.</li>
+            <li><strong>Buffer Thresholds:</strong> OT/DT underpayments below ", min_ot_buffer, " hours are treated as acceptable aberrations. Maximum analysis threshold is ", max_ot_buffer, " hours to exclude extreme outliers.</li>
           </ul>
 
           <h4>Damages Calculations</h4>
           <ul>
-            <li><strong>Interest:</strong> Prejudgment interest calculated from violation date to interest through date using ", annual_interest_rate * 100, "% annual rate (", (annual_interest_rate / 12) * 100, "% monthly). Interest compounds monthly from each violation date.</li>
+            <li><strong>Interest:</strong> Prejudgment interest calculated from violation date to interest through date using ", sprintf("%.0f%%", annual_interest_rate * 100), " annual rate.</li>
             <li><strong>Class Period:</strong> ", class_start, " to ", class_end, "</li>
             <li><strong>PAGA Period:</strong> ", paga_start, " to ", paga_end, "</li>
             <li><strong>Wage Statement Period:</strong> ", wsv_start, " to ", wsv_end, "</li>
@@ -3203,22 +3238,13 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
 
           <h4>PAGA Penalties</h4>
           <ul>
-            <li><strong>Standard Penalties:</strong> $100 initial violation + $200 subsequent violations per employee per pay period (Labor Code §2699).</li>
-            <li><strong>Labor Code §226 (Wage Statements):</strong> $250 initial + $250 subsequent penalties for wage statement violations.</li>
-            <li><strong>Labor Code §558 (Meal/Rest):</strong> $100 initial + $100 subsequent penalties for meal and rest period violations.</li>
-            <li><strong>Labor Code §1174:</strong> $500 penalty for itemized wage statement violations.</li>
-            <li><strong>Distribution:</strong> 75% of PAGA penalties to the Labor & Workforce Development Agency (LWDA), 25% to aggrieved employees.</li>
+            <li><strong>Standard Penalties:</strong> $", initial_pp_penalty, " initial violation + $", subsequent_pp_penalty, " subsequent violations per employee per pay period (Labor Code §2699).</li>
+            <li><strong>Labor Code §226 (Wage Statements):</strong> $", initial_pp_penalty_226, " initial + $", subsequent_pp_penalty_226, " subsequent penalties for wage statement violations.</li>
+            <li><strong>Labor Code §558 (Meal/Rest):</strong> $", initial_pp_penalty_558, " initial + $", subsequent_pp_penalty_558, " subsequent penalties for meal and rest period violations.</li>
+            <li><strong>Labor Code §1174:</strong> $", penalty_1174, " penalty for itemized wage statement violations.</li>
           </ul>
 
-          <h4>Extrapolation Methodology</h4>
-          <ul>
-            <li><strong>When Applied:</strong> Extrapolation is used when analyzing a sample of employees to estimate damages for the full class. Only applied when sample_size < 100% and a complete class list is available.</li>
-            <li><strong>Temporal Extrapolation:</strong> When sample data covers a limited time period within the damages period, violation rates are extrapolated across the full period. For example, if 6 months of data shows a 15% meal violation rate, this rate is applied to the entire 4-year class period.</li>
-            <li><strong>Population Extrapolation:</strong> When analyzing a sample of N employees from a class of M total employees, violation metrics are scaled by the extrapolation factor (M ÷ N). For example, if a 20-employee sample from a 200-employee class shows 50 violations, the extrapolated estimate is 500 violations (50 × 10).</li>
-            <li><strong>Combined Extrapolation:</strong> Both temporal and population extrapolation may be applied simultaneously when sample data is limited in both dimensions. The combined factor accounts for both time period expansion and employee population expansion.</li>
-            <li><strong>Calculation Formula:</strong> Extrapolated Damages = (Sample Violations ÷ Sample Size) × Class Size × (Total Period ÷ Sample Period)</li>
-            <li><strong>Applicability Note:</strong> Extrapolation assumptions are disclosed in analysis outputs. Individual employee damages are never extrapolated; only class-wide estimates use extrapolation.</li>
-          </ul>
+          ", extrap_text, "
         </div>
       "))
     })
@@ -3228,7 +3254,11 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     # ===========================================================================
     
     output$dashboard_version <- renderText({
-      "1.0.0"
+      if (exists("app_version")) {
+        gsub("^v", "", app_version)  # Remove 'v' prefix if present
+      } else {
+        "1.0.1"
+      }
     })
     
     output$last_updated <- renderText({
@@ -3298,8 +3328,13 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     output$table_example_punches <- renderDT({
       req(input$example_period_select)
 
-      if (is.null(data_list$time1) || !"ID_Period_End" %in% names(data_list$time1)) {
+      if (is.null(data_list$time1)) {
         return(datatable(data.table(Message = "No time1 data available"), rownames = FALSE, options = list(dom = 't')))
+      }
+
+      # Check if ID_Period_End exists
+      if (!"ID_Period_End" %in% names(data_list$time1)) {
+        return(datatable(data.table(Message = "ID_Period_End column not found in time1"), rownames = FALSE, options = list(dom = 't')))
       }
 
       # Filter to selected period
@@ -3309,17 +3344,10 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         return(datatable(data.table(Message = "No punch records for this period"), rownames = FALSE, options = list(dom = 't')))
       }
 
-      # Select specific punch columns as requested (case-insensitive matching)
-      desired_punch_cols <- c("ID", "Date", "Punch_Time", "Punch_Type", "Hrs_Wkd", "mp_hrs", "shift_hrs", "Hours")
-
-      # Match columns case-insensitively
-      available_cols <- c()
-      for (col in desired_punch_cols) {
-        matched <- grep(paste0("^", col, "$"), names(filtered), value = TRUE, ignore.case = TRUE)
-        if (length(matched) > 0) {
-          available_cols <- c(available_cols, matched[1])
-        }
-      }
+      # Select specific punch columns - use exact names from your data
+      # Based on your column list: Date, ID, punch_time, punch_type, hrs_wkd, mp_hrs, shift_hrs, Hours
+      desired_cols <- c("ID", "Date", "punch_time", "punch_type", "hrs_wkd", "mp_hrs", "shift_hrs", "Hours")
+      available_cols <- desired_cols[desired_cols %in% names(filtered)]
 
       if (length(available_cols) == 0) {
         return(datatable(data.table(Message = "Punch detail columns not available"), rownames = FALSE, options = list(dom = 't')))
