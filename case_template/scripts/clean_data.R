@@ -61,6 +61,11 @@ cat("✓ ADS functions loaded successfully\n\n")
 source(file.path(ADS_SHARED, "scripts", "generate_pdf.R"), local = FALSE, chdir = FALSE)
 cat("✓ ADS generate PDF loaded successfully\n\n")
 
+# Initialize logging system
+init_logging(
+  log_file_path = file.path(OUT_DIR, "analysis_log.txt"),
+  case_name = "ADS Case Analysis"  # Will be updated with actual case name below
+)
 
 # ----- ALL DATA:   Case configuration --------------------------
 
@@ -141,12 +146,42 @@ subsequent_pp_penalty_558 <- 100   # $100 default
 
 penalty_1174 <- 500                # $500 default
 
+# Log case configuration
+log_msg(paste("Case:", case_name), "SETUP")
+log_msg(paste("Case Number:", case_no), "SETUP")
+log_msg(paste("Date Filed:", format(date_filed, "%Y-%m-%d")), "SETUP")
+log_msg(paste("Sample Size:", sample_size), "SETUP")
+
+log_msg("Key Date Ranges:", "SETUP", data = list(
+  "Class Period" = paste(format(class_dmgs_start_date, "%Y-%m-%d"), "to", format(class_dmgs_end_date, "%Y-%m-%d")),
+  "PAGA Period" = paste(format(paga_dmgs_start_date, "%Y-%m-%d"), "to", format(paga_dmgs_end_date, "%Y-%m-%d")),
+  "Waiting Time Period" = paste(format(wt_start_date, "%Y-%m-%d"), "to", format(wt_end_date, "%Y-%m-%d")),
+  "Wage Statement Period" = paste(format(wsv_start_date, "%Y-%m-%d"), "to", format(wsv_end_date, "%Y-%m-%d"))
+))
+
+log_msg("Analysis Parameters:", "ASSUMPTION", data = list(
+  "RROP Buffer" = paste0(rrop_buffer, " (", rrop_buffer * 100, "¢)"),
+  "Rounding Cutoff" = paste0(rounding_hrs_cutoff, " hrs"),
+  "OT Buffer Min" = paste0(min_ot_buffer, " hrs"),
+  "OT Buffer Max" = paste0(max_ot_buffer, " hrs"),
+  "Interest Rate" = paste0(annual_interest_rate * 100, "% annually")
+))
+
+log_msg("Penalty Amounts:", "ASSUMPTION", data = list(
+  "WSV Initial" = paste0("$", wsv_initial_pp_penalty),
+  "WSV Subsequent" = paste0("$", wsv_subsequent_pp_penalty),
+  "WSV Cap" = paste0("$", wsv_cap),
+  "PAGA Initial (§226)" = paste0("$", initial_pp_penalty_226),
+  "PAGA Subsequent (§226)" = paste0("$", subsequent_pp_penalty_226),
+  "PAGA §1174" = paste0("$", penalty_1174)
+))
 
 # ----- TIME DATA:  Load data -------------------------------
 
 time1 <- read_excel("")
 
-cat("✓ Loaded", nrow(time1), "pay records\n")
+cat("✓ Loaded", nrow(time1), "time records\n")
+log_msg(paste("Loaded time data:", format(nrow(time1), big.mark = ","), "records,", length(unique(time1$ID)), "unique employees"), "DATA_SUMMARY")
 cat("\n=== Columns in Time Data ===\n")
 for(col in names(time1)) {
   cat(col, "\n")
@@ -328,6 +363,7 @@ if(length(existing_cols) > 0) {
 pay1 <- read_excel("")
 
 cat("✓ Loaded", nrow(pay1), "pay records\n")
+log_msg(paste("Loaded pay data:", format(nrow(pay1), big.mark = ","), "records"), "DATA_SUMMARY")
 cat("\n=== Columns in Pay Data ===\n")
 for(col in names(pay1)) {
   cat(col, "\n")
@@ -1045,5 +1081,14 @@ write_csv_and_rds(
 # # production_file_summary$class_file
 
 # ----- END  -----------------------------------------
+
+# Finalize logging and create summary
+end.time <- Sys.time()
+duration <- difftime(end.time, start.time, units = "secs")
+
+log_msg(paste("Data cleaning completed successfully in", round(as.numeric(duration), 1), "seconds"), "SUCCESS")
+log_msg("Next step: Run analysis.R to generate metrics and damages calculations", "INFO")
+
+finalize_logging()
 end.time <- Sys.time()
 end.time - start.time    

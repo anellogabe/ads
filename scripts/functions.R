@@ -6,6 +6,135 @@
 # Unauthorized copying, distribution, or use is strictly prohibited.
 # For authorized use by ANELLO DATA SOLUTIONS LLC contracted analysts only.
 
+# ADS LOGGING SYSTEM ------------------------------------------------------------------------------
+
+# Initialize logging environment
+.ads_log_env <- new.env()
+.ads_log_env$messages <- list()
+.ads_log_env$log_file <- NULL
+.ads_log_env$start_time <- NULL
+
+# Initialize logging system
+init_logging <- function(log_file_path = NULL, case_name = "Analysis") {
+  .ads_log_env$messages <- list()
+  .ads_log_env$start_time <- Sys.time()
+  .ads_log_env$case_name <- case_name
+
+  if (!is.null(log_file_path)) {
+    .ads_log_env$log_file <- log_file_path
+
+    # Create log directory if needed
+    log_dir <- dirname(log_file_path)
+    dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
+
+    # Start sink to capture ALL console output
+    sink(log_file_path, append = FALSE, split = TRUE)
+
+    cat("================================================================================\n")
+    cat("  ADS ANALYSIS LOG\n")
+    cat("================================================================================\n")
+    cat("Case:", case_name, "\n")
+    cat("Started:", format(.ads_log_env$start_time, "%Y-%m-%d %H:%M:%S"), "\n")
+    cat("================================================================================\n\n")
+  }
+
+  invisible(TRUE)
+}
+
+# Log a message with category
+log_msg <- function(message, category = "INFO", data = NULL) {
+  timestamp <- Sys.time()
+
+  # Create structured log entry
+  entry <- list(
+    timestamp = timestamp,
+    category = category,
+    message = message,
+    data = data
+  )
+
+  # Add to in-memory log
+  .ads_log_env$messages[[length(.ads_log_env$messages) + 1]] <- entry
+
+  # Format for console/file output
+  prefix <- switch(category,
+    "INFO"         = "ℹ",
+    "SUCCESS"      = "✓",
+    "WARNING"      = "⚠",
+    "ERROR"        = "❌",
+    "DATA_SUMMARY" = "📊",
+    "ASSUMPTION"   = "📝",
+    "SETUP"        = "⚙",
+    "•"  # default
+  )
+
+  cat(sprintf("%s %s\n", prefix, message))
+
+  # If there's additional data, print it indented
+  if (!is.null(data)) {
+    if (is.character(data) && length(data) == 1) {
+      cat(sprintf("  %s\n", data))
+    } else if (is.list(data)) {
+      for (name in names(data)) {
+        cat(sprintf("  %s: %s\n", name, as.character(data[[name]])))
+      }
+    }
+  }
+
+  invisible(entry)
+}
+
+# Finalize logging and create summary
+finalize_logging <- function() {
+  if (!is.null(.ads_log_env$start_time)) {
+    end_time <- Sys.time()
+    duration <- difftime(end_time, .ads_log_env$start_time, units = "secs")
+
+    cat("\n================================================================================\n")
+    cat("  ANALYSIS COMPLETE\n")
+    cat("================================================================================\n")
+    cat("Completed:", format(end_time, "%Y-%m-%d %H:%M:%S"), "\n")
+    cat("Duration:", sprintf("%.1f seconds (%.2f minutes)", as.numeric(duration), as.numeric(duration)/60), "\n")
+    cat("================================================================================\n")
+
+    # Stop sink if active
+    if (!is.null(.ads_log_env$log_file)) {
+      sink()
+    }
+
+    # Create structured summary RDS
+    if (!is.null(.ads_log_env$log_file)) {
+      summary_file <- sub("\\.txt$", "_summary.rds", .ads_log_env$log_file)
+
+      summary <- list(
+        case_name = .ads_log_env$case_name,
+        start_time = .ads_log_env$start_time,
+        end_time = end_time,
+        duration_seconds = as.numeric(duration),
+        messages = .ads_log_env$messages,
+
+        # Summary statistics
+        n_messages = length(.ads_log_env$messages),
+        n_errors = sum(sapply(.ads_log_env$messages, function(m) m$category == "ERROR")),
+        n_warnings = sum(sapply(.ads_log_env$messages, function(m) m$category == "WARNING")),
+        n_data_summaries = sum(sapply(.ads_log_env$messages, function(m) m$category == "DATA_SUMMARY")),
+        n_assumptions = sum(sapply(.ads_log_env$messages, function(m) m$category == "ASSUMPTION"))
+      )
+
+      saveRDS(summary, summary_file)
+      cat("\n✓ Log summary saved:", summary_file, "\n")
+    }
+  }
+
+  invisible(.ads_log_env$messages)
+}
+
+# Get current log messages (for dashboard access)
+get_log_messages <- function() {
+  .ads_log_env$messages
+}
+
+
 # SAFE CSV & RDS FILE WRITER ------------------------------------------------------------------------------
 
 write_csv_and_rds <- function(dt, out_path_csv) {
