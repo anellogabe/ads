@@ -351,9 +351,11 @@ thead { display: table-header-group; }
 th { background: linear-gradient(to bottom, #5CDB95, #3CB371); color: white; padding: 3px 5px; text-align: center; font-weight: bold; }
 th:first-child { text-align: left; }
 th:nth-child(2) { text-align: left; }
+th:last-child { text-align: left; }
 td { padding: 2px 5px; border-bottom: 1px solid #ddd; text-align: center; line-height: 1.2; }
 td:first-child { text-align: left; }
 td:nth-child(2) { text-align: left; }
+td:last-child { text-align: left; }
 tr:nth-child(even) { background: #f8f8f8; }
 .page-break { page-break-before: always; }
 .case-tbl { width: 60%; font-size: 9pt; }

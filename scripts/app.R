@@ -770,8 +770,8 @@ create_dt_table <- function(dt, metric_col = "Metric") {
   formatted_names <- gsub("_", " ", names(dt))
 
   # Determine which columns should be left-aligned
-  # Always left-align the metric_col, plus "Key Group"/"Key Gp" if present
-  left_align_cols <- c(metric_col, "Key Group", "Key Gp")
+  # Always left-align the metric_col, plus "Key Group"/"Key Gp"/"Pay Code"/"Pay Code Categories" if present
+  left_align_cols <- c(metric_col, "Key Group", "Key Gp", "Pay Code", "Pay Code Categories")
   left_cols_idx <- which(names(dt) %in% left_align_cols) - 1  # 0-indexed for JS
 
   # All other columns are center-aligned
@@ -1128,124 +1128,6 @@ ui <- function(data_list, metric_spec) {
       )
     ),
 
-    # =======================================================================
-    # NOTES & ASSUMPTIONS TAB
-    # =======================================================================
-    nav_panel(
-      title = "Notes & Assumptions",
-      icon = icon("clipboard-list"),
-
-      navset_card_underline(
-        # Log Summary subtab
-        nav_panel(
-          "Analysis Log Summary",
-
-          card(
-            card_header("Case Setup & Configuration"),
-            card_body(
-              uiOutput("log_setup_summary")
-            )
-          ),
-
-          card(
-            card_header("Data Summary"),
-            card_body(
-              uiOutput("log_data_summary")
-            )
-          ),
-
-          card(
-            card_header("Analysis Assumptions"),
-            card_body(
-              uiOutput("log_assumptions")
-            )
-          )
-        ),
-
-        # Full Log subtab
-        nav_panel(
-          "Full Console Log",
-
-          card(
-            card_header("Complete Analysis Log"),
-            card_body(
-              style = "background-color: #f8f9fa;",
-              downloadButton("download_log", "Download Log File", class = "btn-sm mb-3"),
-              verbatimTextOutput("full_log", placeholder = TRUE)
-            )
-          )
-        ),
-
-        # Built-in Assumptions subtab
-        nav_panel(
-          "Script Assumptions",
-
-          card(
-            card_header("General Analysis Assumptions"),
-            card_body(
-              HTML("
-                <div style='line-height: 1.8;'>
-                  <h4>Data Processing</h4>
-                  <ul>
-                    <li><strong>Time Records:</strong> Each shift represents a distinct work period with In/Out times</li>
-                    <li><strong>Pay Records:</strong> Pay data is matched to time data by employee ID and period end date</li>
-                    <li><strong>Missing Data:</strong> Records with missing critical fields (ID, Date) are flagged and may be excluded</li>
-                  </ul>
-
-                  <h4>Meal & Rest Period Violations</h4>
-                  <ul>
-                    <li><strong>Meal Period Timing:</strong> First meal must start by end of 5th hour of work</li>
-                    <li><strong>Meal Period Duration:</strong> Minimum 30 minutes required for compliant meal period</li>
-                    <li><strong>Rest Period Timing:</strong> One 10-minute rest period required per 4 hours (or major fraction thereof)</li>
-                    <li><strong>Waivers:</strong> Meal period waivers analyzed separately when applicable</li>
-                  </ul>
-
-                  <h4>Regular Rate of Pay (RROP)</h4>
-                  <ul>
-                    <li><strong>Calculation Method:</strong> Total compensation ÷ total hours (excluding overtime premiums)</li>
-                    <li><strong>Bounds:</strong> RROP values outside reasonable range (default: $7.25 - $1,500) flagged as potential data issues</li>
-                    <li><strong>De Minimis Buffer:</strong> Under/overpayments below threshold (default: 5¢) ignored as acceptable rounding</li>
-                  </ul>
-
-                  <h4>Overtime & Double Time</h4>
-                  <ul>
-                    <li><strong>Daily OT:</strong> Hours over 8 in a workday paid at 1.5x regular rate</li>
-                    <li><strong>Daily DT:</strong> Hours over 12 in a workday paid at 2x regular rate</li>
-                    <li><strong>Weekly OT:</strong> Hours over 40 in a workweek paid at 1.5x (if not already daily OT/DT)</li>
-                    <li><strong>7th Day Rules:</strong> Special OT/DT rules apply for 7th consecutive day worked</li>
-                    <li><strong>Buffer Thresholds:</strong> Underpayments below min buffer (default: 0.25 hrs) treated as acceptable aberrations</li>
-                  </ul>
-
-                  <h4>Damages Calculations</h4>
-                  <ul>
-                    <li><strong>Interest:</strong> Prejudgment interest calculated from violation date to interest through date (default: 7% annually)</li>
-                    <li><strong>Class Period:</strong> Typically 4 years back from complaint filing date</li>
-                    <li><strong>PAGA Period:</strong> Typically 1 year + 65 days back from PAGA claim filing</li>
-                    <li><strong>Wage Statement Violations:</strong> Initial pay period penalty + subsequent penalties, capped per employee</li>
-                    <li><strong>Waiting Time Penalties:</strong> Up to 30 days wages for terminated employees (calculated using RROP or final base rate)</li>
-                  </ul>
-
-                  <h4>PAGA Penalties</h4>
-                  <ul>
-                    <li><strong>Standard Penalties:</strong> $100 initial + $200 subsequent per employee per pay period</li>
-                    <li><strong>Labor Code §226:</strong> Wage statement violations may have different penalty amounts</li>
-                    <li><strong>Labor Code §558:</strong> Meal/rest violations may have specific penalty amounts</li>
-                    <li><strong>Distribution:</strong> 75% to LWDA, 25% to aggrieved employees</li>
-                  </ul>
-
-                  <h4>Extrapolation</h4>
-                  <ul>
-                    <li><strong>Sample to Class:</strong> When analyzing sample data, metrics are extrapolated to full class size</li>
-                    <li><strong>Method:</strong> (Sample violations ÷ Sample size) × Class size</li>
-                    <li><strong>Applicability:</strong> Only used when sample_size &lt; 100% and class list available</li>
-                  </ul>
-                </div>
-              ")
-            )
-          )
-        )
-      )
-    ),
 
     # =======================================================================
     # DATA COMPARISON TAB (with subtabs)
@@ -1611,6 +1493,62 @@ ui <- function(data_list, metric_spec) {
         nav_panel(
           "Meal Quarter Hour",
           withSpinner(DTOutput("table_meal_quarter_hr"), type = 6, color = "#2c3e50")
+        ),
+
+        # =======================================================================
+        # ANALYSIS LOG & DETAILED ASSUMPTIONS
+        # =======================================================================
+
+        # Log Summary subtab
+        nav_panel(
+          "Analysis Log Summary",
+
+          card(
+            card_header("Case Setup & Configuration"),
+            card_body(
+              uiOutput("log_setup_summary")
+            )
+          ),
+
+          card(
+            card_header("Data Summary"),
+            card_body(
+              uiOutput("log_data_summary")
+            )
+          ),
+
+          card(
+            card_header("Analysis Assumptions"),
+            card_body(
+              uiOutput("log_assumptions")
+            )
+          )
+        ),
+
+        # Full Log subtab
+        nav_panel(
+          "Full Console Log",
+
+          card(
+            card_header("Complete Analysis Log"),
+            card_body(
+              style = "background-color: #f8f9fa;",
+              downloadButton("download_log", "Download Log File", class = "btn-sm mb-3"),
+              verbatimTextOutput("full_log", placeholder = TRUE)
+            )
+          )
+        ),
+
+        # Built-in Assumptions subtab
+        nav_panel(
+          "General Analysis Assumptions",
+
+          card(
+            card_header("Detailed Analysis Methodology"),
+            card_body(
+              uiOutput("general_assumptions_content")
+            )
+          )
         )
       )
     ),
@@ -3219,6 +3157,122 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       }
     )
 
+    # Render detailed general assumptions with actual parameter values
+    output$general_assumptions_content <- renderUI({
+      # Get parameter values from environment (with defaults if not available)
+      shift_hrs_cutoff <- if (exists("shift_hrs_cutoff")) shift_hrs_cutoff else 7
+      rrop_buffer <- if (exists("rrop_buffer")) rrop_buffer else 0.05
+      rounding_hrs_cutoff <- if (exists("rounding_hrs_cutoff")) rounding_hrs_cutoff else 0.25
+      min_ot_buffer <- if (exists("min_ot_buffer")) min_ot_buffer else 0.25
+      max_ot_buffer <- if (exists("max_ot_buffer")) max_ot_buffer else 20
+      annual_interest_rate <- if (exists("annual_interest_rate")) annual_interest_rate else 0.07
+
+      # Get dates with formatting
+      class_start <- if (exists("class_dmgs_start_date") && inherits(class_dmgs_start_date, "Date")) {
+        format(class_dmgs_start_date, "%B %d, %Y")
+      } else "4 years prior to complaint date"
+
+      class_end <- if (exists("mediation_date") && inherits(mediation_date, "Date")) {
+        format(mediation_date, "%B %d, %Y")
+      } else "mediation date"
+
+      paga_start <- if (exists("paga_dmgs_start_date") && inherits(paga_dmgs_start_date, "Date")) {
+        format(paga_dmgs_start_date, "%B %d, %Y")
+      } else "1 year + 65 days prior to PAGA filing"
+
+      paga_end <- if (exists("mediation_date") && inherits(mediation_date, "Date")) {
+        format(mediation_date, "%B %d, %Y")
+      } else "mediation date"
+
+      wsv_start <- if (exists("wsv_start_date") && inherits(wsv_start_date, "Date")) {
+        format(wsv_start_date, "%B %d, %Y")
+      } else "1 year prior to complaint date"
+
+      wsv_end <- if (exists("mediation_date") && inherits(mediation_date, "Date")) {
+        format(mediation_date, "%B %d, %Y")
+      } else "mediation date"
+
+      wt_start <- if (exists("wt_start_date") && inherits(wt_start_date, "Date")) {
+        format(wt_start_date, "%B %d, %Y")
+      } else "3 years prior to complaint date"
+
+      wt_end <- if (exists("mediation_date") && inherits(mediation_date, "Date")) {
+        format(mediation_date, "%B %d, %Y")
+      } else "mediation date"
+
+      HTML(paste0("
+        <div style='line-height: 1.8;'>
+          <h4>Data Processing</h4>
+          <ul>
+            <li><strong>Time Records:</strong> Each shift represents a distinct work period with In/Out punch times. Shifts are analyzed for hours worked, meal periods, and rest periods.</li>
+            <li><strong>Pay Records:</strong> Pay data is matched to time data by employee ID and period end date to enable rate validation and damages calculations.</li>
+            <li><strong>Missing Data:</strong> Records with missing critical fields (ID, Date) are flagged and may be excluded from analysis.</li>
+            <li><strong>Shift Classification:</strong> Shifts are categorized using a ", shift_hrs_cutoff, "-hour cutoff (shifts ≥ ", shift_hrs_cutoff, " hours may trigger additional meal period requirements).</li>
+          </ul>
+
+          <h4>Meal & Rest Period Violations</h4>
+          <ul>
+            <li><strong>Meal Period Timing (No Waivers):</strong> First meal period must start by the end of the 5th hour of work (shift_hrs > 5.01). Second meal period required for shifts > 10 hours (shift_hrs > 10.01).</li>
+            <li><strong>Meal Period Timing (Waivers):</strong> When waivers apply, first meal period may be delayed to the end of the 6th hour (shift_hrs > 6.01). Second meal period delayed to > 12 hours (shift_hrs > 12.01).</li>
+            <li><strong>Meal Period Duration:</strong> Minimum 30 minutes (0.49 hours) required for compliant meal period. Periods between 0.01 and 0.49 hours are flagged as 'Short' violations.</li>
+            <li><strong>De Minimis Buffer:</strong> A 0.01 hour (36-second) buffer is applied to meal period calculations to account for rounding and minor timing variances.</li>
+            <li><strong>Rest Period Eligibility:</strong> One 10-minute rest period required for shifts > 3.5 hours (shift_hrs > 3.51). Additional rest periods required for longer shifts (>6 hrs, >10 hrs, >14 hrs per 4-hour rule).</li>
+            <li><strong>Waiver Analysis:</strong> Meal period waivers are analyzed as separate scenarios: 'no waivers' uses 5-hour rule, 'waivers' uses 6-hour rule.</li>
+          </ul>
+
+          <h4>Regular Rate of Pay (RROP)</h4>
+          <ul>
+            <li><strong>Calculation Method:</strong> RROP = (Total straight-time compensation including differential pay + non-discretionary bonuses) ÷ (Total straight-time hours). Overtime premiums and discretionary bonuses are excluded from the calculation.</li>
+            <li><strong>Components Included:</strong> Base wages, shift differentials, non-discretionary bonuses, commissions, piece-rate earnings, and other non-overtime compensation.</li>
+            <li><strong>Bounds:</strong> RROP values outside reasonable range ($7.25 - $1,500) are flagged as potential data quality issues requiring review.</li>
+            <li><strong>De Minimis Buffer:</strong> Under/overpayments below ", rrop_buffer, " ($", rrop_buffer * 100, " cents) are ignored as acceptable rounding differences.</li>
+          </ul>
+
+          <h4>Overtime & Double Time</h4>
+          <ul>
+            <li><strong>Daily OT:</strong> Hours worked over 8 in a single workday must be paid at 1.5x the regular rate (California Labor Code §510).</li>
+            <li><strong>Daily DT:</strong> Hours worked over 12 in a single workday must be paid at 2x the regular rate (California Labor Code §510).</li>
+            <li><strong>Weekly OT:</strong> Hours worked over 40 in a workweek must be paid at 1.5x the regular rate (if not already compensated as daily OT/DT).</li>
+            <li><strong>7th Day Rules:</strong> Special rules apply for the 7th consecutive day worked in a workweek:<br>
+              - First 8 hours on 7th day: 1.5x regular rate (OT)<br>
+              - Hours over 8 on 7th day: 2x regular rate (DT)<br>
+              These are analyzed separately from standard daily OT/DT calculations.</li>
+            <li><strong>Buffer Thresholds:</strong> OT/DT underpayments below ", min_ot_buffer, " hours are treated as acceptable aberrations (noise). Maximum analysis threshold is ", max_ot_buffer, " hours to exclude extreme outliers.</li>
+          </ul>
+
+          <h4>Damages Calculations</h4>
+          <ul>
+            <li><strong>Interest:</strong> Prejudgment interest calculated from violation date to interest through date using ", annual_interest_rate * 100, "% annual rate (", (annual_interest_rate / 12) * 100, "% monthly). Interest compounds monthly from each violation date.</li>
+            <li><strong>Class Period:</strong> ", class_start, " to ", class_end, "</li>
+            <li><strong>PAGA Period:</strong> ", paga_start, " to ", paga_end, "</li>
+            <li><strong>Wage Statement Period:</strong> ", wsv_start, " to ", wsv_end, "</li>
+            <li><strong>Waiting Time Period:</strong> ", wt_start, " to ", wt_end, "</li>
+            <li><strong>Wage Statement Violations:</strong> $50 initial pay period penalty + $100 subsequent pay period penalties, capped at $4,000 per employee (Labor Code §226).</li>
+            <li><strong>Waiting Time Penalties:</strong> Up to 30 days of wages for terminated employees who did not receive timely final payment, calculated using RROP or final base rate (Labor Code §203).</li>
+          </ul>
+
+          <h4>PAGA Penalties</h4>
+          <ul>
+            <li><strong>Standard Penalties:</strong> $100 initial violation + $200 subsequent violations per employee per pay period (Labor Code §2699).</li>
+            <li><strong>Labor Code §226 (Wage Statements):</strong> $250 initial + $250 subsequent penalties for wage statement violations.</li>
+            <li><strong>Labor Code §558 (Meal/Rest):</strong> $100 initial + $100 subsequent penalties for meal and rest period violations.</li>
+            <li><strong>Labor Code §1174:</strong> $500 penalty for itemized wage statement violations.</li>
+            <li><strong>Distribution:</strong> 75% of PAGA penalties to the Labor & Workforce Development Agency (LWDA), 25% to aggrieved employees.</li>
+          </ul>
+
+          <h4>Extrapolation Methodology</h4>
+          <ul>
+            <li><strong>When Applied:</strong> Extrapolation is used when analyzing a sample of employees to estimate damages for the full class. Only applied when sample_size < 100% and a complete class list is available.</li>
+            <li><strong>Temporal Extrapolation:</strong> When sample data covers a limited time period within the damages period, violation rates are extrapolated across the full period. For example, if 6 months of data shows a 15% meal violation rate, this rate is applied to the entire 4-year class period.</li>
+            <li><strong>Population Extrapolation:</strong> When analyzing a sample of N employees from a class of M total employees, violation metrics are scaled by the extrapolation factor (M ÷ N). For example, if a 20-employee sample from a 200-employee class shows 50 violations, the extrapolated estimate is 500 violations (50 × 10).</li>
+            <li><strong>Combined Extrapolation:</strong> Both temporal and population extrapolation may be applied simultaneously when sample data is limited in both dimensions. The combined factor accounts for both time period expansion and employee population expansion.</li>
+            <li><strong>Calculation Formula:</strong> Extrapolated Damages = (Sample Violations ÷ Sample Size) × Class Size × (Total Period ÷ Sample Period)</li>
+            <li><strong>Applicability Note:</strong> Extrapolation assumptions are disclosed in analysis outputs. Individual employee damages are never extrapolated; only class-wide estimates use extrapolation.</li>
+          </ul>
+        </div>
+      "))
+    })
+
     # ===========================================================================
     # Version and Documentation Outputs
     # ===========================================================================
@@ -3293,28 +3347,28 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     # Punch Detail (time1) - Show punch records as small table
     output$table_example_punches <- renderDT({
       req(input$example_period_select)
-      
+
       if (is.null(data_list$time1) || !"ID_Period_End" %in% names(data_list$time1)) {
         return(datatable(data.table(Message = "No time1 data available"), rownames = FALSE, options = list(dom = 't')))
       }
-      
+
       # Filter to selected period
       filtered <- data_list$time1[ID_Period_End == input$example_period_select]
-      
+
       if (nrow(filtered) == 0) {
         return(datatable(data.table(Message = "No punch records for this period"), rownames = FALSE, options = list(dom = 't')))
       }
-      
-      # Select punch detail columns: ID, Name, Date, punch_time, punch_type, hrs_from_prev
-      punch_cols <- c("ID", "Name", "Date", "punch_time", "punch_type", "hrs_from_prev")
+
+      # Select specific punch columns as requested
+      punch_cols <- c("ID", "Date", "Punch_Time", "Punch_Type", "Hrs_Wkd", "mp_hrs", "shift_hrs", "Hours")
       available_cols <- punch_cols[punch_cols %in% names(filtered)]
-      
+
       if (length(available_cols) == 0) {
         return(datatable(data.table(Message = "Punch detail columns not available"), rownames = FALSE, options = list(dom = 't')))
       }
-      
+
       display_data <- filtered[, ..available_cols]
-      
+
       datatable(
         display_data,
         rownames = FALSE,
@@ -3329,41 +3383,49 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       )
     })
     
-    # Shift Data (shift_data1) - Show all meal/rest violation columns horizontally
+    # Shift Data (shift_data1) - Show specific columns as requested
     output$table_example_shift <- renderDT({
       req(input$example_period_select)
       data <- filtered_data()
-      
+
       if (is.null(data$shift_data1) || !"ID_Period_End" %in% names(data$shift_data1)) {
         return(datatable(data.table(Message = "No shift data available"), rownames = FALSE, options = list(dom = 't')))
       }
-      
+
       # Filter to selected period
       filtered <- data$shift_data1[ID_Period_End == input$example_period_select]
-      
+
       if (nrow(filtered) == 0) {
         return(datatable(data.table(Message = "No shift data for this period"), rownames = FALSE, options = list(dom = 't')))
       }
-      
-      # Key columns for shift data
-      priority_cols <- c("ID", "Name", "Date", "shift_hrs",
-                         "MissMP1", "LateMP1", "ShortMP1", "MissMP2", "LateMP2", "ShortMP2",
-                         "MissMP1_w", "LateMP1_w", "ShortMP1_w", "MissMP2_w", "LateMP2_w", "ShortMP2_w",
-                         "mpv_shift", "mpv_shift_w", "wk_shift_hrs", "wk_Hours",
-                         "mpv_per_pp", "mpv_per_pp_w", "rpv_per_pp",
-                         "pp_shift_hrs", "pp_Hours",
-                         "MissRP1", "LateRP1", "ShortRP1", "MissRP2", "LateRP2", "ShortRP2",
-                         "rpv_shift", "Source", "Page", "Sheet")
-      
-      # Get available columns in priority order
-      available_cols <- priority_cols[priority_cols %in% names(filtered)]
-      
-      # Add any remaining columns not in priority list
-      remaining_cols <- setdiff(names(filtered), c(available_cols, "ID_Period_End", "ID_Week_End", "Period_End"))
-      final_cols <- c(available_cols, remaining_cols)
-      
-      display_data <- filtered[, ..final_cols]
-      
+
+      # Select specific columns: ID, Date, shift_hrs, Hours, all mp1 and mp2 columns,
+      # mpv_shift and waiver versions, rpv_shift, all pp columns (not prior pp columns)
+      base_cols <- c("ID", "Date", "shift_hrs", "Hours")
+
+      # Get all mp1 and mp2 related columns
+      mp_cols <- grep("^(mp1|mp2|hrs_to_mp|MissMP|LateMP|ShortMP)", names(filtered), value = TRUE)
+
+      # Get mpv_shift and waiver versions
+      mpv_cols <- grep("^mpv_shift", names(filtered), value = TRUE)
+
+      # Get rpv_shift
+      rpv_cols <- grep("^rpv_shift", names(filtered), value = TRUE)
+
+      # Get all pp columns (excluding prior_pp columns)
+      pp_cols <- grep("^pp_", names(filtered), value = TRUE)
+      pp_cols <- pp_cols[!grepl("^prior_pp_", pp_cols)]
+
+      # Combine all columns in order
+      priority_cols <- c(base_cols, mp_cols, mpv_cols, rpv_cols, pp_cols)
+      available_cols <- unique(priority_cols[priority_cols %in% names(filtered)])
+
+      if (length(available_cols) == 0) {
+        return(datatable(data.table(Message = "Requested columns not available"), rownames = FALSE, options = list(dom = 't')))
+      }
+
+      display_data <- filtered[, ..available_cols]
+
       datatable(
         display_data,
         rownames = FALSE,
@@ -3381,45 +3443,44 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       )
     })
     
-    # Pay Data (pay1) - Show all pay columns horizontally
+    # Pay Data (pay1) - Show specific columns as requested
     output$table_example_pay <- renderDT({
       req(input$example_period_select)
       data <- filtered_data()
-      
+
       if (is.null(data$pay1) || !"Pay_ID_Period_End" %in% names(data$pay1)) {
         return(datatable(data.table(Message = "No pay data available"), rownames = FALSE, options = list(dom = 't')))
       }
-      
+
       # Filter to selected period
       filtered <- data$pay1[Pay_ID_Period_End == input$example_period_select]
-      
+
       if (nrow(filtered) == 0) {
         return(datatable(data.table(Message = "No pay data for this period"), rownames = FALSE, options = list(dom = 't')))
       }
-      
-      # Key pay columns based on the green image
-      priority_cols <- c("Pay_ID", "Pay_Name", "Pay_Date", "Pay_Period_End", "Pay_Code", "Pay_Hours", "Pay_Amount",
-                         "Base_Rate1", "Base_Rate2", "RROP", "Calc_Rate", "Rate_Gp",
-                         "Hrs_Wkd_Pay_Code", "Reg_Pay_Code", "OT_Pay_Code", "DT_Pay_Code",
-                         "Meal_Pay_Code", "Rest_Pay_Code", "Sick_Pay_Code", "RROP_Pay_Code",
-                         "pp_Hrs_Wkd", "pp_Reg_Hrs", "pp_OT_Hrs", "pp_DT_Hrs",
-                         "pp_Straight_Time_Amt", "pp_OT_Amt", "pp_DT_Amt", "pp_Oth_RROP_Amt", "pp_Oth_Amt",
-                         "Actual_Wages", "Calc_Tot_Wages",
-                         "OT_Overpayment", "DT_Overpayment", "Meal_Overpayment", "Rest_Overpayment",
-                         "Sick_Overpayment", "Gross_Overpayment", "Net_Overpayment",
-                         "OT_rrop_dmgs", "DT_rrop_dmgs", "Meal_rrop_dmgs", "Rest_rrop_dmgs",
-                         "Sick_rrop_dmgs", "Gross_rrop_dmgs", "Net_rrop_dmgs",
-                         "Pay_Source")
-      
-      # Get available columns
-      available_cols <- priority_cols[priority_cols %in% names(filtered)]
-      
-      # Add remaining columns
-      remaining_cols <- setdiff(names(filtered), c(available_cols, "Pay_ID_Period_End"))
-      final_cols <- c(available_cols, remaining_cols)
-      
-      display_data <- filtered[, ..final_cols]
-      
+
+      # Select specific columns: Pay_ID, Pay_Period_End, Pay_Date, Pay_Code, Pay_Hours,
+      # Pay_Rate, Pay_Amount, Calc_Rate, Base_Rate, RROP, rate type, pp_ columns (not prior pp)
+      base_cols <- c("Pay_ID", "Pay_Period_End", "Pay_Date", "Pay_Code", "Pay_Hours",
+                     "Pay_Rate", "Pay_Amount", "Calc_Rate", "Base_Rate", "RROP")
+
+      # Get rate type column (could be Rate_Type, rate_type, or Rate_Gp)
+      rate_type_cols <- grep("^(Rate_Type|rate_type|Rate_Gp)$", names(filtered), value = TRUE)
+
+      # Get all pp_ columns (excluding prior_pp_ columns)
+      pp_cols <- grep("^pp_", names(filtered), value = TRUE)
+      pp_cols <- pp_cols[!grepl("^prior_pp_", pp_cols)]
+
+      # Combine all columns in order
+      priority_cols <- c(base_cols, rate_type_cols, pp_cols)
+      available_cols <- unique(priority_cols[priority_cols %in% names(filtered)])
+
+      if (length(available_cols) == 0) {
+        return(datatable(data.table(Message = "Requested columns not available"), rownames = FALSE, options = list(dom = 't')))
+      }
+
+      display_data <- filtered[, ..available_cols]
+
       datatable(
         display_data,
         rownames = FALSE,
