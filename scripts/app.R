@@ -948,7 +948,7 @@ filter_sidebar <- function(data_list) {
     actionButton("reset_filters", "Reset All Filters", class = "btn-outline-secondary w-100 mt-2"),
     
     hr(),
-
+   
     # Toggle extrapolation columns
     checkboxInput("toggle_extrap_cols", "Show Extrapolated Values", value = TRUE),
     
