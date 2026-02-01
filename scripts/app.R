@@ -1127,7 +1127,126 @@ ui <- function(data_list, metric_spec) {
         )
       )
     ),
-    
+
+    # =======================================================================
+    # NOTES & ASSUMPTIONS TAB
+    # =======================================================================
+    nav_panel(
+      title = "Notes & Assumptions",
+      icon = icon("clipboard-list"),
+
+      navset_card_underline(
+        # Log Summary subtab
+        nav_panel(
+          "Analysis Log Summary",
+
+          card(
+            card_header("Case Setup & Configuration"),
+            card_body(
+              uiOutput("log_setup_summary")
+            )
+          ),
+
+          card(
+            card_header("Data Summary"),
+            card_body(
+              uiOutput("log_data_summary")
+            )
+          ),
+
+          card(
+            card_header("Analysis Assumptions"),
+            card_body(
+              uiOutput("log_assumptions")
+            )
+          )
+        ),
+
+        # Full Log subtab
+        nav_panel(
+          "Full Console Log",
+
+          card(
+            card_header("Complete Analysis Log"),
+            card_body(
+              style = "background-color: #f8f9fa;",
+              downloadButton("download_log", "Download Log File", class = "btn-sm mb-3"),
+              verbatimTextOutput("full_log", placeholder = TRUE)
+            )
+          )
+        ),
+
+        # Built-in Assumptions subtab
+        nav_panel(
+          "Script Assumptions",
+
+          card(
+            card_header("General Analysis Assumptions"),
+            card_body(
+              HTML("
+                <div style='line-height: 1.8;'>
+                  <h4>Data Processing</h4>
+                  <ul>
+                    <li><strong>Time Records:</strong> Each shift represents a distinct work period with In/Out times</li>
+                    <li><strong>Pay Records:</strong> Pay data is matched to time data by employee ID and period end date</li>
+                    <li><strong>Missing Data:</strong> Records with missing critical fields (ID, Date) are flagged and may be excluded</li>
+                  </ul>
+
+                  <h4>Meal & Rest Period Violations</h4>
+                  <ul>
+                    <li><strong>Meal Period Timing:</strong> First meal must start by end of 5th hour of work</li>
+                    <li><strong>Meal Period Duration:</strong> Minimum 30 minutes required for compliant meal period</li>
+                    <li><strong>Rest Period Timing:</strong> One 10-minute rest period required per 4 hours (or major fraction thereof)</li>
+                    <li><strong>Waivers:</strong> Meal period waivers analyzed separately when applicable</li>
+                  </ul>
+
+                  <h4>Regular Rate of Pay (RROP)</h4>
+                  <ul>
+                    <li><strong>Calculation Method:</strong> Total compensation ÷ total hours (excluding overtime premiums)</li>
+                    <li><strong>Bounds:</strong> RROP values outside reasonable range (default: $7.25 - $1,500) flagged as potential data issues</li>
+                    <li><strong>De Minimis Buffer:</strong> Under/overpayments below threshold (default: 5¢) ignored as acceptable rounding</li>
+                  </ul>
+
+                  <h4>Overtime & Double Time</h4>
+                  <ul>
+                    <li><strong>Daily OT:</strong> Hours over 8 in a workday paid at 1.5x regular rate</li>
+                    <li><strong>Daily DT:</strong> Hours over 12 in a workday paid at 2x regular rate</li>
+                    <li><strong>Weekly OT:</strong> Hours over 40 in a workweek paid at 1.5x (if not already daily OT/DT)</li>
+                    <li><strong>7th Day Rules:</strong> Special OT/DT rules apply for 7th consecutive day worked</li>
+                    <li><strong>Buffer Thresholds:</strong> Underpayments below min buffer (default: 0.25 hrs) treated as acceptable aberrations</li>
+                  </ul>
+
+                  <h4>Damages Calculations</h4>
+                  <ul>
+                    <li><strong>Interest:</strong> Prejudgment interest calculated from violation date to interest through date (default: 7% annually)</li>
+                    <li><strong>Class Period:</strong> Typically 4 years back from complaint filing date</li>
+                    <li><strong>PAGA Period:</strong> Typically 1 year + 65 days back from PAGA claim filing</li>
+                    <li><strong>Wage Statement Violations:</strong> Initial pay period penalty + subsequent penalties, capped per employee</li>
+                    <li><strong>Waiting Time Penalties:</strong> Up to 30 days wages for terminated employees (calculated using RROP or final base rate)</li>
+                  </ul>
+
+                  <h4>PAGA Penalties</h4>
+                  <ul>
+                    <li><strong>Standard Penalties:</strong> $100 initial + $200 subsequent per employee per pay period</li>
+                    <li><strong>Labor Code §226:</strong> Wage statement violations may have different penalty amounts</li>
+                    <li><strong>Labor Code §558:</strong> Meal/rest violations may have specific penalty amounts</li>
+                    <li><strong>Distribution:</strong> 75% to LWDA, 25% to aggrieved employees</li>
+                  </ul>
+
+                  <h4>Extrapolation</h4>
+                  <ul>
+                    <li><strong>Sample to Class:</strong> When analyzing sample data, metrics are extrapolated to full class size</li>
+                    <li><strong>Method:</strong> (Sample violations ÷ Sample size) × Class size</li>
+                    <li><strong>Applicability:</strong> Only used when sample_size &lt; 100% and class list available</li>
+                  </ul>
+                </div>
+              ")
+            )
+          )
+        )
+      )
+    ),
+
     # =======================================================================
     # DATA COMPARISON TAB (with subtabs)
     # =======================================================================
@@ -2975,7 +3094,131 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       }
       return("Not specified")
     })
-    
+
+    # ===========================================================================
+    # Notes & Assumptions Tab - Log Outputs
+    # ===========================================================================
+
+    # Load log summary if available
+    log_summary <- reactive({
+      log_summary_file <- file.path(OUT_DIR, "analysis_log_summary.rds")
+      if (file.exists(log_summary_file)) {
+        readRDS(log_summary_file)
+      } else {
+        NULL
+      }
+    })
+
+    # Render setup summary
+    output$log_setup_summary <- renderUI({
+      summary <- log_summary()
+      if (is.null(summary)) {
+        return(p("No log data available. Run clean_data.R to generate analysis logs."))
+      }
+
+      setup_msgs <- Filter(function(m) m$category == "SETUP", summary$messages)
+      if (length(setup_msgs) == 0) {
+        return(p("No setup information logged."))
+      }
+
+      msg_html <- lapply(setup_msgs, function(m) {
+        data_html <- if (!is.null(m$data) && is.list(m$data)) {
+          items <- lapply(names(m$data), function(n) {
+            tags$li(tags$strong(paste0(n, ":")), m$data[[n]])
+          })
+          tags$ul(items)
+        } else if (!is.null(m$data)) {
+          p(style = "margin-left: 20px;", m$data)
+        } else {
+          NULL
+        }
+
+        div(
+          style = "margin-bottom: 15px;",
+          p(style = "margin-bottom: 5px;", icon("info-circle"), HTML("&nbsp;"), m$message),
+          data_html
+        )
+      })
+
+      div(msg_html)
+    })
+
+    # Render data summary
+    output$log_data_summary <- renderUI({
+      summary <- log_summary()
+      if (is.null(summary)) {
+        return(p("No log data available."))
+      }
+
+      data_msgs <- Filter(function(m) m$category == "DATA_SUMMARY", summary$messages)
+      if (length(data_msgs) == 0) {
+        return(p("No data summary information logged."))
+      }
+
+      msg_html <- lapply(data_msgs, function(m) {
+        p(icon("chart-bar"), HTML("&nbsp;"), m$message)
+      })
+
+      div(msg_html)
+    })
+
+    # Render assumptions
+    output$log_assumptions <- renderUI({
+      summary <- log_summary()
+      if (is.null(summary)) {
+        return(p("No log data available."))
+      }
+
+      assumption_msgs <- Filter(function(m) m$category == "ASSUMPTION", summary$messages)
+      if (length(assumption_msgs) == 0) {
+        return(p("No assumptions logged."))
+      }
+
+      msg_html <- lapply(assumption_msgs, function(m) {
+        data_html <- if (!is.null(m$data) && is.list(m$data)) {
+          items <- lapply(names(m$data), function(n) {
+            tags$li(tags$strong(paste0(n, ":")), m$data[[n]])
+          })
+          tags$ul(items)
+        } else {
+          NULL
+        }
+
+        div(
+          style = "margin-bottom: 15px;",
+          p(style = "margin-bottom: 5px;", icon("sticky-note"), HTML("&nbsp;"), m$message),
+          data_html
+        )
+      })
+
+      div(msg_html)
+    })
+
+    # Render full log file
+    output$full_log <- renderText({
+      log_file <- file.path(OUT_DIR, "analysis_log.txt")
+      if (file.exists(log_file)) {
+        paste(readLines(log_file), collapse = "\n")
+      } else {
+        "No log file found. Run clean_data.R to generate analysis logs."
+      }
+    })
+
+    # Download log file
+    output$download_log <- downloadHandler(
+      filename = function() {
+        paste0("analysis_log_", format(Sys.Date(), "%Y%m%d"), ".txt")
+      },
+      content = function(file) {
+        log_file <- file.path(OUT_DIR, "analysis_log.txt")
+        if (file.exists(log_file)) {
+          file.copy(log_file, file)
+        } else {
+          writeLines("No log file available.", file)
+        }
+      }
+    )
+
     # ===========================================================================
     # Version and Documentation Outputs
     # ===========================================================================
