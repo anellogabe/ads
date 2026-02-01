@@ -739,35 +739,66 @@ if(length(bon_underpay_cols) > 0) {
 
 setDT(pay1)
 
-# Calculate overall RROP
+# Define bounds
+RROP_MIN <- 7.25
+RROP_MAX <- 1500
+RROP_WARN <- 500
+
+# Calculate RROP (NA if no hours)
 pay1[, RROP := fifelse(
   pp_Hrs_Wkd > 0,
   (pp_Straight_Time_Amt + pp_Oth_RROP_Amt) / pp_Hrs_Wkd,
-  Base_Rate1
+  NA_real_
 )]
 
-# Calculate RROP with grouped fallback
-pay1[, RROP := ifelse(
-  pp_Hrs_Wkd > 0,
-  (pp_Straight_Time_Amt + pp_Oth_RROP_Amt) / pp_Hrs_Wkd,
-  {
-    r <- c(Base_Rate1, Base_Rate2, Base_Rate3)
-    if (all(is.na(r))) NA_real_ else mean(r, na.rm = TRUE)
-  }
-), by = Pay_ID_Period_End]
+# Total for percentages
+n_total <- nrow(pay1)
 
-# avg base rate per Pay_ID_Period_End (row-level mean of Base_Rate 1-3, then group mean)
-pay1[, base_rate_avg := rowMeans(.SD, na.rm = TRUE), .SDcols = c("Base_Rate1","Base_Rate2","Base_Rate3")]
+# Function to capture distribution
+get_rrop_dist <- function(dt) {
+  list(
+    n_na = dt[is.na(RROP), .N],
+    n_negative = dt[!is.na(RROP) & RROP < 0, .N],
+    n_zero = dt[!is.na(RROP) & RROP == 0, .N],
+    n_below = dt[!is.na(RROP) & RROP > 0 & RROP < RROP_MIN, .N],
+    n_valid = dt[!is.na(RROP) & RROP >= RROP_MIN & RROP <= RROP_WARN, .N],
+    n_warn = dt[!is.na(RROP) & RROP > RROP_WARN & RROP <= RROP_MAX, .N],
+    n_above = dt[!is.na(RROP) & RROP > RROP_MAX, .N]
+  )
+}
 
-pay1[, base_rate_pp_avg := {
-  x <- base_rate_avg
-  if (all(is.na(x))) NA_real_ else mean(x, na.rm = TRUE)
-}, by = Pay_ID_Period_End]
+# Capture before
+before <- get_rrop_dist(pay1)
 
-# Replace RROP if it's below that avg (only when both are non-missing)
-pay1[!is.na(RROP) & !is.na(base_rate_pp_avg) & RROP < base_rate_pp_avg, RROP := base_rate_pp_avg]
+# Apply bounds - fallback to max base rate
+pay1[RROP < RROP_MIN | RROP > RROP_MAX | is.na(RROP), 
+     RROP := fifelse(is.na(Base_Rate2), Base_Rate1, 
+                     pmax(Base_Rate1, Base_Rate2, Base_Rate3, na.rm = TRUE))]
 
-pay1[, c("base_rate_avg","base_rate_pp_avg") := NULL]
+# Second pass: if still out of bounds after fallback, set NA
+pay1[RROP < RROP_MIN | RROP > RROP_MAX, RROP := NA_real_]
+
+# Capture after
+after <- get_rrop_dist(pay1)
+
+# Print comparison table
+row_fmt <- function(label, b, a) {
+  sprintf("  %-26s %9s (%5.1f%%)  %9s (%5.1f%%)\n",
+          label,
+          format(b, big.mark = ","), 100 * b / n_total,
+          format(a, big.mark = ","), 100 * a / n_total)
+}
+
+cat("RROP Distribution Comparison:\n",
+    sprintf("  %-26s %17s  %17s\n", "", "Before", "After"),
+    row_fmt("NA", before$n_na, after$n_na),
+    row_fmt("Negative", before$n_negative, after$n_negative),
+    row_fmt("Zero", before$n_zero, after$n_zero),
+    row_fmt(sprintf(">$0 to <$%.2f", RROP_MIN), before$n_below, after$n_below),
+    row_fmt(sprintf("$%.2f to $%.0f", RROP_MIN, RROP_WARN), before$n_valid, after$n_valid),
+    row_fmt(sprintf(">$%.0f to $%.0f (review)", RROP_WARN, RROP_MAX), before$n_warn, after$n_warn),
+    row_fmt(sprintf(">$%.0f", RROP_MAX), before$n_above, after$n_above),
+    sep = "")
 
 # Calculate expected vs actual wages
 pay1[, `:=`(

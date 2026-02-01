@@ -100,9 +100,10 @@ wsv_end_date              <- mediation_date
 
 # --- Analysis.R parameters ---
 
-# Min and max allowable base_rate and RROP
-min_rate <- 7.25 # default $7.25/hr
-max_rate <- 5000 # default $5,000/hr
+# Regular rate (RROP) min and max bounds (outside of this will be NA)
+RROP_MIN <- 7.25
+RROP_MAX <- 1500
+RROP_WARN <- 500
 
 # Regular rate analysis de minimis under/overpayment buffer (< buffer forced to zero)
 rrop_buffer <- 0.05 # 5 cents is default
