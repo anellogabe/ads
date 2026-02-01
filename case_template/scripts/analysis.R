@@ -4159,14 +4159,11 @@ wsv_time_extrap_factor  <- wsv_data_coverage / wsv_period
 wt_time_extrap_factor   <- wt_data_coverage / wt_period
 paga_time_extrap_factor <- paga_data_coverage / paga_period
 
-message(sprintf("Class Period extrap factor = %.4f (%.1f%%)", 
-                time_extrap_factor, time_extrap_factor * 100))
-message(sprintf("WSV Period extrap factor = %.4f (%.1f%%)", 
-                wsv_time_extrap_factor, wsv_time_extrap_factor * 100))
-message(sprintf("WT Period extrap factor = %.4f (%.1f%%)", 
-                wt_time_extrap_factor, wt_time_extrap_factor * 100))
-message(sprintf("PAGA Period extrap factor = %.4f (%.1f%%)", 
-                paga_time_extrap_factor, paga_time_extrap_factor * 100))
+log_msg("Temporal Extrapolation Factors (Data Coverage / Period Length):", "DATA_SUMMARY")
+log_msg(sprintf("  Class Period: %.4f (%.1f%% coverage)", time_extrap_factor, time_extrap_factor * 100), "DATA_SUMMARY")
+log_msg(sprintf("  WSV Period: %.4f (%.1f%% coverage)", wsv_time_extrap_factor, wsv_time_extrap_factor * 100), "DATA_SUMMARY")
+log_msg(sprintf("  WT Period: %.4f (%.1f%% coverage)", wt_time_extrap_factor, wt_time_extrap_factor * 100), "DATA_SUMMARY")
+log_msg(sprintf("  PAGA Period: %.4f (%.1f%% coverage)", paga_time_extrap_factor, paga_time_extrap_factor * 100), "DATA_SUMMARY")
 
 # Extrapolated counts
 extrap_class_pps      <- round(((uniqueN(pp_data1$ID_Period_End, na.rm = TRUE) / class_data_ees) * extrap_class_ees) / time_extrap_factor, 0)
@@ -4179,20 +4176,18 @@ extrap_wt_former_ees  <- round(((class_data_former_ees / class_data_ees) * extra
 
 extrap_paga_pps       <- round(((uniqueN(pp_data1$ID_Period_End[pp_data1$Period_End > paga_dmgs_start_date], na.rm = TRUE) / paga_data_ees) * extrap_paga_ees) / paga_time_extrap_factor, 0)
 
-message(sprintf(" | Extrap EEs = %s | Extrap PPs = %s | Extrap Wks = %s | Extrap Shifts = %s | 
- | Extrap WSV EEs = %s | Extrap WSV PPs = %s | 
- | Extrap WT EEs = %s | Extrap WT Former EEs = %s |
- | Extrap PAGA EEs = %s | Extrap PAGA PPs = %s |",
-                format(extrap_class_ees, big.mark = ","),
-                format(extrap_class_pps, big.mark = ","),
-                format(extrap_class_wks, big.mark = ","),
-                format(extrap_class_shifts, big.mark = ","),
-                format(extrap_wsv_ees, big.mark = ","),
-                format(extrap_wsv_pps, big.mark = ","),
-                format(extrap_wt_ees, big.mark = ","),
-                format(extrap_wt_former_ees, big.mark = ","),
-                format(extrap_paga_ees, big.mark = ","),
-                format(extrap_paga_pps, big.mark = ",")))
+log_msg("Extrapolated Counts (Population & Temporal):", "DATA_SUMMARY", data = list(
+  "Class Employees" = format(extrap_class_ees, big.mark = ","),
+  "Class Pay Periods" = format(extrap_class_pps, big.mark = ","),
+  "Class Workweeks" = format(extrap_class_wks, big.mark = ","),
+  "Class Shifts" = format(extrap_class_shifts, big.mark = ","),
+  "WSV Employees" = format(extrap_wsv_ees, big.mark = ","),
+  "WSV Pay Periods" = format(extrap_wsv_pps, big.mark = ","),
+  "WT Employees" = format(extrap_wt_ees, big.mark = ","),
+  "WT Former Employees" = format(extrap_wt_former_ees, big.mark = ","),
+  "PAGA Employees" = format(extrap_paga_ees, big.mark = ","),
+  "PAGA Pay Periods" = format(extrap_paga_pps, big.mark = ",")
+))
 
 
 # ----- ALL DATA:                Write CSVs & Metadata Files  -----------------------------------------
@@ -4276,10 +4271,20 @@ custom_filters <- setNames(lapply(unique_groups, function(g) {
 }), unique_groups)
 
 extrap_env <- list(
-  class_ees = extrap_class_ees,
-  class_pps = extrap_class_pps,
-  wsv_ees   = extrap_wsv_ees,
-  wsv_pps   = extrap_wsv_pps,
+  extrap_class_ees = extrap_class_ees,
+  extrap_class_pps = extrap_class_pps,
+  extrap_class_wks = extrap_class_wks,
+  extrap_class_shifts = extrap_class_shifts,
+  extrap_wsv_ees   = extrap_wsv_ees,
+  extrap_wsv_pps   = extrap_wsv_pps,
+  extrap_wt_ees    = extrap_wt_ees,
+  extrap_wt_former_ees = extrap_wt_former_ees,
+  extrap_paga_ees  = extrap_paga_ees,
+  extrap_paga_pps  = extrap_paga_pps,
+  time_extrap_factor = time_extrap_factor,
+  wsv_time_extrap_factor = wsv_time_extrap_factor,
+  wt_time_extrap_factor = wt_time_extrap_factor,
+  paga_time_extrap_factor = paga_time_extrap_factor,
   class_dmgs_start_date = class_dmgs_start_date
 )
 

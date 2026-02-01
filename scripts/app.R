@@ -1442,38 +1442,8 @@ ui <- function(data_list, metric_spec) {
     nav_panel(
       title = "Appendix",
       icon = icon("book"),
-      
+
       navset_card_underline(
-        nav_panel(
-          "Notes & Assumptions",
-          card(
-            card_header("Version & Assumptions"),
-            card_body(
-              div(
-                style = "line-height: 1.8;",
-                h4("Version Information"),
-                p(strong("Dashboard Version: "), textOutput("dashboard_version", inline = TRUE)),
-                p(strong("Last Updated: "), textOutput("last_updated", inline = TRUE)),
-                hr(),
-                h4("Key Assumptions"),
-                tags$ul(
-                  tags$li("Relevant period is based on class damages start date (4 years prior to complaint date)"),
-                  tags$li("Meal violations are categorized by waiver status: (no waivers) for >5 hour shifts, (waivers) for >6 hour shifts"),
-                  tags$li("PAGA damages are calculated separately from class/individual damages"),
-                  tags$li("Employee counts may differ across Time, Pay, and Class data due to data availability"),
-                  tags$li("All monetary values are displayed in USD with appropriate rounding")
-                ),
-                hr(),
-                h4("Data Sources"),
-                tags$ul(
-                  tags$li(strong("Time Data: "), "Shift-level records from timekeeping system"),
-                  tags$li(strong("Pay Data: "), "Payroll records from payment system"),
-                  tags$li(strong("Class Data: "), "Class member list for litigation")
-                )
-              )
-            )
-          )
-        ),
         nav_panel(
           "Shift Hours",
           withSpinner(DTOutput("table_shift_hrs"), type = 6, color = "#2c3e50")
@@ -1496,31 +1466,23 @@ ui <- function(data_list, metric_spec) {
         ),
 
         # =======================================================================
-        # ANALYSIS LOG & DETAILED ASSUMPTIONS
+        # NOTES & ASSUMPTIONS (with version info and detailed methodology)
         # =======================================================================
 
-        # Log Summary subtab
         nav_panel(
-          "Analysis Log Summary",
+          "Notes & Assumptions",
 
           card(
-            card_header("Case Setup & Configuration"),
+            card_header("Version Information & Detailed Analysis Methodology"),
             card_body(
-              uiOutput("log_setup_summary")
-            )
-          ),
-
-          card(
-            card_header("Data Summary"),
-            card_body(
-              uiOutput("log_data_summary")
-            )
-          ),
-
-          card(
-            card_header("Analysis Assumptions"),
-            card_body(
-              uiOutput("log_assumptions")
+              div(
+                style = "line-height: 1.8;",
+                h4("Version Information"),
+                p(strong("Dashboard Version: "), textOutput("dashboard_version", inline = TRUE)),
+                p(strong("Last Updated: "), textOutput("last_updated", inline = TRUE)),
+                hr(),
+                uiOutput("general_assumptions_content")
+              )
             )
           )
         ),
@@ -1535,18 +1497,6 @@ ui <- function(data_list, metric_spec) {
               style = "background-color: #f8f9fa;",
               downloadButton("download_log", "Download Log File", class = "btn-sm mb-3"),
               verbatimTextOutput("full_log", placeholder = TRUE)
-            )
-          )
-        ),
-
-        # Built-in Assumptions subtab
-        nav_panel(
-          "General Analysis Assumptions",
-
-          card(
-            card_header("Detailed Analysis Methodology"),
-            card_body(
-              uiOutput("general_assumptions_content")
             )
           )
         )
@@ -3359,9 +3309,17 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         return(datatable(data.table(Message = "No punch records for this period"), rownames = FALSE, options = list(dom = 't')))
       }
 
-      # Select specific punch columns as requested
-      punch_cols <- c("ID", "Date", "Punch_Time", "Punch_Type", "Hrs_Wkd", "mp_hrs", "shift_hrs", "Hours")
-      available_cols <- punch_cols[punch_cols %in% names(filtered)]
+      # Select specific punch columns as requested (case-insensitive matching)
+      desired_punch_cols <- c("ID", "Date", "Punch_Time", "Punch_Type", "Hrs_Wkd", "mp_hrs", "shift_hrs", "Hours")
+
+      # Match columns case-insensitively
+      available_cols <- c()
+      for (col in desired_punch_cols) {
+        matched <- grep(paste0("^", col, "$"), names(filtered), value = TRUE, ignore.case = TRUE)
+        if (length(matched) > 0) {
+          available_cols <- c(available_cols, matched[1])
+        }
+      }
 
       if (length(available_cols) == 0) {
         return(datatable(data.table(Message = "Punch detail columns not available"), rownames = FALSE, options = list(dom = 't')))
@@ -3400,17 +3358,17 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       }
 
       # Select specific columns: ID, Date, shift_hrs, Hours, all mp1 and mp2 columns,
-      # mpv_shift and waiver versions, rpv_shift, all pp columns (not prior pp columns)
+      # mpv and rpv columns, all pp columns (not prior pp columns)
       base_cols <- c("ID", "Date", "shift_hrs", "Hours")
 
       # Get all mp1 and mp2 related columns
       mp_cols <- grep("^(mp1|mp2|hrs_to_mp|MissMP|LateMP|ShortMP)", names(filtered), value = TRUE)
 
-      # Get mpv_shift and waiver versions
-      mpv_cols <- grep("^mpv_shift", names(filtered), value = TRUE)
+      # Get ALL columns containing "mpv" anywhere in the name
+      mpv_cols <- grep("mpv", names(filtered), value = TRUE, ignore.case = TRUE)
 
-      # Get rpv_shift
-      rpv_cols <- grep("^rpv_shift", names(filtered), value = TRUE)
+      # Get ALL columns containing "rpv" anywhere in the name
+      rpv_cols <- grep("rpv", names(filtered), value = TRUE, ignore.case = TRUE)
 
       # Get all pp columns (excluding prior_pp columns)
       pp_cols <- grep("^pp_", names(filtered), value = TRUE)
