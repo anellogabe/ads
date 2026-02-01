@@ -768,17 +768,21 @@ create_dt_table <- function(dt, metric_col = "Metric") {
   
   # Replace underscores with spaces in column names
   formatted_names <- gsub("_", " ", names(dt))
-  
-  # Determine which columns are metrics vs values
-  metric_cols_idx <- which(names(dt) == metric_col) - 1  # 0-indexed for JS
-  value_cols_idx <- setdiff(seq_along(names(dt)) - 1, metric_cols_idx)
-  
+
+  # Determine which columns should be left-aligned
+  # Always left-align the metric_col, plus "Key Group"/"Key Gp" if present
+  left_align_cols <- c(metric_col, "Key Group", "Key Gp")
+  left_cols_idx <- which(names(dt) %in% left_align_cols) - 1  # 0-indexed for JS
+
+  # All other columns are center-aligned
+  value_cols_idx <- setdiff(seq_along(names(dt)) - 1, left_cols_idx)
+
   # Find Extrapolated column index (0-indexed for JS)
   extrap_col_idx <- which(names(dt) == "Extrapolated") - 1
-  
+
   # Build columnDefs list
   col_defs <- list(
-    list(className = 'dt-left dt-head-left', targets = metric_cols_idx),
+    list(className = 'dt-left dt-head-left', targets = left_cols_idx),
     list(className = 'dt-center dt-head-center', targets = value_cols_idx)
   )
   
@@ -843,7 +847,7 @@ create_dt_table <- function(dt, metric_col = "Metric") {
       )
     ),
     rownames = FALSE,
-    class = 'cell-border stripe hover compact',
+    class = 'cell-border stripe hover',
     style = 'bootstrap4'
   )
 }
@@ -3077,7 +3081,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
           scrollY = "300px",
           dom = 't'
         ),
-        class = 'cell-border stripe hover compact',
+        class = 'cell-border stripe hover',
         style = 'bootstrap4'
       )
     })
@@ -3129,7 +3133,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
             list(width = '100px', targets = "_all")
           )
         ),
-        class = 'cell-border stripe hover compact',
+        class = 'cell-border stripe hover',
         style = 'bootstrap4'
       )
     })
@@ -3185,7 +3189,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
             list(width = '100px', targets = "_all")
           )
         ),
-        class = 'cell-border stripe hover compact',
+        class = 'cell-border stripe hover',
         style = 'bootstrap4'
       )
     })
@@ -3238,7 +3242,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
             list(width = '120px', targets = "_all")
           )
         ),
-        class = 'cell-border stripe hover compact',
+        class = 'cell-border stripe hover',
         style = 'bootstrap4'
       )
     })
