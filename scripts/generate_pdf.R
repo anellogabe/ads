@@ -70,6 +70,7 @@ generate_report <- function(
   if ("analysis" %in% local_sections) total_steps <- total_steps + 2
   if (include_appendix) total_steps <- total_steps + 12  # shift hours + distributions
   if (include_data_comparison) total_steps <- total_steps + 1
+  if (include_assumptions) total_steps <- total_steps + 1  # assumptions summary
   
   progress <- function(msg) {
     current_step <<- current_step + 1
@@ -411,10 +412,8 @@ table { border-collapse: collapse; margin: 10px 0; width: 100%; font-size: 8pt; 
 thead { display: table-header-group; }
 th { background: linear-gradient(to bottom, #5CDB95, #3CB371); color: white; padding: 4px 5px; text-align: center; font-weight: bold; }
 th:first-child { text-align: left; }
-th:nth-child(2) { text-align: left; }
 td { padding: 3px 5px; border-bottom: 1px solid #ddd; text-align: center; line-height: 1.3; }
 td:first-child { text-align: left; }
-td:nth-child(2) { text-align: left; }
 tr:nth-child(even) { background: #f8f8f8; }
 .page-break { page-break-before: always; }
 .case-tbl { width: 60%; font-size: 9pt; }
