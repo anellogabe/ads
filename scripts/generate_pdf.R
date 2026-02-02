@@ -601,18 +601,19 @@ table.pay-code-table td:last-child { text-align: left; }
   if (include_assumptions) {
     progress("Adding Notes & Assumptions")
 
-    # Get parameter values
-    shift_hrs_cutoff <- if (exists("shift_hrs_cutoff")) shift_hrs_cutoff else 7
-    rrop_buffer <- if (exists("rrop_buffer")) rrop_buffer else 0.05
-    min_ot_buffer <- if (exists("min_ot_buffer")) min_ot_buffer else 0.25
-    max_ot_buffer <- if (exists("max_ot_buffer")) max_ot_buffer else 20
-    annual_interest_rate <- if (exists("annual_interest_rate")) annual_interest_rate else 0.07
-    initial_pp_penalty <- if (exists("initial_pp_penalty")) initial_pp_penalty else 100
-    subsequent_pp_penalty <- if (exists("subsequent_pp_penalty")) subsequent_pp_penalty else 100
-    initial_pp_penalty_226 <- if (exists("initial_pp_penalty_226")) initial_pp_penalty_226 else 250
-    subsequent_pp_penalty_226 <- if (exists("subsequent_pp_penalty_226")) subsequent_pp_penalty_226 else 250
+    # Get parameter values with robust defaults
+    shift_hrs_cutoff <- tryCatch(if (exists("shift_hrs_cutoff", inherits = TRUE)) get("shift_hrs_cutoff") else 7, error = function(e) 7)
+    rrop_buffer <- tryCatch(if (exists("rrop_buffer", inherits = TRUE)) get("rrop_buffer") else 0.05, error = function(e) 0.05)
+    min_ot_buffer <- tryCatch(if (exists("min_ot_buffer", inherits = TRUE)) get("min_ot_buffer") else 0.25, error = function(e) 0.25)
+    max_ot_buffer <- tryCatch(if (exists("max_ot_buffer", inherits = TRUE)) get("max_ot_buffer") else 20, error = function(e) 20)
+    annual_interest_rate <- tryCatch(if (exists("annual_interest_rate", inherits = TRUE)) get("annual_interest_rate") else 0.07, error = function(e) 0.07)
+    initial_pp_penalty <- tryCatch(if (exists("initial_pp_penalty", inherits = TRUE)) get("initial_pp_penalty") else 100, error = function(e) 100)
+    subsequent_pp_penalty <- tryCatch(if (exists("subsequent_pp_penalty", inherits = TRUE)) get("subsequent_pp_penalty") else 100, error = function(e) 100)
+    initial_pp_penalty_226 <- tryCatch(if (exists("initial_pp_penalty_226", inherits = TRUE)) get("initial_pp_penalty_226") else 250, error = function(e) 250)
+    subsequent_pp_penalty_226 <- tryCatch(if (exists("subsequent_pp_penalty_226", inherits = TRUE)) get("subsequent_pp_penalty_226") else 250, error = function(e) 250)
 
-    assumptions_html <- paste0('
+    assumptions_html <- tryCatch({
+      paste0('
 <div class="page-break"></div>
 <h2>Notes & Assumptions</h2>
 <div class="assumptions">
@@ -659,8 +660,13 @@ table.pay-code-table td:last-child { text-align: left; }
     <li><strong>Labor Code §226:</strong> $', initial_pp_penalty_226, ' initial + $', subsequent_pp_penalty_226, ' subsequent for wage statement violations.</li>
   </ul>
 </div>')
+    }, error = function(e) {
+      message("Error generating assumptions HTML: ", e$message)
+      ""
+    })
 
     html <- paste0(html, assumptions_html)
+    if (verbose) message("\n  Assumptions section added (", nchar(assumptions_html), " characters)")
   }
 
   html <- paste0(html, '</body></html>')
