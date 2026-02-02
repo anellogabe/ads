@@ -2376,11 +2376,16 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       tryCatch({
         results <- pipeline_results()
         
-        # Build section definitions for overview (financial totals only - no dates/counts)
+        # Build section definitions for overview (all financial metrics)
         sections <- list()
 
-        # REMOVED: damages_summary_groups section (shows dates/counts, not financial totals)
-        # Overview should only show financial metrics: Principal, Credits, Interest, Sub-Total, Grand Total
+        # Include SUMMARY section with dates and overall employee/pay period counts
+        if (length(damages_summary_groups) > 0 && is.character(damages_summary_groups)) {
+          sections[[length(sections) + 1]] <- list(
+            section_name = "SUMMARY",
+            groups = as.character(damages_summary_groups)
+          )
+        }
 
         if (length(damages_principal_groups) > 0 && is.character(damages_principal_groups)) {
           sections[[length(sections) + 1]] <- list(
