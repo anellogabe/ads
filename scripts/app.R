@@ -1823,7 +1823,8 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
           div(
             checkboxInput("pdf_include_data_comparison", "Data Comparison (1-Page Landscape)", value = TRUE),
             checkboxInput("pdf_include_extrap", "Include Extrapolation Column", value = FALSE),
-            checkboxInput("pdf_include_appendix", "Appendix Tables (All)", value = FALSE)
+            checkboxInput("pdf_include_appendix", "Appendix Tables (All)", value = FALSE),
+            checkboxInput("pdf_include_assumptions", "Notes & Assumptions Summary", value = TRUE)
           )
         )
       ))
@@ -1861,6 +1862,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       updateCheckboxInput(session, "pdf_include_appendix", value = TRUE)
       updateCheckboxInput(session, "pdf_include_data_comparison", value = TRUE)
       updateCheckboxInput(session, "pdf_include_extrap", value = FALSE)
+      updateCheckboxInput(session, "pdf_include_assumptions", value = TRUE)
     })
     
     # PDF Deselect All button
@@ -1880,6 +1882,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       updateCheckboxInput(session, "pdf_include_appendix", value = FALSE)
       updateCheckboxInput(session, "pdf_include_data_comparison", value = FALSE)
       updateCheckboxInput(session, "pdf_include_extrap", value = FALSE)
+      updateCheckboxInput(session, "pdf_include_assumptions", value = FALSE)
     })
     
     observeEvent(input$pdf_download_clicked, {
@@ -2373,16 +2376,12 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       tryCatch({
         results <- pipeline_results()
         
-        # Build section definitions for overview (summary metrics)
+        # Build section definitions for overview (financial totals only - no dates/counts)
         sections <- list()
-        
-        if (length(damages_summary_groups) > 0 && is.character(damages_summary_groups)) {
-          sections[[length(sections) + 1]] <- list(
-            section_name = "SUMMARY",
-            groups = as.character(damages_summary_groups)
-          )
-        }
-        
+
+        # REMOVED: damages_summary_groups section (shows dates/counts, not financial totals)
+        # Overview should only show financial metrics: Principal, Credits, Interest, Sub-Total, Grand Total
+
         if (length(damages_principal_groups) > 0 && is.character(damages_principal_groups)) {
           sections[[length(sections) + 1]] <- list(
             section_name = "PRINCIPAL",
@@ -2529,11 +2528,10 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         }
         
         display <- pipeline_to_damages_format(results, sections, scenario_filter = c("all", "no waivers"))
-        
-        # Filter out waiver metrics from no-waiver tab based on metric labels
-        # (fallback for old spec without scenario column)
-        display <- filter_metrics_by_label(display, include_waivers = FALSE)
-        
+
+        # Scenario filter is sufficient - no need for additional label filtering
+        # (Removed filter_metrics_by_label call to fix double-filtering issue)
+
         if (is.null(display) || nrow(display) == 0) {
           return(datatable(data.table(Message = "No damages data available for no waivers scenario"),
                            rownames = FALSE, options = list(dom = 't')))
@@ -2626,11 +2624,10 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         }
         
         display <- pipeline_to_damages_format(results, sections, scenario_filter = c("all", "waivers"))
-        
-        # Filter out no-waiver metrics from waiver tab based on metric labels
-        # (fallback for old spec without scenario column)
-        display <- filter_metrics_by_label(display, include_waivers = TRUE)
-        
+
+        # Scenario filter is sufficient - no need for additional label filtering
+        # (Removed filter_metrics_by_label call to fix double-filtering issue)
+
         if (is.null(display) || nrow(display) == 0) {
           return(datatable(data.table(Message = "No damages data available for waivers scenario"),
                            rownames = FALSE, options = list(dom = 't')))
@@ -2648,9 +2645,10 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       tryCatch({
         results <- pipeline_results()
         
-        # Build section definitions for PAGA overview (summary metrics)
+        # Build section definitions for PAGA overview
+        # paga_summary_groups includes both basic stats (dates, counts) and financial totals (PAGA totals with all variants)
         sections <- list()
-        
+
         if (length(paga_summary_groups) > 0 && is.character(paga_summary_groups)) {
           sections[[length(sections) + 1]] <- list(
             section_name = "PAGA SUMMARY",
@@ -2766,11 +2764,10 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         }
         
         display <- pipeline_to_damages_format(results, sections, scenario_filter = c("all", "no waivers"))
-        
-        # Filter out waiver metrics from no-waiver tab based on metric labels
-        # (fallback for old spec without scenario column)
-        display <- filter_metrics_by_label(display, include_waivers = FALSE)
-        
+
+        # Scenario filter is sufficient - no need for additional label filtering
+        # (Removed filter_metrics_by_label call to fix double-filtering issue)
+
         if (is.null(display) || nrow(display) == 0) {
           return(datatable(data.table(Message = "No PAGA data available for no waivers scenario"),
                            rownames = FALSE, options = list(dom = 't')))
@@ -2861,11 +2858,10 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         }
         
         display <- pipeline_to_damages_format(results, sections, scenario_filter = c("all", "waivers"))
-        
-        # Filter out no-waiver metrics from waiver tab based on metric labels
-        # (fallback for old spec without scenario column)
-        display <- filter_metrics_by_label(display, include_waivers = TRUE)
-        
+
+        # Scenario filter is sufficient - no need for additional label filtering
+        # (Removed filter_metrics_by_label call to fix double-filtering issue)
+
         if (is.null(display) || nrow(display) == 0) {
           return(datatable(data.table(Message = "No PAGA data available for waivers scenario"),
                            rownames = FALSE, options = list(dom = 't')))
@@ -3845,6 +3841,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
           include_extrap = isTRUE(input$pdf_include_extrap),
           include_appendix = isTRUE(input$pdf_include_appendix),
           include_data_comparison = isTRUE(input$pdf_include_data_comparison),
+          include_assumptions = isTRUE(input$pdf_include_assumptions),
           verbose = FALSE  # Don't show progress bar in Shiny
         )
         

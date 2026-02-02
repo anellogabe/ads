@@ -53,6 +53,7 @@ generate_report <- function(
     include_extrap = FALSE,
     include_appendix = FALSE,
     include_data_comparison = FALSE,
+    include_assumptions = TRUE,
     verbose = TRUE
 ) {
   
@@ -365,12 +366,18 @@ generate_report <- function(
     paste0(page_break, '<h2>', title, '</h2><table', tbl_class, '><thead><tr>', hdr, '</tr></thead><tbody>', paste(rows, collapse = ""), '</tbody></table>')
   }
   
-  add_simple_tbl <- function(dt, title, compact = FALSE) {
+  add_simple_tbl <- function(dt, title, compact = FALSE, extra_class = NULL) {
     if (is.null(dt) || nrow(dt) == 0) return("")
     cols <- names(dt)
     hdr <- paste0("<th>", format_col(cols), "</th>", collapse = "")
     rows <- sapply(1:nrow(dt), function(i) paste0("<tr><td>", paste(sapply(cols, function(col) if (is.na(dt[[col]][i])) "" else as.character(dt[[col]][i])), collapse = "</td><td>"), "</td></tr>"))
-    tbl_class <- if (compact) ' class="compact"' else ''
+
+    # Build class string
+    classes <- c()
+    if (compact) classes <- c(classes, "compact")
+    if (!is.null(extra_class)) classes <- c(classes, extra_class)
+    tbl_class <- if (length(classes) > 0) paste0(' class="', paste(classes, collapse = " "), '"') else ''
+
     paste0('<div class="page-break"></div><h2>', title, '</h2><table', tbl_class, '><thead><tr>', hdr, '</tr></thead><tbody>', paste(rows, collapse = ""), '</tbody></table>')
   }
   
@@ -402,21 +409,25 @@ h1 { color: #2c3e50; border-bottom: 3px solid #50C878; padding-bottom: 8px; }
 h2 { color: #34495e; margin-top: 20px; border-bottom: 2px solid #50C878; padding-bottom: 4px; }
 table { border-collapse: collapse; margin: 10px 0; width: 100%; font-size: 8pt; }
 thead { display: table-header-group; }
-th { background: linear-gradient(to bottom, #5CDB95, #3CB371); color: white; padding: 3px 5px; text-align: center; font-weight: bold; }
+th { background: linear-gradient(to bottom, #5CDB95, #3CB371); color: white; padding: 4px 5px; text-align: center; font-weight: bold; }
 th:first-child { text-align: left; }
 th:nth-child(2) { text-align: left; }
-th:last-child { text-align: left; }
-td { padding: 2px 5px; border-bottom: 1px solid #ddd; text-align: center; line-height: 1.2; }
+td { padding: 3px 5px; border-bottom: 1px solid #ddd; text-align: center; line-height: 1.3; }
 td:first-child { text-align: left; }
 td:nth-child(2) { text-align: left; }
-td:last-child { text-align: left; }
 tr:nth-child(even) { background: #f8f8f8; }
 .page-break { page-break-before: always; }
 .case-tbl { width: 60%; font-size: 9pt; }
 .case-tbl td { text-align: left; padding: 6px 10px; }
 .case-tbl td:first-child { font-weight: bold; background: linear-gradient(to right, #e8f5e9, #f5f5f5); width: 40%; }
-table.compact th { padding: 3px 5px; font-size: 8pt; }
-table.compact td { padding: 2px 5px; font-size: 8pt; line-height: 1.2; }
+table.compact th { padding: 4px 5px; font-size: 8pt; }
+table.compact td { padding: 3px 5px; font-size: 8pt; line-height: 1.3; }
+table.pay-code-table th:last-child { text-align: left; }
+table.pay-code-table td:last-child { text-align: left; }
+.assumptions { font-size: 9pt; line-height: 1.6; margin: 15px 0; }
+.assumptions h3 { color: #2c3e50; margin-top: 15px; margin-bottom: 8px; border-bottom: 1px solid #ccc; padding-bottom: 3px; }
+.assumptions ul { margin: 5px 0; padding-left: 20px; }
+.assumptions li { margin: 3px 0; }
 </style></head><body>
 <h1>', rpt, '</h1>
 <h2>Case Information</h2>
@@ -573,8 +584,8 @@ table.compact td { padding: 2px 5px; font-size: 8pt; line-height: 1.2; }
   
   # ANALYSIS - use compact styling
   if ("analysis" %in% local_sections) {
-    if (!is.null(analysis_tables$pay_code_summary) && nrow(analysis_tables$pay_code_summary) > 0) { progress("Pay Codes"); html <- paste0(html, add_simple_tbl(analysis_tables$pay_code_summary, "Pay Analysis - Pay Codes", compact = TRUE)) }
-    if (!is.null(analysis_tables$rate_type_analysis) && nrow(analysis_tables$rate_type_analysis) > 0) { progress("Rate Type"); html <- paste0(html, add_simple_tbl(analysis_tables$rate_type_analysis, "Pay Analysis - Rate Type", compact = TRUE)) }
+    if (!is.null(analysis_tables$pay_code_summary) && nrow(analysis_tables$pay_code_summary) > 0) { progress("Pay Codes"); html <- paste0(html, add_simple_tbl(analysis_tables$pay_code_summary, "Pay Analysis - Pay Codes", compact = TRUE, extra_class = "pay-code-table")) }
+    if (!is.null(analysis_tables$rate_type_analysis) && nrow(analysis_tables$rate_type_analysis) > 0) { progress("Rate Type"); html <- paste0(html, add_simple_tbl(analysis_tables$rate_type_analysis, "Pay Analysis - Rate Type", compact = TRUE, extra_class = "pay-code-table")) }
   }
   
   # APPENDIX - Distribution tables only (Shift Hours Analysis is now in main TIME section)
@@ -586,7 +597,73 @@ table.compact td { padding: 2px 5px; font-size: 8pt; line-height: 1.2; }
     if (!is.null(analysis_tables$meal_start_time) && nrow(analysis_tables$meal_start_time) > 0) { progress("Appendix - Meal Start"); html <- paste0(html, add_simple_tbl(analysis_tables$meal_start_time, "Appendix - Meal Start Time Distribution", compact = TRUE)) }
     if (!is.null(analysis_tables$meal_quarter_hr) && nrow(analysis_tables$meal_quarter_hr) > 0) { progress("Appendix - Meal Qtr Hr"); html <- paste0(html, add_simple_tbl(analysis_tables$meal_quarter_hr, "Appendix - Meal Quarter Hour Analysis", compact = TRUE)) }
   }
-  
+
+  # NOTES & ASSUMPTIONS SUMMARY
+  if (include_assumptions) {
+    progress("Adding Notes & Assumptions")
+
+    # Get parameter values
+    shift_hrs_cutoff <- if (exists("shift_hrs_cutoff")) shift_hrs_cutoff else 7
+    rrop_buffer <- if (exists("rrop_buffer")) rrop_buffer else 0.05
+    min_ot_buffer <- if (exists("min_ot_buffer")) min_ot_buffer else 0.25
+    max_ot_buffer <- if (exists("max_ot_buffer")) max_ot_buffer else 20
+    annual_interest_rate <- if (exists("annual_interest_rate")) annual_interest_rate else 0.07
+    initial_pp_penalty <- if (exists("initial_pp_penalty")) initial_pp_penalty else 100
+    subsequent_pp_penalty <- if (exists("subsequent_pp_penalty")) subsequent_pp_penalty else 100
+    initial_pp_penalty_226 <- if (exists("initial_pp_penalty_226")) initial_pp_penalty_226 else 250
+    subsequent_pp_penalty_226 <- if (exists("subsequent_pp_penalty_226")) subsequent_pp_penalty_226 else 250
+
+    assumptions_html <- paste0('
+<div class="page-break"></div>
+<h2>Notes & Assumptions</h2>
+<div class="assumptions">
+  <h3>Data Processing</h3>
+  <ul>
+    <li><strong>Shift Classification:</strong> Shifts are categorized using a ', shift_hrs_cutoff, '-hour cutoff.</li>
+    <li><strong>Time Records:</strong> Each shift represents a distinct work period with In/Out punch times.</li>
+    <li><strong>Pay Records:</strong> Pay data is matched to time data by employee ID and period end date.</li>
+  </ul>
+
+  <h3>Meal & Rest Period Violations</h3>
+  <ul>
+    <li><strong>Meal Period Timing (No Waivers):</strong> First meal must start by end of 5th hour. Second meal required for shifts > 10 hours.</li>
+    <li><strong>Meal Period Timing (Waivers):</strong> First meal may be delayed to end of 6th hour. Second meal > 12 hours.</li>
+    <li><strong>Meal Period Duration:</strong> Minimum 30 minutes (0.49 hours) required. 0.01 hour buffer applied.</li>
+    <li><strong>Rest Period Eligibility:</strong> One 10-minute rest period required for shifts > 3.5 hours.</li>
+  </ul>
+
+  <h3>Regular Rate of Pay (RROP)</h3>
+  <ul>
+    <li><strong>Calculation:</strong> Total straight-time compensation ÷ Total straight-time hours. Excludes overtime premiums and time off.</li>
+    <li><strong>De Minimis Buffer:</strong> Under/overpayments below ', sprintf("$%.2f", rrop_buffer), ' ignored as acceptable rounding.</li>
+  </ul>
+
+  <h3>Overtime & Double Time</h3>
+  <ul>
+    <li><strong>Daily OT:</strong> Hours over 8 in a workday paid at 1.5x regular rate.</li>
+    <li><strong>Daily DT:</strong> Hours over 12 in a workday paid at 2x regular rate.</li>
+    <li><strong>Weekly OT:</strong> Hours over 40 in a workweek paid at 1.5x (if not already OT/DT).</li>
+    <li><strong>7th Day Rules:</strong> First 8 hours on 7th day at 1.5x, over 8 at 2x.</li>
+    <li><strong>Buffer Thresholds:</strong> Underpayments below ', min_ot_buffer, ' hours treated as acceptable. Max threshold ', max_ot_buffer, ' hours.</li>
+  </ul>
+
+  <h3>Damages Calculations</h3>
+  <ul>
+    <li><strong>Interest:</strong> Prejudgment interest at ', sprintf("%.0f%%", annual_interest_rate * 100), ' annually.</li>
+    <li><strong>Wage Statement Violations:</strong> $50 initial + $100 subsequent penalties, capped at $4,000 per employee (Labor Code §226).</li>
+    <li><strong>Waiting Time Penalties:</strong> Up to 30 days wages for terminated employees (Labor Code §203).</li>
+  </ul>
+
+  <h3>PAGA Penalties</h3>
+  <ul>
+    <li><strong>Standard:</strong> $', initial_pp_penalty, ' initial + $', subsequent_pp_penalty, ' subsequent per employee per pay period (Labor Code §2699).</li>
+    <li><strong>Labor Code §226:</strong> $', initial_pp_penalty_226, ' initial + $', subsequent_pp_penalty_226, ' subsequent for wage statement violations.</li>
+  </ul>
+</div>')
+
+    html <- paste0(html, assumptions_html)
+  }
+
   html <- paste0(html, '</body></html>')
   
   # Generate PDF
