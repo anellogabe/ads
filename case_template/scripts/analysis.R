@@ -4189,6 +4189,25 @@ log_msg("Extrapolated Counts (Population & Temporal):", "DATA_SUMMARY", data = l
   "PAGA Pay Periods" = format(extrap_paga_pps, big.mark = ",")
 ))
 
+# Save extrapolation values for dashboard to use
+extrap_values <- list(
+  extrap_class_ees = extrap_class_ees,
+  extrap_class_pps = extrap_class_pps,
+  extrap_class_wks = extrap_class_wks,
+  extrap_class_shifts = extrap_class_shifts,
+  extrap_wsv_ees = extrap_wsv_ees,
+  extrap_wsv_pps = extrap_wsv_pps,
+  extrap_wt_ees = extrap_wt_ees,
+  extrap_wt_former_ees = extrap_wt_former_ees,
+  extrap_paga_ees = extrap_paga_ees,
+  extrap_paga_pps = extrap_paga_pps,
+  time_extrap_factor = time_extrap_factor,
+  wsv_time_extrap_factor = wsv_time_extrap_factor,
+  wt_time_extrap_factor = wt_time_extrap_factor,
+  paga_time_extrap_factor = paga_time_extrap_factor
+)
+saveRDS(extrap_values, file.path(OUT_DIR, "extrapolation_values.rds"))
+
 
 # ----- ALL DATA:                Write CSVs & Metadata Files  -----------------------------------------
 

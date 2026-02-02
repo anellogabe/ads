@@ -770,8 +770,8 @@ create_dt_table <- function(dt, metric_col = "Metric") {
   formatted_names <- gsub("_", " ", names(dt))
 
   # Determine which columns should be left-aligned
-  # Always left-align the metric_col, plus "Key Group"/"Key Gp"/"Pay Code"/"Pay Code Categories" if present
-  left_align_cols <- c(metric_col, "Key Group", "Key Gp", "Pay Code", "Pay Code Categories")
+  # Always left-align the metric_col, plus "Key Group"/"Key Gp"/"Pay Code"/"Pay Code Category" if present
+  left_align_cols <- c(metric_col, "Key Group", "Key Gp", "Pay Code", "Pay Code Category")
   left_cols_idx <- which(names(dt) %in% left_align_cols) - 1  # 0-indexed for JS
 
   # All other columns are center-aligned
@@ -2035,9 +2035,16 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     
     # Calculate extrapolation environment (cached separately)
     extrap_environment <- reactive({
+      # If extrapolation values were calculated in analysis.R, use those
+      # Otherwise fall back to calculating from filtered data
+      if (!is.null(extrap_values)) {
+        return(extrap_values)
+      }
+
+      # Fallback: calculate from filtered data (will be wrong if temporal extrapolation applies)
       data <- filtered_data()
       req(data$shift_data1)
-      
+
       list(
         # Use full class list for employee count (not filtered data)
         extrap_class_ees = if (!is.null(data$class1) && "Class_ID" %in% names(data$class1)) {
@@ -2045,21 +2052,21 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         } else {
           uniqueN(data$shift_data1$ID, na.rm = TRUE)
         },
-        
+
         # Extrapolated pay periods based on data
         extrap_class_pps = if (!is.null(data$pp_data1) && "ID_Period_End" %in% names(data$pp_data1)) {
           uniqueN(data$pp_data1$ID_Period_End, na.rm = TRUE)
         } else {
           0
         },
-        
+
         # Extrapolated weeks based on data
         extrap_class_wks = if (!is.null(data$shift_data1) && "week" %in% names(data$shift_data1)) {
           sum(data$shift_data1$week, na.rm = TRUE)
         } else {
           0
         },
-        
+
         # Extrapolated shifts based on data
         extrap_class_shifts = if (!is.null(data$shift_data1) && "ID_Shift" %in% names(data$shift_data1)) {
           uniqueN(data$shift_data1$ID_Shift, na.rm = TRUE)
@@ -3334,14 +3341,26 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
 
       # Check if ID_Period_End exists
       if (!"ID_Period_End" %in% names(data_list$time1)) {
-        return(datatable(data.table(Message = "ID_Period_End column not found in time1"), rownames = FALSE, options = list(dom = 't')))
+        return(datatable(data.table(Message = paste("ID_Period_End column not found in time1. Available columns:", paste(head(names(data_list$time1), 20), collapse = ", "))), rownames = FALSE, options = list(dom = 't')))
       }
 
+      # Debug: Show what we're filtering for and what's available
+      selected_value <- input$example_period_select
+      message("Filtering time1 for ID_Period_End = ", selected_value)
+      message("Number of unique ID_Period_End values in time1: ", uniqueN(data_list$time1$ID_Period_End, na.rm = TRUE))
+      message("Sample ID_Period_End values from time1: ", paste(head(unique(data_list$time1$ID_Period_End), 5), collapse = ", "))
+
       # Filter to selected period
-      filtered <- data_list$time1[ID_Period_End == input$example_period_select]
+      filtered <- data_list$time1[ID_Period_End == selected_value]
 
       if (nrow(filtered) == 0) {
-        return(datatable(data.table(Message = "No punch records for this period"), rownames = FALSE, options = list(dom = 't')))
+        # Try to provide more helpful error message
+        matching_in_shift <- data_list$shift_data1[ID_Period_End == selected_value]
+        if (nrow(matching_in_shift) > 0) {
+          return(datatable(data.table(Message = paste("No punch records for this period in time1, but", nrow(matching_in_shift), "shift records exist. This may indicate a data processing issue.")), rownames = FALSE, options = list(dom = 't')))
+        } else {
+          return(datatable(data.table(Message = paste("No punch records for ID_Period_End:", selected_value)), rownames = FALSE, options = list(dom = 't')))
+        }
       }
 
       # Select specific punch columns - use exact names from your data
@@ -3829,6 +3848,16 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
 message("Loading data...")
 data_list <- load_data()
 metric_spec <- load_metric_spec()
+
+# Load extrapolation values if they exist
+extrap_values_file <- file.path(OUT_DIR, "extrapolation_values.rds")
+if (file.exists(extrap_values_file)) {
+  extrap_values <- readRDS(extrap_values_file)
+  message("Loaded extrapolation values from analysis")
+} else {
+  extrap_values <- NULL
+  message("No extrapolation values found - will calculate from data")
+}
 
 message("Pre-computing metric groups...")
 # Categorize metric groups for consolidation (done once at startup for performance)
