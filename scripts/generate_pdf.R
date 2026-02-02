@@ -136,19 +136,42 @@ generate_report <- function(
     setDT(metric_spec)
   }
   
+  # Helper to fix date columns in tables
+  fix_date_columns <- function(dt) {
+    if (!is.null(dt) && nrow(dt) > 0) {
+      for (col in names(dt)) {
+        # Check if it looks like a date column and is character
+        if (grepl("date", col, ignore.case = TRUE) && is.character(dt[[col]])) {
+          message("  Converting column '", col, "' from character to Date")
+          dt[[col]] <- tryCatch(
+            as.Date(dt[[col]]),
+            error = function(e) {
+              message("  Warning: Could not convert '", col, "' to Date: ", e$message)
+              dt[[col]]  # Keep as character if conversion fails
+            }
+          )
+        }
+      }
+    }
+    return(dt)
+  }
+
   # Use existing final_table/results from environment if available
   # Dashboard uses "results", standalone may use "final_table"
   if (exists("results") && is.data.table(results)) {
     results_table <- copy(results)
+    results_table <- fix_date_columns(results_table)
     cat("Using existing results from environment\n")
   } else if (exists("final_table") && is.data.table(final_table)) {
     results_table <- copy(final_table)
+    results_table <- fix_date_columns(results_table)
     cat("Using existing final_table from environment\n")
   } else {
     # Try to load from file
     results_file <- file.path(DATA_DIR, "Analysis.rds")
     if (file.exists(results_file)) {
       results_table <- readRDS(results_file)
+      results_table <- fix_date_columns(results_table)
       cat("Loaded results from Analysis.rds\n")
     } else {
       stop("Cannot find results/final_table in environment or Analysis.rds file")
@@ -229,14 +252,45 @@ generate_report <- function(
   paga_expenses <- metric_groups[grepl("^PAGA - Unreimbursed Expenses", metric_groups)]
   
   progress("Loading analysis tables")
+
+  # Helper to safely load RDS files with better error reporting
+  safe_load_rds <- function(file_path, table_name) {
+    tryCatch({
+      message("  Loading ", table_name, " from ", basename(file_path))
+      dt <- readRDS(file_path)
+
+      # Convert any Date columns that were saved as character back to Date
+      if (!is.null(dt) && nrow(dt) > 0) {
+        for (col in names(dt)) {
+          # Check if it looks like a date column (contains "date" in name)
+          if (grepl("date", col, ignore.case = TRUE) && is.character(dt[[col]])) {
+            message("    Converting ", col, " from character to Date")
+            dt[[col]] <- tryCatch(
+              as.Date(dt[[col]]),
+              error = function(e) {
+                message("    Warning: Could not convert ", col, " to Date: ", e$message)
+                dt[[col]]  # Keep as character if conversion fails
+              }
+            )
+          }
+        }
+      }
+
+      dt
+    }, error = function(e) {
+      message("  Error loading ", table_name, ": ", e$message)
+      NULL
+    })
+  }
+
   analysis_tables <- list(
-    pay_code_summary = tryCatch(readRDS(file.path(DATA_DIR, "Pay_Code_Summary.rds")), error = function(e) NULL),
-    rate_type_analysis = tryCatch(readRDS(file.path(DATA_DIR, "Rate_Type_Analysis.rds")), error = function(e) NULL),
-    shift_hrs = tryCatch(readRDS(file.path(DATA_DIR, "Shift_Hrs_Table.rds")), error = function(e) NULL),
-    non_wrk_hrs = tryCatch(readRDS(file.path(DATA_DIR, "Non_Work_Hrs_Table.rds")), error = function(e) NULL),
-    meal_period = tryCatch(readRDS(file.path(DATA_DIR, "Meal_Period_Table.rds")), error = function(e) NULL),
-    meal_start_time = tryCatch(readRDS(file.path(DATA_DIR, "Meal_Start_Time_Table.rds")), error = function(e) NULL),
-    meal_quarter_hr = tryCatch(readRDS(file.path(DATA_DIR, "Meal_Quarter_Hour_Table.rds")), error = function(e) NULL)
+    pay_code_summary = safe_load_rds(file.path(DATA_DIR, "Pay_Code_Summary.rds"), "Pay_Code_Summary"),
+    rate_type_analysis = safe_load_rds(file.path(DATA_DIR, "Rate_Type_Analysis.rds"), "Rate_Type_Analysis"),
+    shift_hrs = safe_load_rds(file.path(DATA_DIR, "Shift_Hrs_Table.rds"), "Shift_Hrs_Table"),
+    non_wrk_hrs = safe_load_rds(file.path(DATA_DIR, "Non_Work_Hrs_Table.rds"), "Non_Work_Hrs_Table"),
+    meal_period = safe_load_rds(file.path(DATA_DIR, "Meal_Period_Table.rds"), "Meal_Period_Table"),
+    meal_start_time = safe_load_rds(file.path(DATA_DIR, "Meal_Start_Time_Table.rds"), "Meal_Start_Time_Table"),
+    meal_quarter_hr = safe_load_rds(file.path(DATA_DIR, "Meal_Quarter_Hour_Table.rds"), "Meal_Quarter_Hour_Table")
   )
   
   # Helper functions

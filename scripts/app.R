@@ -3814,7 +3814,18 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         
         # Source generate_pdf.R if not already loaded
         if (!exists("generate_report")) {
-          source(file.path(CASE_DIR, "scripts", "generate_pdf.R"))
+          # Try to find generate_pdf.R relative to this script
+          pdf_script <- file.path(dirname(sys.frame(1)$ofile), "generate_pdf.R")
+          if (!file.exists(pdf_script)) {
+            # Fallback: look in same directory as app.R
+            pdf_script <- file.path(getwd(), "scripts", "generate_pdf.R")
+          }
+          if (file.exists(pdf_script)) {
+            message("Loading generate_pdf.R from: ", pdf_script)
+            source(pdf_script, local = FALSE)
+          } else {
+            stop("Cannot find generate_pdf.R")
+          }
         }
         
         
