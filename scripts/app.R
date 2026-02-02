@@ -3355,12 +3355,13 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
 
       if (nrow(filtered) == 0) {
         # Try to provide more helpful error message
-        matching_in_shift <- data_list$shift_data1[ID_Period_End == selected_value]
-        if (nrow(matching_in_shift) > 0) {
-          return(datatable(data.table(Message = paste("No punch records for this period in time1, but", nrow(matching_in_shift), "shift records exist. This may indicate a data processing issue.")), rownames = FALSE, options = list(dom = 't')))
-        } else {
-          return(datatable(data.table(Message = paste("No punch records for ID_Period_End:", selected_value)), rownames = FALSE, options = list(dom = 't')))
+        if (!is.null(data_list$shift_data1) && "ID_Period_End" %in% names(data_list$shift_data1)) {
+          matching_in_shift <- data_list$shift_data1[ID_Period_End == selected_value]
+          if (nrow(matching_in_shift) > 0) {
+            return(datatable(data.table(Message = paste("No punch records for this period in time1, but", nrow(matching_in_shift), "shift records exist. This may indicate a data processing issue.")), rownames = FALSE, options = list(dom = 't')))
+          }
         }
+        return(datatable(data.table(Message = paste("No punch records for ID_Period_End:", selected_value)), rownames = FALSE, options = list(dom = 't')))
       }
 
       # Select specific punch columns - use exact names from your data
