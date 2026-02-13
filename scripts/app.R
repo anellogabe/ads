@@ -904,42 +904,42 @@ filter_sidebar <- function(data_list) {
       "Employee ID(s)",
       choices = NULL,
       multiple = TRUE,
-      options = list(placeholder = "All employees...")
+      options = list(placeholder = "All employees")
     ),
     selectizeInput(
       "department_filter",
       "Department",
       choices = NULL,
       multiple = TRUE,
-      options = list(placeholder = "Loading...")
+      options = list(placeholder = "Loading")
     ),
     selectizeInput(
       "location_filter",
       "Location",
       choices = NULL,
       multiple = TRUE,
-      options = list(placeholder = "Loading...")
+      options = list(placeholder = "Loading")
     ),
     selectizeInput(
       "sample_filter",
       "Sample",
       choices = NULL,
       multiple = TRUE,
-      options = list(placeholder = "Loading...")
+      options = list(placeholder = "Loading")
     ),
     selectizeInput(
       "subclass_filter",
       "Subclass",
       choices = NULL,
       multiple = TRUE,
-      options = list(placeholder = "Loading...")
+      options = list(placeholder = "Loading")
     ),
     selectizeInput(
       "key_groups_filter",
       "Key Groups (Named Plaintiff(s), etc)",
       choices = NULL,
       multiple = TRUE,
-      options = list(placeholder = "All key groups...")
+      options = list(placeholder = "All key groups")
     ),
     
     hr(),
@@ -1082,19 +1082,18 @@ ui <- function(data_list, metric_spec) {
             display: none !important;
           }
 
-          /* Fix selectize placeholder text cutoff */
+          /* Make selectize input text smaller to fit more */
           .selectize-control .selectize-input {
-            overflow: visible !important;
+            font-size: 13px !important;
           }
           .selectize-control .selectize-input input {
-            width: 100% !important;
-            max-width: none !important;
+            font-size: 13px !important;
           }
-          .selectize-control .selectize-input input::placeholder,
+          .selectize-control .selectize-input input::placeholder {
+            font-size: 13px !important;
+          }
           .selectize-control .selectize-input .item {
-            white-space: nowrap !important;
-            overflow: visible !important;
-            text-overflow: clip !important;
+            font-size: 13px !important;
           }
         ")),
         tags$script(HTML("
@@ -2347,7 +2346,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       if (length(all_key_gps) > 0) {
         updateSelectizeInput(session, "key_groups_filter",
                            choices = all_key_gps,
-                           options = list(placeholder = "All key groups..."),
+                           options = list(placeholder = "All key groups"),
                            server = TRUE)
       } else {
         updateSelectizeInput(session, "key_groups_filter",
@@ -2363,7 +2362,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       if (length(all_subclass) > 0) {
         updateSelectizeInput(session, "subclass_filter",
                            choices = all_subclass,
-                           options = list(placeholder = "All subclasses..."),
+                           options = list(placeholder = "All subclasses"),
                            server = TRUE)
       } else {
         updateSelectizeInput(session, "subclass_filter",
@@ -2379,7 +2378,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       if (length(all_location) > 0) {
         updateSelectizeInput(session, "location_filter",
                            choices = all_location,
-                           options = list(placeholder = "All locations..."),
+                           options = list(placeholder = "All locations"),
                            server = TRUE)
       } else {
         updateSelectizeInput(session, "location_filter",
@@ -2395,7 +2394,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       if (length(all_sample) > 0) {
         updateSelectizeInput(session, "sample_filter",
                            choices = all_sample,
-                           options = list(placeholder = "All samples..."),
+                           options = list(placeholder = "All samples"),
                            server = TRUE)
       } else {
         updateSelectizeInput(session, "sample_filter",
@@ -2411,7 +2410,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       if (length(all_dept) > 0) {
         updateSelectizeInput(session, "department_filter",
                            choices = all_dept,
-                           options = list(placeholder = "All departments..."),
+                           options = list(placeholder = "All departments"),
                            server = TRUE)
       } else {
         updateSelectizeInput(session, "department_filter",
