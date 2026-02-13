@@ -5,11 +5,9 @@
 # This file contains proprietary information and trade secrets.
 # Unauthorized copying, distribution, or use is strictly prohibited.
 # For authorized use by ANELLO DATA SOLUTIONS LLC contracted analysts only.
-# ==============================================================================
 
 # ============================================================================
 # STANDALONE PDF REPORT GENERATOR
-# ============================================================================
 # Run this script directly without launching the dashboard
 #
 # Usage:
@@ -157,7 +155,7 @@ generate_report <- function(
     }
     return(dt)
   }
-
+  
   # Use existing final_table/results from environment if available
   # Dashboard uses "results", standalone may use "final_table"
   if (exists("results") && is.data.table(results)) {
@@ -254,13 +252,13 @@ generate_report <- function(
   paga_expenses <- metric_groups[grepl("^PAGA - Unreimbursed Expenses", metric_groups)]
   
   progress("Loading analysis tables")
-
+  
   # Helper to safely load RDS files with better error reporting
   safe_load_rds <- function(file_path, table_name) {
     tryCatch({
       message("  Loading ", table_name, " from ", basename(file_path))
       dt <- readRDS(file_path)
-
+      
       # Convert any Date columns that were saved as character back to Date
       if (!is.null(dt) && nrow(dt) > 0) {
         for (col in names(dt)) {
@@ -277,14 +275,14 @@ generate_report <- function(
           }
         }
       }
-
+      
       dt
     }, error = function(e) {
       message("  Error loading ", table_name, ": ", e$message)
       NULL
     })
   }
-
+  
   analysis_tables <- list(
     pay_code_summary = safe_load_rds(file.path(DATA_DIR, "Pay_Code_Summary.rds"), "Pay_Code_Summary"),
     rate_type_analysis = safe_load_rds(file.path(DATA_DIR, "Rate_Type_Analysis.rds"), "Rate_Type_Analysis"),
@@ -372,13 +370,13 @@ generate_report <- function(
     cols <- names(dt)
     hdr <- paste0("<th>", format_col(cols), "</th>", collapse = "")
     rows <- sapply(1:nrow(dt), function(i) paste0("<tr><td>", paste(sapply(cols, function(col) if (is.na(dt[[col]][i])) "" else as.character(dt[[col]][i])), collapse = "</td><td>"), "</td></tr>"))
-
+    
     # Build class string
     classes <- c()
     if (compact) classes <- c(classes, "compact")
     if (!is.null(extra_class)) classes <- c(classes, extra_class)
     tbl_class <- if (length(classes) > 0) paste0(' class="', paste(classes, collapse = " "), '"') else ''
-
+    
     paste0('<div class="page-break"></div><h2>', title, '</h2><table', tbl_class, '><thead><tr>', hdr, '</tr></thead><tbody>', paste(rows, collapse = ""), '</tbody></table>')
   }
   
@@ -596,11 +594,11 @@ table.pay-code-table td:last-child { text-align: left; }
     if (!is.null(analysis_tables$meal_start_time) && nrow(analysis_tables$meal_start_time) > 0) { progress("Appendix - Meal Start"); html <- paste0(html, add_simple_tbl(analysis_tables$meal_start_time, "Appendix - Meal Start Time Distribution", compact = TRUE)) }
     if (!is.null(analysis_tables$meal_quarter_hr) && nrow(analysis_tables$meal_quarter_hr) > 0) { progress("Appendix - Meal Qtr Hr"); html <- paste0(html, add_simple_tbl(analysis_tables$meal_quarter_hr, "Appendix - Meal Quarter Hour Analysis", compact = TRUE)) }
   }
-
+  
   # NOTES & ASSUMPTIONS SUMMARY
   if (include_assumptions) {
     progress("Adding Notes & Assumptions")
-
+    
     # Get parameter values with robust defaults
     shift_hrs_cutoff <- tryCatch(if (exists("shift_hrs_cutoff", inherits = TRUE)) get("shift_hrs_cutoff") else 7, error = function(e) 7)
     rrop_buffer <- tryCatch(if (exists("rrop_buffer", inherits = TRUE)) get("rrop_buffer") else 0.05, error = function(e) 0.05)
@@ -611,7 +609,7 @@ table.pay-code-table td:last-child { text-align: left; }
     subsequent_pp_penalty <- tryCatch(if (exists("subsequent_pp_penalty", inherits = TRUE)) get("subsequent_pp_penalty") else 100, error = function(e) 100)
     initial_pp_penalty_226 <- tryCatch(if (exists("initial_pp_penalty_226", inherits = TRUE)) get("initial_pp_penalty_226") else 250, error = function(e) 250)
     subsequent_pp_penalty_226 <- tryCatch(if (exists("subsequent_pp_penalty_226", inherits = TRUE)) get("subsequent_pp_penalty_226") else 250, error = function(e) 250)
-
+    
     assumptions_html <- tryCatch({
       paste0('
 <div class="page-break"></div>
@@ -664,11 +662,11 @@ table.pay-code-table td:last-child { text-align: left; }
       message("Error generating assumptions HTML: ", e$message)
       ""
     })
-
+    
     html <- paste0(html, assumptions_html)
     if (verbose) message("\n  Assumptions section added (", nchar(assumptions_html), " characters)")
   }
-
+  
   html <- paste0(html, '</body></html>')
   
   # Generate PDF

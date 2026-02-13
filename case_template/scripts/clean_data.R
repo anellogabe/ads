@@ -67,6 +67,7 @@ init_logging(
   case_name = "ADS Case Analysis"  # Will be updated with actual case name below
 )
 
+
 # ----- ALL DATA:   Case configuration --------------------------
 
 # --- Case info ---
@@ -146,42 +147,12 @@ subsequent_pp_penalty_558 <- 100   # $100 default
 
 penalty_1174 <- 500                # $500 default
 
-# Log case configuration
-log_msg(paste("Case:", case_name), "SETUP")
-log_msg(paste("Case Number:", case_no), "SETUP")
-log_msg(paste("Date Filed:", format(date_filed, "%Y-%m-%d")), "SETUP")
-log_msg(paste("Sample Size:", sample_size), "SETUP")
-
-log_msg("Key Date Ranges:", "SETUP", data = list(
-  "Class Period" = paste(format(class_dmgs_start_date, "%Y-%m-%d"), "to", format(class_dmgs_end_date, "%Y-%m-%d")),
-  "PAGA Period" = paste(format(paga_dmgs_start_date, "%Y-%m-%d"), "to", format(paga_dmgs_end_date, "%Y-%m-%d")),
-  "Waiting Time Period" = paste(format(wt_start_date, "%Y-%m-%d"), "to", format(wt_end_date, "%Y-%m-%d")),
-  "Wage Statement Period" = paste(format(wsv_start_date, "%Y-%m-%d"), "to", format(wsv_end_date, "%Y-%m-%d"))
-))
-
-log_msg("Analysis Parameters:", "ASSUMPTION", data = list(
-  "RROP Buffer" = paste0(rrop_buffer, " (", rrop_buffer * 100, "¢)"),
-  "Rounding Cutoff" = paste0(rounding_hrs_cutoff, " hrs"),
-  "OT Buffer Min" = paste0(min_ot_buffer, " hrs"),
-  "OT Buffer Max" = paste0(max_ot_buffer, " hrs"),
-  "Interest Rate" = paste0(annual_interest_rate * 100, "% annually")
-))
-
-log_msg("Penalty Amounts:", "ASSUMPTION", data = list(
-  "WSV Initial" = paste0("$", wsv_initial_pp_penalty),
-  "WSV Subsequent" = paste0("$", wsv_subsequent_pp_penalty),
-  "WSV Cap" = paste0("$", wsv_cap),
-  "PAGA Initial (§226)" = paste0("$", initial_pp_penalty_226),
-  "PAGA Subsequent (§226)" = paste0("$", subsequent_pp_penalty_226),
-  "PAGA §1174" = paste0("$", penalty_1174)
-))
 
 # ----- TIME DATA:  Load data -------------------------------
 
 time1 <- read_excel("")
 
-cat("✓ Loaded", nrow(time1), "time records\n")
-log_msg(paste("Loaded time data:", format(nrow(time1), big.mark = ","), "records,", length(unique(time1$ID)), "unique employees"), "DATA_SUMMARY")
+cat("✓ Loaded", nrow(time1), "pay records\n")
 cat("\n=== Columns in Time Data ===\n")
 for(col in names(time1)) {
   cat(col, "\n")
@@ -336,7 +307,7 @@ if(length(existing_cols) > 0) {
     cat("  Unique duplicate groups:", uniqueN(time_duplicates[, ..existing_cols]), "\n")
     
     # Option to remove duplicates (keep first occurrence)
-    REMOVE_DUPLICATES <- TRUE  # Set to FALSE to keep duplicates
+    REMOVE_DUPLICATES <- FALSE  # Set to FALSE to keep duplicates
     
     if(REMOVE_DUPLICATES) {
       before_rows <- nrow(time1)
@@ -363,7 +334,6 @@ if(length(existing_cols) > 0) {
 pay1 <- read_excel("")
 
 cat("✓ Loaded", nrow(pay1), "pay records\n")
-log_msg(paste("Loaded pay data:", format(nrow(pay1), big.mark = ","), "records"), "DATA_SUMMARY")
 cat("\n=== Columns in Pay Data ===\n")
 for(col in names(pay1)) {
   cat(col, "\n")
@@ -602,8 +572,14 @@ if(length(existing_cols) > 0) {
 
 # ----- CLASS LIST: Load Class List or create one -------------------------------
 
-# Load raw class data
-#class1 <- class_list
+# # Load raw class data
+# #class1 <- class_list
+# 
+# cat("✓ Loaded", nrow(class1), "class list records\n")
+# cat("\n=== Columns in Class List ===\n")
+# for(col in names(time1)) {
+#   cat(col, "\n")
+# }
 
 ### OR MAKE OUR OWN CLASS LIST ###
 
@@ -863,12 +839,6 @@ write_csv_and_rds(
   file.path(OUT_DIR, "IDs & Records Removed.csv")
 )
 
-time1_prefiltered <- time1
-pay1_prefiltered <- pay1
-
-time1 <- time1_filtered
-pay1 <- pay1_filtered
-
 
 # ----- ALL DATA:   Pay calendar ---------------------------------------------------
 
@@ -997,28 +967,30 @@ write_csv_and_rds(
 
 # ----- ALL DATA:   Random sample generator (if needed) -----------------------------------------
 
-# # pct <- 0.25                          # Change this for different sample size (0.25 = 25%)
-# # seed_value <- 99999                  # Use case number for reproducibility
-# #
-# # NOTE:
-# # • Files will now be written by default to OUT_DIR (absolute path)
-# # • You can override with: output_dir = "C:/your/custom/folder"
+# pct <- NA
+# n_sample <- NA
+# seed_value <- 99999                  # Use case number for reproducibility
 # 
-# # Generate random sample and output files
-# # (matches Time + Pay + Class1 by default)
 # sample1 <- generate_random_sample(
 #   all_ids    = all_ids,
 #   class1     = class1,
-#   case_name  = case_name,   # already defined earlier in script
+#   case_name  = case_name,   
 #   pct        = pct,
+#   n_sample   = n_sample,    # OR n_sample (CAN'T HAVE BOTH!)
 #   use_class1 = TRUE,        # TRUE = match all three sources
 #   seed_num   = seed_value
-#   # output_dir = NULL       # default -> OUT_DIR (absolute)
+#   # output_dir = NULL       # default -> OUT_DIR
 # )
 # 
 # # Extract sample_list from returned object
 # sample_list <- sample1$sample_list
-
+# 
+# # Map Anon_ID to time1 and pay1 and class1
+# time1[sample_list, Anon_ID := i.rand, on = .(ID)]
+# 
+# pay1[sample_list, Pay_Anon_ID := i.rand, on = .(Pay_ID = ID)]
+# 
+# class1[sample_list, Anon_ID := i.rand, on = .(Class_ID = ID)]
 
 # ----- ALL DATA:   Anonymized sample production files (if needed) -----------------------------------------
 
@@ -1052,10 +1024,7 @@ write_csv_and_rds(
 #   "Hire_Date",
 #   "Term_Date"
 # )
-# 
-
-# --- RUN PRODUCTION EXPORT --- 
-# 
+#
 # production_file_summary <- generate_production_files(
 #   time1 = time1,
 #   pay1  = pay1,
@@ -1063,24 +1032,25 @@ write_csv_and_rds(
 #   class1 = class1,
 #   case_name = case_name,
 #   class_dmgs_start_date = class_dmgs_start_date,
-#   
+# 
 #   # Optional inline overrides (edit if you want different columns)
 #   prod_fields_time  = c("Anon_ID", "Date", "In", "Out"),
 #   prod_fields_pay   = c("Pay_Anon_ID", "Pay_Date", "Pay_Code"),
 #   prod_fields_class = c("Class_Anon_ID", "Class_ID"),
-#   
+# 
 #   overwrite = FALSE
 # )
-# 
-# # Returned object includes:
-# # production_file_summary$time1_prod
-# # production_file_summary$pay1_prod
-# # production_file_summary$class1_prod
-# # production_file_summary$time_file
-# # production_file_summary$pay_file
-# # production_file_summary$class_file
 
-# ----- END  -----------------------------------------
+# Returned object includes:
+# production_file_summary$time1_prod
+# production_file_summary$pay1_prod
+# production_file_summary$class1_prod
+# production_file_summary$time_file
+# production_file_summary$pay_file
+# production_file_summary$class_file
+
+
+# ----- END -----------------------------------------
 
 # Finalize logging and create summary
 end.time <- Sys.time()
@@ -1091,4 +1061,4 @@ log_msg("Next step: Run analysis.R to generate metrics and damages calculations"
 
 finalize_logging()
 end.time <- Sys.time()
-end.time - start.time    
+end.time - start.time  
