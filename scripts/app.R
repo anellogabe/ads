@@ -977,6 +977,9 @@ filter_sidebar <- function(data_list) {
                 selected = "14px"),
     
     hr(),
+   
+    # Toggle extrapolation columns
+    checkboxInput("toggle_extrap_cols", "Show Extrapolated Values", value = TRUE),
     
     # Toggle extrapolation columns
     checkboxInput("toggle_extrap_cols", "Show Extrapolated Values", value = TRUE),
@@ -3895,6 +3898,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       if (!"ID_Period_End" %in% names(data_list$time1)) {
         return(datatable(data.table(Message = paste("ID_Period_End column not found in time1. Available columns:", paste(head(names(data_list$time1), 20), collapse = ", "))), rownames = FALSE, options = list(dom = 't')))
       }
+      if (!is.null(filters$Pay_ID))   pay_filtered <- pay_filtered[Pay_ID %in% filters$Pay_ID]
       
       # Debug: Show what we're filtering for and what's available
       selected_value <- input$example_period_select
@@ -3999,6 +4003,12 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         class = 'cell-border stripe hover',
         style = 'bootstrap4'
       )
+      
+      # Store in cache
+      cache$filtered_data_key <- cache_key
+      cache$filtered_data_value <- result
+      
+      result
     })
     
     # Pay Data (pay1) - Show specific columns as requested
@@ -4200,6 +4210,49 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
             list(className = 'dt-center', targets = 1:(ncol(matrix_data) - 1))
           )
         ),
+        class = 'cell-border stripe hover',
+        style = 'bootstrap4'
+      )
+    })
+    
+    # Damages Data (pp_data1 / ee_data1) - Show damage columns
+    output$table_example_damages <- renderDT({
+      req(input$example_period_select)
+      data <- filtered_data()
+      
+      # Try to get from pp_data1 or ee_data1
+      aggregate_data <- NULL
+      
+      if (!is.null(data$pp_data1) && "ID_Period_End" %in% names(data$pp_data1)) {
+        aggregate_data <- data$pp_data1[ID_Period_End == input$example_period_select]
+      } else if (!is.null(data$ee_data1) && "ID" %in% names(data$ee_data1)) {
+        # Extract ID from the period string
+        emp_id <- sub("_.*", "", input$example_period_select)
+        aggregate_data <- data$ee_data1[ID == emp_id]
+      }
+      
+      if (is.null(aggregate_data) || nrow(aggregate_data) == 0) {
+        return(datatable(data.table(Message = "No damage data available"), rownames = FALSE, options = list(dom = 't')))
+      }
+      
+      # Select only damage-related columns (containing "dmg", "Dmg", "penalty", "Penalty", "PAGA")
+      all_cols <- names(aggregate_data)
+      damage_cols <- all_cols[grepl("dmg|Dmg|penalty|Penalty|PAGA|paga|violation|Violation", all_cols, ignore.case = TRUE)]
+      
+      # Also include ID columns for reference
+      id_cols <- c("ID", "Name", "Period_End", "ID_Period_End")
+      id_cols_available <- id_cols[id_cols %in% all_cols]
+      
+      final_cols <- unique(c(id_cols_available, damage_cols))
+      
+      if (length(final_cols) == 0) {
+        return(datatable(data.table(Message = "No damage columns available"), rownames = FALSE, options = list(dom = 't')))
+      }
+      
+      display_data <- aggregate_data[, ..final_cols]
+      
+      datatable(
+        display_data,
         rownames = FALSE,
         class = 'cell-border stripe hover compact'
       ) %>%
