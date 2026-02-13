@@ -904,42 +904,42 @@ filter_sidebar <- function(data_list) {
       "Employee ID(s)",
       choices = NULL,
       multiple = TRUE,
-      options = list(placeholder = "All employees...")
+      options = list(placeholder = "All employees")
     ),
     selectizeInput(
       "department_filter",
       "Department",
       choices = NULL,
       multiple = TRUE,
-      options = list(placeholder = "All departments... (coming soon)")
+      options = list(placeholder = "Loading")
     ),
     selectizeInput(
       "location_filter",
       "Location",
       choices = NULL,
       multiple = TRUE,
-      options = list(placeholder = "All locations... (coming soon)")
+      options = list(placeholder = "Loading")
     ),
     selectizeInput(
       "sample_filter",
       "Sample",
-      choices = c("All" = "all", "Sample Only (1)" = "1", "Non-Sample (0)" = "0"),
-      selected = "all",
-      multiple = FALSE
+      choices = NULL,
+      multiple = TRUE,
+      options = list(placeholder = "Loading")
     ),
-    selectInput(
+    selectizeInput(
       "subclass_filter",
-      "Subclass(es)",
-      choices = c("All Employees" = "all", "Drivers" = "driver", "Aides" = "aide"),
-      selected = "all",
-      multiple = FALSE
+      "Subclass",
+      choices = NULL,
+      multiple = TRUE,
+      options = list(placeholder = "Loading")
     ),
     selectizeInput(
       "key_groups_filter",
       "Key Groups (Named Plaintiff(s), etc)",
       choices = NULL,
       multiple = TRUE,
-      options = list(placeholder = "All key groups...")
+      options = list(placeholder = "All key groups")
     ),
     
     hr(),
@@ -978,6 +978,9 @@ filter_sidebar <- function(data_list) {
     
     hr(),
    
+    # Toggle extrapolation columns
+    checkboxInput("toggle_extrap_cols", "Show Extrapolated Values", value = TRUE),
+    
     # Toggle extrapolation columns
     checkboxInput("toggle_extrap_cols", "Show Extrapolated Values", value = TRUE),
     
@@ -1080,6 +1083,20 @@ ui <- function(data_list, metric_spec) {
           /* Hide extrapolated columns when toggle is off */
           .hide-extrap-cols .extrap-col {
             display: none !important;
+          }
+
+          /* Make selectize input text smaller to fit more */
+          .selectize-control .selectize-input {
+            font-size: 13px !important;
+          }
+          .selectize-control .selectize-input input {
+            font-size: 13px !important;
+          }
+          .selectize-control .selectize-input input::placeholder {
+            font-size: 13px !important;
+          }
+          .selectize-control .selectize-input .item {
+            font-size: 13px !important;
           }
         ")),
         tags$script(HTML("
@@ -1612,37 +1629,45 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         date_max = input$date_range[2]
       )
       
+      # Employee ID filter
       if (length(input$employee_filter) > 0) {
-        filters$ID     <- input$employee_filter
+        filters$ID <- input$employee_filter
         filters$Pay_ID <- input$employee_filter
+        filters$Class_ID <- input$employee_filter
       }
       
-      if (!is.null(input$sample_filter) && input$sample_filter != "all") {
-        filters$Sample <- as.integer(input$sample_filter)
+      # Sample filter (multi-select)
+      if (length(input$sample_filter) > 0) {
+        filters$Sample <- input$sample_filter
+        filters$Pay_Sample <- input$sample_filter
       }
       
-      if (!is.null(input$subclass_filter) && input$subclass_filter != "all") {
-        filters$Subclass     <- input$subclass_filter
-        filters$Pay_Subclass <- input$subclass_filter
-      }
-      
-      if (length(input$key_groups_filter) > 0) {
-        filters$Key_Gps       <- input$key_groups_filter
-        filters$Pay_Key_Gps   <- input$key_groups_filter
-        filters$Class_Key_Gps <- input$key_groups_filter
-      }
-      
-      # Subclass filter
-      if (!is.null(input$subclass_filter) && input$subclass_filter != "all") {
+      # Subclass filter (multi-select)
+      if (length(input$subclass_filter) > 0) {
         filters$Subclass <- input$subclass_filter
         filters$Pay_Subclass <- input$subclass_filter
+        filters$Class_Subclass <- input$subclass_filter
       }
       
-      # Key Groups filter
+      # Key Groups filter (multi-select)
       if (length(input$key_groups_filter) > 0) {
         filters$Key_Gps <- input$key_groups_filter
         filters$Pay_Key_Gps <- input$key_groups_filter
         filters$Class_Key_Gps <- input$key_groups_filter
+      }
+      
+      # Department filter (multi-select)
+      if (length(input$department_filter) > 0) {
+        filters$Department <- input$department_filter
+        filters$Pay_Department <- input$department_filter
+        filters$Class_Department <- input$department_filter
+      }
+      
+      # Location filter (multi-select)
+      if (length(input$location_filter) > 0) {
+        filters$Location <- input$location_filter
+        filters$Pay_Location <- input$location_filter
+        filters$Class_Location <- input$location_filter
       }
       
       current_filters(filters)
@@ -1652,9 +1677,11 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     observeEvent(input$reset_filters, {
       updateDateRangeInput(session, "date_range", start = original_date_min, end = original_date_max)
       updateSelectizeInput(session, "employee_filter", selected = character(0))
-      updateSelectizeInput(session, "sample_filter", selected = "all")
-      updateSelectInput(session, "subclass_filter", selected = "all")
+      updateSelectizeInput(session, "sample_filter", selected = character(0))
+      updateSelectizeInput(session, "subclass_filter", selected = character(0))
       updateSelectizeInput(session, "key_groups_filter", selected = character(0))
+      updateSelectizeInput(session, "department_filter", selected = character(0))
+      updateSelectizeInput(session, "location_filter", selected = character(0))
       current_filters(list())
     })
     
@@ -1921,16 +1948,50 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       if (!is.null(filters$date_max)) shift_filtered <- shift_filtered[Date <= filters$date_max]
       if (!is.null(filters$ID))       shift_filtered <- shift_filtered[ID %in% filters$ID]
       
-      if (!is.null(filters$Sample) && "Sample" %in% names(shift_filtered)) {
-        shift_filtered <- shift_filtered[Sample == filters$Sample]
+      # Sample filter - check any column containing "Sample"
+      if (!is.null(filters$Sample)) {
+        sample_cols <- grep("Sample", names(shift_filtered), ignore.case = TRUE, value = TRUE)
+        if (length(sample_cols) > 0) {
+          # Match if ANY sample column matches the filter
+          matches <- Reduce(`|`, lapply(sample_cols, function(col) shift_filtered[[col]] %in% filters$Sample))
+          shift_filtered <- shift_filtered[matches]
+        }
       }
       
-      if (!is.null(filters$Subclass) && "Subclass" %in% names(shift_filtered)) {
-        shift_filtered <- shift_filtered[grepl(filters$Subclass, Subclass, ignore.case = TRUE)]
+      # Subclass filter - check any column containing "Subclass"
+      if (!is.null(filters$Subclass)) {
+        subclass_cols <- grep("Subclass", names(shift_filtered), ignore.case = TRUE, value = TRUE)
+        if (length(subclass_cols) > 0) {
+          matches <- Reduce(`|`, lapply(subclass_cols, function(col) shift_filtered[[col]] %in% filters$Subclass))
+          shift_filtered <- shift_filtered[matches]
+        }
       }
       
-      if (!is.null(filters$Key_Gps) && "Key_Gps" %in% names(shift_filtered)) {
-        shift_filtered <- shift_filtered[Key_Gps %in% filters$Key_Gps]
+      # Key Groups filter - check any column containing "Key_Gps"
+      if (!is.null(filters$Key_Gps)) {
+        key_cols <- grep("Key_Gps", names(shift_filtered), ignore.case = TRUE, value = TRUE)
+        if (length(key_cols) > 0) {
+          matches <- Reduce(`|`, lapply(key_cols, function(col) shift_filtered[[col]] %in% filters$Key_Gps))
+          shift_filtered <- shift_filtered[matches]
+        }
+      }
+      
+      # Department filter - check any column containing "Department"
+      if (!is.null(filters$Department)) {
+        dept_cols <- grep("Department", names(shift_filtered), ignore.case = TRUE, value = TRUE)
+        if (length(dept_cols) > 0) {
+          matches <- Reduce(`|`, lapply(dept_cols, function(col) shift_filtered[[col]] %in% filters$Department))
+          shift_filtered <- shift_filtered[matches]
+        }
+      }
+      
+      # Location filter - check any column containing "Location"
+      if (!is.null(filters$Location)) {
+        loc_cols <- grep("Location", names(shift_filtered), ignore.case = TRUE, value = TRUE)
+        if (length(loc_cols) > 0) {
+          matches <- Reduce(`|`, lapply(loc_cols, function(col) shift_filtered[[col]] %in% filters$Location))
+          shift_filtered <- shift_filtered[matches]
+        }
       }
       
       # Pay filters
@@ -1942,21 +2003,49 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       }
       if (!is.null(filters$Pay_ID))   pay_filtered <- pay_filtered[Pay_ID %in% filters$Pay_ID]
       
-      if (!is.null(filters$Sample) && "Pay_Sample" %in% names(pay_filtered)) {
-        pay_filtered <- pay_filtered[Pay_Sample == filters$Sample]
-      }
-      if (!is.null(filters$Pay_ID))   pay_filtered <- pay_filtered[Pay_ID %in% filters$Pay_ID]
-      
-      if (!is.null(filters$Pay_Subclass) && "Pay_Subclass" %in% names(pay_filtered)) {
-        pay_filtered <- pay_filtered[grepl(filters$Pay_Subclass, Pay_Subclass, ignore.case = TRUE)]
-      }
-      
-      if (!is.null(filters$Subclass) && "Subclass" %in% names(pay_filtered)) {
-        pay_filtered <- pay_filtered[grepl(filters$Subclass, Subclass, ignore.case = TRUE)]
+      # Sample filter - check any column containing "Sample"
+      if (!is.null(filters$Sample)) {
+        sample_cols <- grep("Sample", names(pay_filtered), ignore.case = TRUE, value = TRUE)
+        if (length(sample_cols) > 0) {
+          matches <- Reduce(`|`, lapply(sample_cols, function(col) pay_filtered[[col]] %in% filters$Sample))
+          pay_filtered <- pay_filtered[matches]
+        }
       }
       
-      if (!is.null(filters$Pay_Key_Gps) && "Pay_Key_Gps" %in% names(pay_filtered)) {
-        pay_filtered <- pay_filtered[Pay_Key_Gps %in% filters$Pay_Key_Gps]
+      # Subclass filter - check any column containing "Subclass"
+      if (!is.null(filters$Subclass)) {
+        subclass_cols <- grep("Subclass", names(pay_filtered), ignore.case = TRUE, value = TRUE)
+        if (length(subclass_cols) > 0) {
+          matches <- Reduce(`|`, lapply(subclass_cols, function(col) pay_filtered[[col]] %in% filters$Subclass))
+          pay_filtered <- pay_filtered[matches]
+        }
+      }
+      
+      # Key Groups filter - check any column containing "Key_Gps"
+      if (!is.null(filters$Key_Gps)) {
+        key_cols <- grep("Key_Gps", names(pay_filtered), ignore.case = TRUE, value = TRUE)
+        if (length(key_cols) > 0) {
+          matches <- Reduce(`|`, lapply(key_cols, function(col) pay_filtered[[col]] %in% filters$Key_Gps))
+          pay_filtered <- pay_filtered[matches]
+        }
+      }
+      
+      # Department filter - check any column containing "Department"
+      if (!is.null(filters$Department)) {
+        dept_cols <- grep("Department", names(pay_filtered), ignore.case = TRUE, value = TRUE)
+        if (length(dept_cols) > 0) {
+          matches <- Reduce(`|`, lapply(dept_cols, function(col) pay_filtered[[col]] %in% filters$Department))
+          pay_filtered <- pay_filtered[matches]
+        }
+      }
+      
+      # Location filter - check any column containing "Location"
+      if (!is.null(filters$Location)) {
+        loc_cols <- grep("Location", names(pay_filtered), ignore.case = TRUE, value = TRUE)
+        if (length(loc_cols) > 0) {
+          matches <- Reduce(`|`, lapply(loc_cols, function(col) pay_filtered[[col]] %in% filters$Location))
+          pay_filtered <- pay_filtered[matches]
+        }
       }
       
       # pp_data1
@@ -1966,6 +2055,47 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         if (!is.null(filters$date_min) && "Period_End" %in% names(pp_filtered)) pp_filtered <- pp_filtered[Period_End >= filters$date_min]
         if (!is.null(filters$date_max) && "Period_End" %in% names(pp_filtered)) pp_filtered <- pp_filtered[Period_End <= filters$date_max]
         if (!is.null(filters$ID)       && "ID" %in% names(pp_filtered))        pp_filtered <- pp_filtered[ID %in% filters$ID]
+        
+        # Apply all categorical filters to pp_data1
+        if (!is.null(filters$Sample)) {
+          sample_cols <- grep("Sample", names(pp_filtered), ignore.case = TRUE, value = TRUE)
+          if (length(sample_cols) > 0) {
+            matches <- Reduce(`|`, lapply(sample_cols, function(col) pp_filtered[[col]] %in% filters$Sample))
+            pp_filtered <- pp_filtered[matches]
+          }
+        }
+        
+        if (!is.null(filters$Subclass)) {
+          subclass_cols <- grep("Subclass", names(pp_filtered), ignore.case = TRUE, value = TRUE)
+          if (length(subclass_cols) > 0) {
+            matches <- Reduce(`|`, lapply(subclass_cols, function(col) pp_filtered[[col]] %in% filters$Subclass))
+            pp_filtered <- pp_filtered[matches]
+          }
+        }
+        
+        if (!is.null(filters$Key_Gps)) {
+          key_cols <- grep("Key_Gps", names(pp_filtered), ignore.case = TRUE, value = TRUE)
+          if (length(key_cols) > 0) {
+            matches <- Reduce(`|`, lapply(key_cols, function(col) pp_filtered[[col]] %in% filters$Key_Gps))
+            pp_filtered <- pp_filtered[matches]
+          }
+        }
+        
+        if (!is.null(filters$Department)) {
+          dept_cols <- grep("Department", names(pp_filtered), ignore.case = TRUE, value = TRUE)
+          if (length(dept_cols) > 0) {
+            matches <- Reduce(`|`, lapply(dept_cols, function(col) pp_filtered[[col]] %in% filters$Department))
+            pp_filtered <- pp_filtered[matches]
+          }
+        }
+        
+        if (!is.null(filters$Location)) {
+          loc_cols <- grep("Location", names(pp_filtered), ignore.case = TRUE, value = TRUE)
+          if (length(loc_cols) > 0) {
+            matches <- Reduce(`|`, lapply(loc_cols, function(col) pp_filtered[[col]] %in% filters$Location))
+            pp_filtered <- pp_filtered[matches]
+          }
+        }
       }
       
       # ee_data1
@@ -1973,6 +2103,47 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       if (!is.null(data_list$ee_data1)) {
         ee_filtered <- data_list$ee_data1
         if (!is.null(filters$ID) && "ID" %in% names(ee_filtered)) ee_filtered <- ee_filtered[ID %in% filters$ID]
+        
+        # Apply all categorical filters to ee_data1
+        if (!is.null(filters$Sample)) {
+          sample_cols <- grep("Sample", names(ee_filtered), ignore.case = TRUE, value = TRUE)
+          if (length(sample_cols) > 0) {
+            matches <- Reduce(`|`, lapply(sample_cols, function(col) ee_filtered[[col]] %in% filters$Sample))
+            ee_filtered <- ee_filtered[matches]
+          }
+        }
+        
+        if (!is.null(filters$Subclass)) {
+          subclass_cols <- grep("Subclass", names(ee_filtered), ignore.case = TRUE, value = TRUE)
+          if (length(subclass_cols) > 0) {
+            matches <- Reduce(`|`, lapply(subclass_cols, function(col) ee_filtered[[col]] %in% filters$Subclass))
+            ee_filtered <- ee_filtered[matches]
+          }
+        }
+        
+        if (!is.null(filters$Key_Gps)) {
+          key_cols <- grep("Key_Gps", names(ee_filtered), ignore.case = TRUE, value = TRUE)
+          if (length(key_cols) > 0) {
+            matches <- Reduce(`|`, lapply(key_cols, function(col) ee_filtered[[col]] %in% filters$Key_Gps))
+            ee_filtered <- ee_filtered[matches]
+          }
+        }
+        
+        if (!is.null(filters$Department)) {
+          dept_cols <- grep("Department", names(ee_filtered), ignore.case = TRUE, value = TRUE)
+          if (length(dept_cols) > 0) {
+            matches <- Reduce(`|`, lapply(dept_cols, function(col) ee_filtered[[col]] %in% filters$Department))
+            ee_filtered <- ee_filtered[matches]
+          }
+        }
+        
+        if (!is.null(filters$Location)) {
+          loc_cols <- grep("Location", names(ee_filtered), ignore.case = TRUE, value = TRUE)
+          if (length(loc_cols) > 0) {
+            matches <- Reduce(`|`, lapply(loc_cols, function(col) ee_filtered[[col]] %in% filters$Location))
+            ee_filtered <- ee_filtered[matches]
+          }
+        }
       }
       
       # class1
@@ -1986,14 +2157,46 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         if (!is.null(filters$Pay_ID) && "Class_ID" %in% names(class_filtered)) {
           class_filtered <- class_filtered[Class_ID %in% filters$Pay_ID]
         }
-        if (!is.null(filters$Sample) && "Sample" %in% names(class_filtered)) {
-          class_filtered <- class_filtered[Sample == filters$Sample]
+        
+        # Apply all categorical filters to class1
+        if (!is.null(filters$Sample)) {
+          sample_cols <- grep("Sample", names(class_filtered), ignore.case = TRUE, value = TRUE)
+          if (length(sample_cols) > 0) {
+            matches <- Reduce(`|`, lapply(sample_cols, function(col) class_filtered[[col]] %in% filters$Sample))
+            class_filtered <- class_filtered[matches]
+          }
         }
-        if (!is.null(filters$Subclass) && "Subclass" %in% names(class_filtered)) {
-          class_filtered <- class_filtered[grepl(filters$Subclass, Subclass, ignore.case = TRUE)]
+        
+        if (!is.null(filters$Subclass)) {
+          subclass_cols <- grep("Subclass", names(class_filtered), ignore.case = TRUE, value = TRUE)
+          if (length(subclass_cols) > 0) {
+            matches <- Reduce(`|`, lapply(subclass_cols, function(col) class_filtered[[col]] %in% filters$Subclass))
+            class_filtered <- class_filtered[matches]
+          }
         }
-        if (!is.null(filters$Class_Key_Gps) && "Class_Key_Gps" %in% names(class_filtered)) {
-          class_filtered <- class_filtered[Class_Key_Gps %in% filters$Class_Key_Gps]
+        
+        if (!is.null(filters$Key_Gps)) {
+          key_cols <- grep("Key_Gps", names(class_filtered), ignore.case = TRUE, value = TRUE)
+          if (length(key_cols) > 0) {
+            matches <- Reduce(`|`, lapply(key_cols, function(col) class_filtered[[col]] %in% filters$Key_Gps))
+            class_filtered <- class_filtered[matches]
+          }
+        }
+        
+        if (!is.null(filters$Department)) {
+          dept_cols <- grep("Department", names(class_filtered), ignore.case = TRUE, value = TRUE)
+          if (length(dept_cols) > 0) {
+            matches <- Reduce(`|`, lapply(dept_cols, function(col) class_filtered[[col]] %in% filters$Department))
+            class_filtered <- class_filtered[matches]
+          }
+        }
+        
+        if (!is.null(filters$Location)) {
+          loc_cols <- grep("Location", names(class_filtered), ignore.case = TRUE, value = TRUE)
+          if (length(loc_cols) > 0) {
+            matches <- Reduce(`|`, lapply(loc_cols, function(col) class_filtered[[col]] %in% filters$Location))
+            class_filtered <- class_filtered[matches]
+          }
         }
       }
       
@@ -2121,17 +2324,103 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       results
     })
     
-    # Populate Key Groups filter choices
+    # Populate filter choices from pp_data1 (source of truth)
     observe({
-      time_key_gps <- if (!is.null(data_list$shift_data1) && "Key_Gps" %in% names(data_list$shift_data1)) unique(data_list$shift_data1$Key_Gps) else character(0)
-      pay_key_gps  <- if (!is.null(data_list$pay1)        && "Pay_Key_Gps" %in% names(data_list$pay1))        unique(data_list$pay1$Pay_Key_Gps) else character(0)
-      class_key_gps<- if (!is.null(data_list$class1)      && "Class_Key_Gps" %in% names(data_list$class1))    unique(data_list$class1$Class_Key_Gps) else character(0)
+      pp <- data_list$pp_data1
       
-      all_key_gps <- unique(c(time_key_gps, pay_key_gps, class_key_gps))
-      all_key_gps <- all_key_gps[!is.na(all_key_gps) & all_key_gps != "" & tolower(all_key_gps) != "everyone else"]
-      all_key_gps <- sort(all_key_gps)
+      # Helper to find columns containing a pattern (case-insensitive)
+      find_cols <- function(pattern) {
+        if (is.null(pp)) return(character(0))
+        grep(pattern, names(pp), ignore.case = TRUE, value = TRUE)
+      }
       
-      updateSelectizeInput(session, "key_groups_filter", choices = all_key_gps, server = TRUE)
+      # Helper to get unique values from columns
+      get_unique_values <- function(cols) {
+        if (is.null(pp) || length(cols) == 0) return(character(0))
+        vals <- unique(unlist(lapply(cols, function(col) unique(pp[[col]]))))
+        vals <- vals[!is.na(vals) & vals != ""]
+        sort(vals)
+      }
+      
+      # Key Groups - include "Everyone Else"
+      key_gps_cols <- find_cols("Key_Gps")
+      all_key_gps <- get_unique_values(key_gps_cols)
+      
+      if (length(all_key_gps) > 0) {
+        updateSelectizeInput(session, "key_groups_filter",
+                             choices = all_key_gps,
+                             options = list(placeholder = "All key groups"),
+                             server = TRUE)
+      } else {
+        updateSelectizeInput(session, "key_groups_filter",
+                             choices = character(0),
+                             options = list(placeholder = "Key Groups not available"),
+                             server = TRUE)
+      }
+      
+      # Subclass
+      subclass_cols <- find_cols("Subclass")
+      all_subclass <- get_unique_values(subclass_cols)
+      
+      if (length(all_subclass) > 0) {
+        updateSelectizeInput(session, "subclass_filter",
+                             choices = all_subclass,
+                             options = list(placeholder = "All subclasses"),
+                             server = TRUE)
+      } else {
+        updateSelectizeInput(session, "subclass_filter",
+                             choices = character(0),
+                             options = list(placeholder = "Subclass not available"),
+                             server = TRUE)
+      }
+      
+      # Location
+      location_cols <- find_cols("Location")
+      all_location <- get_unique_values(location_cols)
+      
+      if (length(all_location) > 0) {
+        updateSelectizeInput(session, "location_filter",
+                             choices = all_location,
+                             options = list(placeholder = "All locations"),
+                             server = TRUE)
+      } else {
+        updateSelectizeInput(session, "location_filter",
+                             choices = character(0),
+                             options = list(placeholder = "Location not available"),
+                             server = TRUE)
+      }
+      
+      # Sample
+      sample_cols <- find_cols("Sample")
+      all_sample <- get_unique_values(sample_cols)
+      
+      if (length(all_sample) > 0) {
+        updateSelectizeInput(session, "sample_filter",
+                             choices = all_sample,
+                             options = list(placeholder = "All samples"),
+                             server = TRUE)
+      } else {
+        updateSelectizeInput(session, "sample_filter",
+                             choices = character(0),
+                             options = list(placeholder = "Sample not available"),
+                             server = TRUE)
+      }
+      
+      # Department
+      dept_cols <- find_cols("Department")
+      all_dept <- get_unique_values(dept_cols)
+      
+      if (length(all_dept) > 0) {
+        updateSelectizeInput(session, "department_filter",
+                             choices = all_dept,
+                             options = list(placeholder = "All departments"),
+                             server = TRUE)
+      } else {
+        updateSelectizeInput(session, "department_filter",
+                             choices = character(0),
+                             options = list(placeholder = "Department not available"),
+                             server = TRUE)
+      }
     })
     
     # ===========================================================================
@@ -3257,6 +3546,272 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     })
     
     # ===========================================================================
+    # Notes & Assumptions Tab - Log Outputs
+    # ===========================================================================
+    
+    # Load log summary if available
+    log_summary <- reactive({
+      log_summary_file <- file.path(OUT_DIR, "analysis_log_summary.rds")
+      if (file.exists(log_summary_file)) {
+        readRDS(log_summary_file)
+      } else {
+        NULL
+      }
+    })
+    
+    # Render setup summary
+    output$log_setup_summary <- renderUI({
+      summary <- log_summary()
+      if (is.null(summary)) {
+        return(p("No log data available. Run clean_data.R to generate analysis logs."))
+      }
+      
+      setup_msgs <- Filter(function(m) m$category == "SETUP", summary$messages)
+      if (length(setup_msgs) == 0) {
+        return(p("No setup information logged."))
+      }
+      
+      msg_html <- lapply(setup_msgs, function(m) {
+        data_html <- if (!is.null(m$data) && is.list(m$data)) {
+          items <- lapply(names(m$data), function(n) {
+            tags$li(tags$strong(paste0(n, ":")), m$data[[n]])
+          })
+          tags$ul(items)
+        } else if (!is.null(m$data)) {
+          p(style = "margin-left: 20px;", m$data)
+        } else {
+          NULL
+        }
+        
+        div(
+          style = "margin-bottom: 15px;",
+          p(style = "margin-bottom: 5px;", icon("info-circle"), HTML("&nbsp;"), m$message),
+          data_html
+        )
+      })
+      
+      div(msg_html)
+    })
+    
+    # Render data summary
+    output$log_data_summary <- renderUI({
+      summary <- log_summary()
+      if (is.null(summary)) {
+        return(p("No log data available."))
+      }
+      
+      data_msgs <- Filter(function(m) m$category == "DATA_SUMMARY", summary$messages)
+      if (length(data_msgs) == 0) {
+        return(p("No data summary information logged."))
+      }
+      
+      msg_html <- lapply(data_msgs, function(m) {
+        p(icon("chart-bar"), HTML("&nbsp;"), m$message)
+      })
+      
+      div(msg_html)
+    })
+    
+    # Render assumptions
+    output$log_assumptions <- renderUI({
+      summary <- log_summary()
+      if (is.null(summary)) {
+        return(p("No log data available."))
+      }
+      
+      assumption_msgs <- Filter(function(m) m$category == "ASSUMPTION", summary$messages)
+      if (length(assumption_msgs) == 0) {
+        return(p("No assumptions logged."))
+      }
+      
+      msg_html <- lapply(assumption_msgs, function(m) {
+        data_html <- if (!is.null(m$data) && is.list(m$data)) {
+          items <- lapply(names(m$data), function(n) {
+            tags$li(tags$strong(paste0(n, ":")), m$data[[n]])
+          })
+          tags$ul(items)
+        } else {
+          NULL
+        }
+        
+        div(
+          style = "margin-bottom: 15px;",
+          p(style = "margin-bottom: 5px;", icon("sticky-note"), HTML("&nbsp;"), m$message),
+          data_html
+        )
+      })
+      
+      div(msg_html)
+    })
+    
+    # Render full log file
+    output$full_log <- renderText({
+      log_file <- file.path(OUT_DIR, "analysis_log.txt")
+      if (file.exists(log_file)) {
+        paste(readLines(log_file), collapse = "\n")
+      } else {
+        "No log file found. Run clean_data.R to generate analysis logs."
+      }
+    })
+    
+    # Download log file
+    output$download_log <- downloadHandler(
+      filename = function() {
+        paste0("analysis_log_", format(Sys.Date(), "%Y%m%d"), ".txt")
+      },
+      content = function(file) {
+        log_file <- file.path(OUT_DIR, "analysis_log.txt")
+        if (file.exists(log_file)) {
+          file.copy(log_file, file)
+        } else {
+          writeLines("No log file available.", file)
+        }
+      }
+    )
+    
+    # Render detailed general assumptions with actual parameter values
+    output$general_assumptions_content <- renderUI({
+      # Get parameter values from environment
+      shift_hrs_cutoff <- if (exists("shift_hrs_cutoff")) shift_hrs_cutoff else 7
+      rrop_buffer <- if (exists("rrop_buffer")) rrop_buffer else 0.05
+      min_ot_buffer <- if (exists("min_ot_buffer")) min_ot_buffer else 0.25
+      max_ot_buffer <- if (exists("max_ot_buffer")) max_ot_buffer else 20
+      annual_interest_rate <- if (exists("annual_interest_rate")) annual_interest_rate else 0.07
+      
+      # PAGA penalties
+      initial_pp_penalty <- if (exists("initial_pp_penalty")) initial_pp_penalty else 100
+      subsequent_pp_penalty <- if (exists("subsequent_pp_penalty")) subsequent_pp_penalty else 100
+      initial_pp_penalty_226 <- if (exists("initial_pp_penalty_226")) initial_pp_penalty_226 else 250
+      subsequent_pp_penalty_226 <- if (exists("subsequent_pp_penalty_226")) subsequent_pp_penalty_226 else 250
+      initial_pp_penalty_558 <- if (exists("initial_pp_penalty_558")) initial_pp_penalty_558 else 100
+      subsequent_pp_penalty_558 <- if (exists("subsequent_pp_penalty_558")) subsequent_pp_penalty_558 else 100
+      penalty_1174 <- if (exists("penalty_1174")) penalty_1174 else 500
+      
+      # Sample info
+      sample_size <- if (exists("sample_size")) sample_size else "100%"
+      sample_size_val <- if (exists("sample_size_val")) sample_size_val else 1
+      
+      # Extrapolation factors
+      time_extrap_factor <- if (exists("time_extrap_factor")) time_extrap_factor else 1
+      wsv_time_extrap_factor <- if (exists("wsv_time_extrap_factor")) wsv_time_extrap_factor else 1
+      wt_time_extrap_factor <- if (exists("wt_time_extrap_factor")) wt_time_extrap_factor else 1
+      paga_time_extrap_factor <- if (exists("paga_time_extrap_factor")) paga_time_extrap_factor else 1
+      
+      # Get dates with formatting
+      class_start <- if (exists("class_dmgs_start_date") && inherits(class_dmgs_start_date, "Date")) {
+        format(class_dmgs_start_date, "%B %d, %Y")
+      } else "4 years prior to complaint date"
+      
+      class_end <- if (exists("mediation_date") && inherits(mediation_date, "Date")) {
+        format(mediation_date, "%B %d, %Y")
+      } else "mediation date"
+      
+      paga_start <- if (exists("paga_dmgs_start_date") && inherits(paga_dmgs_start_date, "Date")) {
+        format(paga_dmgs_start_date, "%B %d, %Y")
+      } else "1 year + 65 days prior to PAGA filing"
+      
+      paga_end <- if (exists("mediation_date") && inherits(mediation_date, "Date")) {
+        format(mediation_date, "%B %d, %Y")
+      } else "mediation date"
+      
+      wsv_start <- if (exists("wsv_start_date") && inherits(wsv_start_date, "Date")) {
+        format(wsv_start_date, "%B %d, %Y")
+      } else "1 year prior to complaint date"
+      
+      wsv_end <- if (exists("mediation_date") && inherits(mediation_date, "Date")) {
+        format(mediation_date, "%B %d, %Y")
+      } else "mediation date"
+      
+      wt_start <- if (exists("wt_start_date") && inherits(wt_start_date, "Date")) {
+        format(wt_start_date, "%B %d, %Y")
+      } else "3 years prior to complaint date"
+      
+      wt_end <- if (exists("mediation_date") && inherits(mediation_date, "Date")) {
+        format(mediation_date, "%B %d, %Y")
+      } else "mediation date"
+      
+      # Build extrapolation text
+      extrap_text <- if (sample_size_val < 1 || time_extrap_factor < 1) {
+        paste0("<h4>Extrapolation Methodology</h4><ul>",
+               if (sample_size_val < 1) paste0("<li><strong>Population Extrapolation:</strong> Analysis uses a ", sample_size, " sample of the workforce.</li>") else "",
+               if (time_extrap_factor < 1) paste0(
+                 "<li><strong>Temporal Extrapolation:</strong> Data coverage extends from the earliest record date to ", class_end, ". ",
+                 "Extrapolation factors: ",
+                 "Class Period = ", sprintf("%.2f%%", time_extrap_factor * 100),
+                 if (wsv_time_extrap_factor < 1) paste0(", WSV Period = ", sprintf("%.2f%%", wsv_time_extrap_factor * 100)) else "",
+                 if (wt_time_extrap_factor < 1) paste0(", WT Period = ", sprintf("%.2f%%", wt_time_extrap_factor * 100)) else "",
+                 if (paga_time_extrap_factor < 1) paste0(", PAGA Period = ", sprintf("%.2f%%", paga_time_extrap_factor * 100)) else "",
+                 "</li>"
+               ) else "",
+               "<li><strong>Applicability:</strong> Extrapolation only applies to complete analysis results, not to filtered data or individual employee calculations.</li>",
+               "</ul>")
+      } else {
+        ""
+      }
+      
+      HTML(paste0("
+        <div style='line-height: 1.8;'>
+          <h4>Data Processing</h4>
+          <ul>
+            <li><strong>Time Records:</strong> Each shift represents a distinct work period with In/Out punch times. Shifts are analyzed for hours worked, meal periods, and rest periods.</li>
+            <li><strong>Pay Records:</strong> Pay data is matched to time data by employee ID and period end date to enable rate validation and damages calculations.</li>
+            <li><strong>Missing Data:</strong> Records with missing critical fields (ID, Date) are flagged and may be excluded from analysis.</li>
+            <li><strong>Shift Classification:</strong> Shifts are categorized using a ", shift_hrs_cutoff, "-hour cutoff (see Non Work Hours table).</li>
+          </ul>
+
+          <h4>Meal & Rest Period Violations</h4>
+          <ul>
+            <li><strong>Meal Period Timing (No Waivers):</strong> First meal period must start by the end of the 5th hour of work (shift_hrs > 5.01). Second meal period required for shifts > 10 hours (shift_hrs > 10.01).</li>
+            <li><strong>Meal Period Timing (Waivers):</strong> When waivers apply, first meal period may be delayed to the end of the 6th hour (shift_hrs > 6.01). Second meal period delayed to > 12 hours (shift_hrs > 12.01).</li>
+            <li><strong>Meal Period Duration:</strong> Minimum 30 minutes (0.49 hours) required for compliant meal period. Periods between 0.01 and 0.49 hours are flagged as 'Short' violations.</li>
+            <li><strong>De Minimis Buffer:</strong> A 0.01 hour (36-second) buffer is applied to meal period calculations to account for rounding and minor timing variances.</li>
+            <li><strong>Rest Period Eligibility:</strong> One 10-minute rest period required for shifts > 3.5 hours (shift_hrs > 3.51). Additional rest periods required for longer shifts (>6 hrs, >10 hrs, >14 hrs per 4-hour rule).</li>
+            <li><strong>Waiver Analysis:</strong> Meal period waivers are analyzed as separate scenarios: 'no waivers' uses 5-hour rule, 'waivers' uses 6-hour rule.</li>
+          </ul>
+
+          <h4>Regular Rate of Pay (RROP)</h4>
+          <ul>
+            <li><strong>Calculation Method:</strong> RROP = (Total straight-time compensation including differential pay + non-discretionary bonuses) ÷ (Total straight-time hours). Overtime premiums, discretionary bonuses, and time off are excluded from the calculation.</li>
+            <li><strong>De Minimis Buffer:</strong> Under/overpayments below ", rrop_buffer, " ($", sprintf("%.0f", rrop_buffer * 100), " cents) are ignored as acceptable rounding differences.</li>
+          </ul>
+
+          <h4>Overtime & Double Time</h4>
+          <ul>
+            <li><strong>Daily OT:</strong> Hours worked over 8 in a single workday must be paid at 1.5x the regular rate.</li>
+            <li><strong>Daily DT:</strong> Hours worked over 12 in a single workday must be paid at 2x the regular rate.</li>
+            <li><strong>Weekly OT:</strong> Hours worked over 40 in a workweek must be paid at 1.5x the regular rate (if not already compensated as daily OT/DT).</li>
+            <li><strong>7th Day Rules:</strong> Special rules apply for the 7th consecutive day worked in a workweek:<br>
+              - First 8 hours on 7th day: 1.5x regular rate (OT)<br>
+              - Hours over 8 on 7th day: 2x regular rate (DT)<br>
+              These are analyzed separately from standard daily OT/DT calculations.</li>
+            <li><strong>Buffer Thresholds:</strong> OT/DT underpayments below ", min_ot_buffer, " hours are treated as acceptable aberrations. Maximum analysis threshold is ", max_ot_buffer, " hours to exclude extreme outliers.</li>
+          </ul>
+
+          <h4>Damages Calculations</h4>
+          <ul>
+            <li><strong>Interest:</strong> Prejudgment interest calculated from violation date to interest through date using ", sprintf("%.0f%%", annual_interest_rate * 100), " annual rate.</li>
+            <li><strong>Class Period:</strong> ", class_start, " to ", class_end, "</li>
+            <li><strong>PAGA Period:</strong> ", paga_start, " to ", paga_end, "</li>
+            <li><strong>Wage Statement Period:</strong> ", wsv_start, " to ", wsv_end, "</li>
+            <li><strong>Waiting Time Period:</strong> ", wt_start, " to ", wt_end, "</li>
+            <li><strong>Wage Statement Violations:</strong> $50 initial pay period penalty + $100 subsequent pay period penalties, capped at $4,000 per employee (Labor Code §226).</li>
+            <li><strong>Waiting Time Penalties:</strong> Up to 30 days of wages for terminated employees who did not receive timely final payment, calculated using RROP or final base rate (Labor Code §203).</li>
+          </ul>
+
+          <h4>PAGA Penalties</h4>
+          <ul>
+            <li><strong>Standard Penalties:</strong> $", initial_pp_penalty, " initial violation + $", subsequent_pp_penalty, " subsequent violations per employee per pay period (Labor Code §2699).</li>
+            <li><strong>Labor Code §226 (Wage Statements):</strong> $", initial_pp_penalty_226, " initial + $", subsequent_pp_penalty_226, " subsequent penalties for wage statement violations.</li>
+            <li><strong>Labor Code §558 (Meal/Rest):</strong> $", initial_pp_penalty_558, " initial + $", subsequent_pp_penalty_558, " subsequent penalties for meal and rest period violations.</li>
+            <li><strong>Labor Code §1174:</strong> $", penalty_1174, " penalty for itemized wage statement violations.</li>
+          </ul>
+
+          ", extrap_text, "
+        </div>
+      "))
+    })
+    
+    # ===========================================================================
     # Version and Documentation Outputs
     # ===========================================================================
     
@@ -3343,6 +3898,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       if (!"ID_Period_End" %in% names(data_list$time1)) {
         return(datatable(data.table(Message = paste("ID_Period_End column not found in time1. Available columns:", paste(head(names(data_list$time1), 20), collapse = ", "))), rownames = FALSE, options = list(dom = 't')))
       }
+      if (!is.null(filters$Pay_ID))   pay_filtered <- pay_filtered[Pay_ID %in% filters$Pay_ID]
       
       # Debug: Show what we're filtering for and what's available
       selected_value <- input$example_period_select
@@ -3447,6 +4003,12 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         class = 'cell-border stripe hover',
         style = 'bootstrap4'
       )
+      
+      # Store in cache
+      cache$filtered_data_key <- cache_key
+      cache$filtered_data_value <- result
+      
+      result
     })
     
     # Pay Data (pay1) - Show specific columns as requested
@@ -3648,6 +4210,49 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
             list(className = 'dt-center', targets = 1:(ncol(matrix_data) - 1))
           )
         ),
+        class = 'cell-border stripe hover',
+        style = 'bootstrap4'
+      )
+    })
+    
+    # Damages Data (pp_data1 / ee_data1) - Show damage columns
+    output$table_example_damages <- renderDT({
+      req(input$example_period_select)
+      data <- filtered_data()
+      
+      # Try to get from pp_data1 or ee_data1
+      aggregate_data <- NULL
+      
+      if (!is.null(data$pp_data1) && "ID_Period_End" %in% names(data$pp_data1)) {
+        aggregate_data <- data$pp_data1[ID_Period_End == input$example_period_select]
+      } else if (!is.null(data$ee_data1) && "ID" %in% names(data$ee_data1)) {
+        # Extract ID from the period string
+        emp_id <- sub("_.*", "", input$example_period_select)
+        aggregate_data <- data$ee_data1[ID == emp_id]
+      }
+      
+      if (is.null(aggregate_data) || nrow(aggregate_data) == 0) {
+        return(datatable(data.table(Message = "No damage data available"), rownames = FALSE, options = list(dom = 't')))
+      }
+      
+      # Select only damage-related columns (containing "dmg", "Dmg", "penalty", "Penalty", "PAGA")
+      all_cols <- names(aggregate_data)
+      damage_cols <- all_cols[grepl("dmg|Dmg|penalty|Penalty|PAGA|paga|violation|Violation", all_cols, ignore.case = TRUE)]
+      
+      # Also include ID columns for reference
+      id_cols <- c("ID", "Name", "Period_End", "ID_Period_End")
+      id_cols_available <- id_cols[id_cols %in% all_cols]
+      
+      final_cols <- unique(c(id_cols_available, damage_cols))
+      
+      if (length(final_cols) == 0) {
+        return(datatable(data.table(Message = "No damage columns available"), rownames = FALSE, options = list(dom = 't')))
+      }
+      
+      display_data <- aggregate_data[, ..final_cols]
+      
+      datatable(
+        display_data,
         rownames = FALSE,
         class = 'cell-border stripe hover compact'
       ) %>%
