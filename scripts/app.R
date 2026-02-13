@@ -1081,6 +1081,16 @@ ui <- function(data_list, metric_spec) {
           .hide-extrap-cols .extrap-col {
             display: none !important;
           }
+
+          /* Fix selectize placeholder text cutoff */
+          .selectize-input {
+            overflow: visible !important;
+          }
+          .selectize-input input::placeholder {
+            white-space: nowrap !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+          }
         ")),
         tags$script(HTML("
           // Toggle extrapolated columns visibility
@@ -2332,7 +2342,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       if (length(all_key_gps) > 0) {
         updateSelectizeInput(session, "key_groups_filter",
                            choices = all_key_gps,
-                           options = list(placeholder = "All key groups"),
+                           options = list(placeholder = "All key groups..."),
                            server = TRUE)
       } else {
         updateSelectizeInput(session, "key_groups_filter",
@@ -2348,7 +2358,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       if (length(all_subclass) > 0) {
         updateSelectizeInput(session, "subclass_filter",
                            choices = all_subclass,
-                           options = list(placeholder = "All subclasses"),
+                           options = list(placeholder = "All subclasses..."),
                            server = TRUE)
       } else {
         updateSelectizeInput(session, "subclass_filter",
@@ -2364,7 +2374,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       if (length(all_location) > 0) {
         updateSelectizeInput(session, "location_filter",
                            choices = all_location,
-                           options = list(placeholder = "All locations"),
+                           options = list(placeholder = "All locations..."),
                            server = TRUE)
       } else {
         updateSelectizeInput(session, "location_filter",
@@ -2380,7 +2390,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       if (length(all_sample) > 0) {
         updateSelectizeInput(session, "sample_filter",
                            choices = all_sample,
-                           options = list(placeholder = "All samples"),
+                           options = list(placeholder = "All samples..."),
                            server = TRUE)
       } else {
         updateSelectizeInput(session, "sample_filter",
@@ -2396,7 +2406,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       if (length(all_dept) > 0) {
         updateSelectizeInput(session, "department_filter",
                            choices = all_dept,
-                           options = list(placeholder = "All departments"),
+                           options = list(placeholder = "All departments..."),
                            server = TRUE)
       } else {
         updateSelectizeInput(session, "department_filter",
