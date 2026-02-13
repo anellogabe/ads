@@ -977,6 +977,9 @@ filter_sidebar <- function(data_list) {
                 selected = "14px"),
     
     hr(),
+   
+    # Toggle extrapolation columns
+    checkboxInput("toggle_extrap_cols", "Show Extrapolated Values", value = TRUE),
     
     actionButton("open_pdf_modal", "Generate PDF Report",
                  class = "w-100 mt-2 btn-primary",
