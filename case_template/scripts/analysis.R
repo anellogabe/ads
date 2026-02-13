@@ -812,62 +812,6 @@ pay1[, `:=`(
   Actual_Wages = sum(Pay_Amount, na.rm = TRUE)
 ), by = .(Pay_ID, Pay_Date_Rev)]
 
-rate_cols <- c("Base_Rate", "RROP")
-pay1[, paste0(rate_cols, "_orig") := .SD, .SDcols = rate_cols]
-
-# Helpers
-inb <- function(x) !is.na(x) & x >= min_rate & x <= max_rate
-mu_good <- function(x) { g <- inb(x); if (any(g)) mean(x[g]) else NA_real_ }
-diff_na <- function(a, b) (is.na(a) != is.na(b)) | (!is.na(a) & !is.na(b) & a != b)
-
-# Global means from in-bounds values
-glob <- pay1[, lapply(.SD, mu_good), .SDcols = rate_cols]
-setnames(glob, rate_cols, paste0(rate_cols, "_mu_g"))
-pay1[, (names(glob)) := glob[rep(1L, .N)]]
-
-# Per-ID means from in-bounds values
-idmu <- pay1[, lapply(.SD, mu_good), by = ID, .SDcols = rate_cols]
-setnames(idmu, rate_cols, paste0(rate_cols, "_mu_id"))
-pay1 <- idmu[pay1, on = "ID"]
-
-# Pass 1 (bad/NA -> ID mean if ID mean in-bounds)
-# Pass 2 (remaining bad/NA -> global mean)
-for (cc in rate_cols) {
-  mu_id <- paste0(cc, "_mu_id"); mu_g <- paste0(cc, "_mu_g")
-  pay1[!inb(get(cc)) & inb(get(mu_id)), (cc) := get(mu_id)]
-  pay1[!inb(get(cc)) & inb(get(mu_g)),  (cc) := get(mu_g)]
-}
-
-# Summary of what changed (and where it landed)
-rates_summary_tbl <- rbindlist(lapply(rate_cols, function(cc) {
-  orig <- paste0(cc, "_orig"); mu_id <- paste0(cc, "_mu_id"); mu_g <- paste0(cc, "_mu_g")
-  chg <- diff_na(pay1[[orig]], pay1[[cc]])
-  data.table(
-    Column = cc,
-    Rows_Total = nrow(pay1),
-    Rows_Orig_BadOrNA = sum(!inb(pay1[[orig]])),
-    Rows_Changed = sum(chg),
-    Rows_Set_To_ID_Mean = sum(chg & !is.na(pay1[[mu_id]]) & abs(pay1[[cc]] - pay1[[mu_id]]) < 1e-12),
-    Rows_Set_To_Global_Mean = sum(chg & !is.na(pay1[[mu_g]])  & abs(pay1[[cc]] - pay1[[mu_g]])  < 1e-12),
-    IDs_Total = uniqueN(pay1$ID),
-    IDs_No_Good_Values = pay1[, .(has_good = any(inb(get(cc)))), by = ID][has_good == FALSE, .N]
-  )
-}))
-
-rates_summary_tbl
-
-# Calculate expected vs actual wages
-pay1[, `:=`(
-  Calc_Tot_Wages = pp_Straight_Time_Amt + 
-    (RROP * pp_OT_Hrs * var_half_time_OT_multiplier) +
-    (RROP * pp_DT_Hrs) + 
-    (RROP * pp_Meal_Prem_Hrs) + 
-    (RROP * pp_Rest_Prem_Hrs) + 
-    (RROP * pp_Sick_Hrs) +
-    pp_Oth_RROP_Amt + pp_Oth_Amt,
-  Actual_Wages = sum(Pay_Amount, na.rm = TRUE)
-), by = .(Pay_ID, Pay_Date_Rev)]
-
 # Calculate wage diff and underpayments
 pay1[, `:=`(
   Wage_Diff = round(Actual_Wages - Calc_Tot_Wages, 2),
@@ -932,29 +876,6 @@ time1[, ID_Week_End := paste(ID, Week_End, sep = "-")]
 
 
 # ----- TIME DATA:               Flag time off weeks, then filter out non work hrs records --------
-
-# Sort by ID and Date
-setorder(time1, ID, Date)
-
-# Week end day mapping for floor_date() and ceiling_date()
-# week_end = 1  ->  Sunday
-# week_end = 2  ->  Monday
-# week_end = 3  ->  Tuesday
-# week_end = 4  ->  Wednesday
-# week_end = 5  ->  Thursday
-# week_end = 6  ->  Friday
-# week_end = 7  ->  Saturday
-workweek_value = 5
-
-setDT(time1)
-
-# Add week ending date ADJUST AS NEEDED BASED ON THE PAY DATA
-time1[, Week_End := floor_date(Date, "week", week_start = workweek_value) + days(6)]
-
-# Add day of week name to verify
-time1[, Week_End_Day := weekdays(Week_End)]
-
-time1[, ID_Week_End := paste(ID, Week_End, sep = "-")]
 
 # Flag weeks with time off, then remove time off records
 time1[, wk_time_off := fifelse(any(Code == "PTO"), TRUE,FALSE), by = "ID_Week_End"]
@@ -1157,8 +1078,8 @@ time1[!is.na(In) & !is.na(Out) & Out < In, Out := Out + days(1)]
 
 new_shift_cutoff <- 4  #  *****  Hours between punches to consider separate shifts (ADJUST AS NEEDED)  ******** -----
 
-# Sort by employee and time
-setorder(time1, ID, Date, In, Out)
+# ---- Sort by employee and time ----
+#setorder(time1, ID, Date, In, Out) # DO NOT USE IF SORT IS ALREADY IN CORRECT ORDER
 
 # Calculate hours since previous punch out
 time1[, hrs_since_last := pmax(0, 
@@ -1185,69 +1106,46 @@ time1[, duplicate_flag := duplicated(.SD), .SDcols = c("Shift_ID", "In", "Out")]
 time1[, overlap_flag := FALSE]
 
 # Determine if we need midnight crossing logic
-NEEDS_MIDNIGHT_CHECK <- time1[!duplicate_flag & !is.na(In) & !is.na(Out), any(Out < In)]
+time1[, lag_Out_chk := shift(Out), by = Shift_ID]
+
+NEEDS_MIDNIGHT_CHECK <- time1[!duplicate_flag & !is.na(In) & !is.na(Out), 
+                              any(Out < In) | any(!is.na(lag_Out_chk) & In < lag_Out_chk)]
+
+time1[, lag_Out_chk := NULL]
 
 if (NEEDS_MIDNIGHT_CHECK) {
   cat("\n=== Running midnight crossing adjustments ===\n")
   
-  # Pre-sort (if not already)
-  setorder(time1, Shift_ID, In)
+  # Same-row fix first (Out < In)
+  time1[!duplicate_flag & !is.na(In) & !is.na(Out) & Out < In, 
+        Out := Out + days(1)]
   
-  # Compute lags ONCE, vectorized (no by-group)
-  time1[, `:=`(
-    lag_Out      = shift(Out),
-    lag_dup      = shift(duplicate_flag),
-    lag_Shift_ID = shift(Shift_ID)
-  )]
+  # Now detect cross-row: lag_Out > In within shift
+  time1[, lag_Out_shift := shift(Out, type = "lag"), by = Shift_ID]
   
-  # Midnight trigger - vectorized, only check cross-row within same shift
-  time1[, midnight_trigger :=
-          # Same-row midnight
-          (!duplicate_flag & Out < In & as.Date(Out) == as.Date(In)) |
-          # Cross-row midnight (must be same Shift_ID)
-          (!duplicate_flag &
-             !lag_dup %in% TRUE &
-             Shift_ID == lag_Shift_ID &
-             !is.na(lag_Out) &
-             lag_Out > In &
-             as.Date(lag_Out) == as.Date(In))]
+  time1[, midnight_trigger := !duplicate_flag & 
+          !is.na(lag_Out_shift) & !is.na(In) & 
+          lag_Out_shift > In]
   
-  # Use cummax instead of if/any/which - much faster
-  time1[, midnight_row := cummax(midnight_trigger %in% TRUE) == 1L, by = Shift_ID]
+  # From first trigger onward in each shift, push everything forward
+  time1[, midnight_row := cummax(midnight_trigger) == 1L, by = Shift_ID]
   
-  midnight_shifts <- time1[(midnight_row), uniqueN(Shift_ID, na.rm = TRUE)]
+  midnight_shifts <- time1[(midnight_row), uniqueN(Shift_ID)]
   
   if (midnight_shifts > 0) {
-    cat("Found", midnight_shifts, "shifts crossing midnight\n")
+    cat("Found", midnight_shifts, "shifts needing cross-row midnight fix\n")
     
-    time1[(midnight_row), `:=`(
-      In  = In  + days(1),
-      Out = Out + days(1)
-    )]
+    time1[(midnight_row), `:=`(In  = In  + days(1),
+                               Out = Out + days(1))]
+    
+    # Re-fix any same-row Out < In created by the push
+    time1[!duplicate_flag & !is.na(In) & !is.na(Out) & Out < In,
+          Out := Out + days(1)]
     
     cat("✓ Adjusted times for midnight-crossing shifts\n")
   }
   
-  # Cleanup temp columns
-  time1[, c("midnight_trigger", "midnight_row", "lag_Out", "lag_dup", "lag_Shift_ID") := NULL]
-  
-  # Validation
-  remaining_issues <- time1[!duplicate_flag & !is.na(In) & !is.na(Out) & Out < In, .N]
-  
-  if (remaining_issues > 0) {
-    cat("⚠ NOTE:", remaining_issues,
-        "single-row time anomalies remain (non-midnight, non-duplicate)\n")
-  } else {
-    cat("✓ Midnight validation passed\n")
-  }
-  
-  # Overlap flag - also vectorized
-  time1[, `:=`(
-    lag_Out2      = shift(Out),
-    lag_Shift_ID2 = shift(Shift_ID)
-  )]
-  time1[, overlap_flag := Shift_ID == lag_Shift_ID2 & !is.na(lag_Out2) & lag_Out2 > In & !duplicate_flag]
-  time1[, c("lag_Out2", "lag_Shift_ID2") := NULL]
+  time1[, c("midnight_trigger", "midnight_row", "lag_Out_shift") := NULL]
 }
 
 # Shifts spanning multiple days (possible issue)
@@ -1526,13 +1424,13 @@ time1[, mp2_mins_late := fifelse(hrs_to_mp2 > 10, round((hrs_to_mp2 - 10) * 60),
 # time1[, r_mp_hrs := fifelse(mp == 1, r_hrs_from_prev, 0)]
 # 
 # # Meal period length flags
-# time1[, r_mp_lt_twenty := fifelse(r_mp == 1 & r_mp_hrs > 0 & r_mp_hrs < (20/60), 1L, 0L)]
-# time1[, r_mp_lt_thirty := fifelse(r_mp == 1 & r_mp_hrs > 0 & r_mp_hrs < 0.5, 1L, 0L)]
-# time1[, r_mp_thirty     := fifelse(r_mp == 1 & r_mp_hrs == 0.5, 1L, 0L)]
-# time1[, r_mp_forty_five    := fifelse(r_mp == 1 & r_mp_hrs == 0.75, 1L, 0L)]
-# time1[, r_mp_gt_thirty := fifelse(r_mp == 1 & r_mp_hrs > 0.5, 1L, 0L)]
-# time1[, r_mp_gt_two_hrs := fifelse(r_mp == 1 & r_mp_hrs > 2, 1L, 0L)]
-# time1[, r_mp_gt_four_hrs := fifelse(r_mp == 1 & r_mp_hrs > 4, 1L, 0L)]
+# time1[, r_mp_lt_twenty := fifelse(mp == 1 & r_mp_hrs > 0 & r_mp_hrs < (20/60), 1L, 0L)]
+# time1[, r_mp_lt_thirty := fifelse(mp == 1 & r_mp_hrs > 0 & r_mp_hrs < 0.5, 1L, 0L)]
+# time1[, r_mp_thirty     := fifelse(mp == 1 & r_mp_hrs == 0.5, 1L, 0L)]
+# time1[, r_mp_forty_five    := fifelse(mp == 1 & r_mp_hrs == 0.75, 1L, 0L)]
+# time1[, r_mp_gt_thirty := fifelse(mp == 1 & r_mp_hrs > 0.5, 1L, 0L)]
+# time1[, r_mp_gt_two_hrs := fifelse(mp == 1 & r_mp_hrs > 2, 1L, 0L)]
+# time1[, r_mp_gt_four_hrs := fifelse(mp == 1 & r_mp_hrs > 4, 1L, 0L)]
 # 
 # # Meal period 1 and 2 duration
 # time1[, `:=`(
@@ -2560,6 +2458,12 @@ sum_fields_default <- c(
   "mp_lt_twenty",
   "mp_lt_thirty", "mp_thirty", "mp_gt_thirty",
   "mp_gt_two_hrs", "mp_gt_four_hrs",
+  
+  # Rounded and actual punches analysis? Add:
+  # "r_diff", "r_mp_lt_twenty", "r_mp_lt_thirty", "r_mp_thirty", "r_mp_gt_thirty", "r_mp_forty_five",
+  # "r_mp_gt_two_hrs", "r_mp_gt_four_hrs", "r_Hours", "r_shift_hrs", 
+  # "pre_shift_hrs_lost", "pre_shift_hrs_gained", "mid_shift_out_hrs_lost",
+  # "mid_shift_out_hrs_gained", "mid_shift_in_hrs_lost", "mid_shift_in_hrs_gained", "post_shift_hrs_lost", "post_shift_hrs_gained",
 
   "MissMP1", "LateMP1", "ShortMP1", "MissMP2", "LateMP2", "ShortMP2",
   "mp1_violation", "mp2_violation",
@@ -3713,6 +3617,12 @@ sum_fields_default <- c(
   "mpv_shift_less_prems", "mpv_shift_less_prems_w", "rpv_shift_less_prems",
   "mpv_per_pp_less_prems", "mpv_per_pp_less_prems_w", "rpv_per_pp_less_prems",
   
+  # --- Rounded and actual punches analysis? Add: ---
+  # "r_diff", "r_mp_lt_twenty", "r_mp_lt_thirty", "r_mp_thirty", "r_mp_gt_thirty", "r_mp_forty_five",
+  # "r_mp_gt_two_hrs", "r_mp_gt_four_hrs", "r_Hours", "r_shift_hrs", 
+  # "pre_shift_hrs_lost", "pre_shift_hrs_gained", "mid_shift_out_hrs_lost",
+  # "mid_shift_out_hrs_gained", "mid_shift_in_hrs_lost", "mid_shift_in_hrs_gained", "post_shift_hrs_lost", "post_shift_hrs_gained",
+   
   # --- Meal damages (pp-level) ---
   "mp_dmgs", "mp_dmgs_w", "mp_dmgs_less_prems", "mp_dmgs_less_prems_w",
 
@@ -4194,15 +4104,40 @@ message(sprintf(" | Extrap EEs = %s | Extrap PPs = %s | Extrap Wks = %s | Extrap
                 format(extrap_paga_ees, big.mark = ","),
                 format(extrap_paga_pps, big.mark = ",")))
 
+# Save extrapolation values for dashboard to use
+extrap_values <- list(
+  extrap_class_ees = extrap_class_ees,
+  extrap_class_pps = extrap_class_pps,
+  extrap_class_wks = extrap_class_wks,
+  extrap_class_shifts = extrap_class_shifts,
+  extrap_wsv_ees = extrap_wsv_ees,
+  extrap_wsv_pps = extrap_wsv_pps,
+  extrap_wt_ees = extrap_wt_ees,
+  extrap_wt_former_ees = extrap_wt_former_ees,
+  extrap_paga_ees = extrap_paga_ees,
+  extrap_paga_pps = extrap_paga_pps,
+  time_extrap_factor = time_extrap_factor,
+  wsv_time_extrap_factor = wsv_time_extrap_factor,
+  wt_time_extrap_factor = wt_time_extrap_factor,
+  paga_time_extrap_factor = paga_time_extrap_factor
+)
+saveRDS(extrap_values, file.path(OUT_DIR, "extrapolation_values.rds"))
+
 
 # ----- ALL DATA:                Write CSVs & Metadata Files  -----------------------------------------
+
+# Generate metadata csv files used to map column types from R to PowerQuery Editor (see Functions.R)
+generate_metadata(ee_data1, "time_ee_metadata.csv")
+generate_metadata(shift_data1, "time_shift_metadata.csv")
+generate_metadata(time1, "time_punch_metadata.csv")
+generate_metadata(pay1, "pay_metadata.csv")
+generate_metadata(ee_data1, "pp_metadata.csv")
+generate_metadata(pp_data1, "ee_metadata.csv")
 
 # Toggle per table: TRUE = write CSV filtered to Key_Gps; FALSE = write full CSV
 write_key_gps_time  <- FALSE
 write_key_gps_shift <- FALSE
 write_key_gps_pay   <- FALSE
-
-OUT_DIR <- resolve_out_dir()
 
 # Helper: return filtered dt for CSV (or original dt if toggle off / key col missing / empty result)
 filter_for_csv <- function(dt, write_key_gps = FALSE, everyone_else = "Everyone Else") {
