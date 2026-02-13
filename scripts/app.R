@@ -779,7 +779,7 @@ create_dt_table <- function(dt, metric_col = "Metric") {
   
   # Find Extrapolated column index (0-indexed for JS)
   extrap_col_idx <- which(names(dt) == "Extrapolated") - 1
-  
+
   # Build columnDefs list
   col_defs <- list(
     list(className = 'dt-left dt-head-left', targets = left_cols_idx),
@@ -944,11 +944,15 @@ filter_sidebar <- function(data_list) {
     
     hr(),
     
+    checkboxInput("show_extrapolation", "Show Extrapolated Values", value = FALSE),
+    
+    hr(),
+    
     actionButton("apply_filters", "Apply Filters", class = "btn-primary w-100"),
     actionButton("reset_filters", "Reset All Filters", class = "btn-outline-secondary w-100 mt-2"),
     
     hr(),
-    
+   
     # Toggle extrapolation columns
     checkboxInput("toggle_extrap_cols", "Show Extrapolated Values", value = TRUE),
     
@@ -1441,7 +1445,7 @@ ui <- function(data_list, metric_spec) {
     nav_panel(
       title = "Appendix",
       icon = icon("book"),
-      
+
       navset_card_underline(
         nav_panel(
           "Shift Hours",
@@ -2046,7 +2050,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       # Fallback: calculate from filtered data (will be wrong if temporal extrapolation applies)
       data <- filtered_data()
       req(data$shift_data1)
-      
+
       list(
         # Use full class list for employee count (not filtered data)
         extrap_class_ees = if (!is.null(data$class1) && "Class_ID" %in% names(data$class1)) {
@@ -2054,21 +2058,21 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         } else {
           uniqueN(data$shift_data1$ID, na.rm = TRUE)
         },
-        
+
         # Extrapolated pay periods based on data
         extrap_class_pps = if (!is.null(data$pp_data1) && "ID_Period_End" %in% names(data$pp_data1)) {
           uniqueN(data$pp_data1$ID_Period_End, na.rm = TRUE)
         } else {
           0
         },
-        
+
         # Extrapolated weeks based on data
         extrap_class_wks = if (!is.null(data$shift_data1) && "week" %in% names(data$shift_data1)) {
           sum(data$shift_data1$week, na.rm = TRUE)
         } else {
           0
         },
-        
+
         # Extrapolated shifts based on data
         extrap_class_shifts = if (!is.null(data$shift_data1) && "ID_Shift" %in% names(data$shift_data1)) {
           uniqueN(data$shift_data1$ID_Shift, na.rm = TRUE)
@@ -2385,7 +2389,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
             groups = as.character(damages_summary_groups)
           )
         }
-        
+
         if (length(damages_principal_groups) > 0 && is.character(damages_principal_groups)) {
           sections[[length(sections) + 1]] <- list(
             section_name = "PRINCIPAL",
@@ -2652,7 +2656,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         # Build section definitions for PAGA overview
         # paga_summary_groups includes both basic stats (dates, counts) and financial totals (PAGA totals with all variants)
         sections <- list()
-        
+
         if (length(paga_summary_groups) > 0 && is.character(paga_summary_groups)) {
           sections[[length(sections) + 1]] <- list(
             section_name = "PAGA SUMMARY",
@@ -2989,7 +2993,273 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       }
       return("Not specified")
     })
-    
+
+    # ===========================================================================
+    # Notes & Assumptions Tab - Log Outputs
+    # ===========================================================================
+
+    # Load log summary if available
+    log_summary <- reactive({
+      log_summary_file <- file.path(OUT_DIR, "analysis_log_summary.rds")
+      if (file.exists(log_summary_file)) {
+        readRDS(log_summary_file)
+      } else {
+        NULL
+      }
+    })
+
+    # Render setup summary
+    output$log_setup_summary <- renderUI({
+      summary <- log_summary()
+      if (is.null(summary)) {
+        return(p("No log data available. Run clean_data.R to generate analysis logs."))
+      }
+
+      setup_msgs <- Filter(function(m) m$category == "SETUP", summary$messages)
+      if (length(setup_msgs) == 0) {
+        return(p("No setup information logged."))
+      }
+
+      msg_html <- lapply(setup_msgs, function(m) {
+        data_html <- if (!is.null(m$data) && is.list(m$data)) {
+          items <- lapply(names(m$data), function(n) {
+            tags$li(tags$strong(paste0(n, ":")), m$data[[n]])
+          })
+          tags$ul(items)
+        } else if (!is.null(m$data)) {
+          p(style = "margin-left: 20px;", m$data)
+        } else {
+          NULL
+        }
+
+        div(
+          style = "margin-bottom: 15px;",
+          p(style = "margin-bottom: 5px;", icon("info-circle"), HTML("&nbsp;"), m$message),
+          data_html
+        )
+      })
+
+      div(msg_html)
+    })
+
+    # Render data summary
+    output$log_data_summary <- renderUI({
+      summary <- log_summary()
+      if (is.null(summary)) {
+        return(p("No log data available."))
+      }
+
+      data_msgs <- Filter(function(m) m$category == "DATA_SUMMARY", summary$messages)
+      if (length(data_msgs) == 0) {
+        return(p("No data summary information logged."))
+      }
+
+      msg_html <- lapply(data_msgs, function(m) {
+        p(icon("chart-bar"), HTML("&nbsp;"), m$message)
+      })
+
+      div(msg_html)
+    })
+
+    # Render assumptions
+    output$log_assumptions <- renderUI({
+      summary <- log_summary()
+      if (is.null(summary)) {
+        return(p("No log data available."))
+      }
+
+      assumption_msgs <- Filter(function(m) m$category == "ASSUMPTION", summary$messages)
+      if (length(assumption_msgs) == 0) {
+        return(p("No assumptions logged."))
+      }
+
+      msg_html <- lapply(assumption_msgs, function(m) {
+        data_html <- if (!is.null(m$data) && is.list(m$data)) {
+          items <- lapply(names(m$data), function(n) {
+            tags$li(tags$strong(paste0(n, ":")), m$data[[n]])
+          })
+          tags$ul(items)
+        } else {
+          NULL
+        }
+
+        div(
+          style = "margin-bottom: 15px;",
+          p(style = "margin-bottom: 5px;", icon("sticky-note"), HTML("&nbsp;"), m$message),
+          data_html
+        )
+      })
+
+      div(msg_html)
+    })
+
+    # Render full log file
+    output$full_log <- renderText({
+      log_file <- file.path(OUT_DIR, "analysis_log.txt")
+      if (file.exists(log_file)) {
+        paste(readLines(log_file), collapse = "\n")
+      } else {
+        "No log file found. Run clean_data.R to generate analysis logs."
+      }
+    })
+
+    # Download log file
+    output$download_log <- downloadHandler(
+      filename = function() {
+        paste0("analysis_log_", format(Sys.Date(), "%Y%m%d"), ".txt")
+      },
+      content = function(file) {
+        log_file <- file.path(OUT_DIR, "analysis_log.txt")
+        if (file.exists(log_file)) {
+          file.copy(log_file, file)
+        } else {
+          writeLines("No log file available.", file)
+        }
+      }
+    )
+
+    # Render detailed general assumptions with actual parameter values
+    output$general_assumptions_content <- renderUI({
+      # Get parameter values from environment
+      shift_hrs_cutoff <- if (exists("shift_hrs_cutoff")) shift_hrs_cutoff else 7
+      rrop_buffer <- if (exists("rrop_buffer")) rrop_buffer else 0.05
+      min_ot_buffer <- if (exists("min_ot_buffer")) min_ot_buffer else 0.25
+      max_ot_buffer <- if (exists("max_ot_buffer")) max_ot_buffer else 20
+      annual_interest_rate <- if (exists("annual_interest_rate")) annual_interest_rate else 0.07
+
+      # PAGA penalties
+      initial_pp_penalty <- if (exists("initial_pp_penalty")) initial_pp_penalty else 100
+      subsequent_pp_penalty <- if (exists("subsequent_pp_penalty")) subsequent_pp_penalty else 100
+      initial_pp_penalty_226 <- if (exists("initial_pp_penalty_226")) initial_pp_penalty_226 else 250
+      subsequent_pp_penalty_226 <- if (exists("subsequent_pp_penalty_226")) subsequent_pp_penalty_226 else 250
+      initial_pp_penalty_558 <- if (exists("initial_pp_penalty_558")) initial_pp_penalty_558 else 100
+      subsequent_pp_penalty_558 <- if (exists("subsequent_pp_penalty_558")) subsequent_pp_penalty_558 else 100
+      penalty_1174 <- if (exists("penalty_1174")) penalty_1174 else 500
+
+      # Sample info
+      sample_size <- if (exists("sample_size")) sample_size else "100%"
+      sample_size_val <- if (exists("sample_size_val")) sample_size_val else 1
+
+      # Extrapolation factors
+      time_extrap_factor <- if (exists("time_extrap_factor")) time_extrap_factor else 1
+      wsv_time_extrap_factor <- if (exists("wsv_time_extrap_factor")) wsv_time_extrap_factor else 1
+      wt_time_extrap_factor <- if (exists("wt_time_extrap_factor")) wt_time_extrap_factor else 1
+      paga_time_extrap_factor <- if (exists("paga_time_extrap_factor")) paga_time_extrap_factor else 1
+
+      # Get dates with formatting
+      class_start <- if (exists("class_dmgs_start_date") && inherits(class_dmgs_start_date, "Date")) {
+        format(class_dmgs_start_date, "%B %d, %Y")
+      } else "4 years prior to complaint date"
+
+      class_end <- if (exists("mediation_date") && inherits(mediation_date, "Date")) {
+        format(mediation_date, "%B %d, %Y")
+      } else "mediation date"
+
+      paga_start <- if (exists("paga_dmgs_start_date") && inherits(paga_dmgs_start_date, "Date")) {
+        format(paga_dmgs_start_date, "%B %d, %Y")
+      } else "1 year + 65 days prior to PAGA filing"
+
+      paga_end <- if (exists("mediation_date") && inherits(mediation_date, "Date")) {
+        format(mediation_date, "%B %d, %Y")
+      } else "mediation date"
+
+      wsv_start <- if (exists("wsv_start_date") && inherits(wsv_start_date, "Date")) {
+        format(wsv_start_date, "%B %d, %Y")
+      } else "1 year prior to complaint date"
+
+      wsv_end <- if (exists("mediation_date") && inherits(mediation_date, "Date")) {
+        format(mediation_date, "%B %d, %Y")
+      } else "mediation date"
+
+      wt_start <- if (exists("wt_start_date") && inherits(wt_start_date, "Date")) {
+        format(wt_start_date, "%B %d, %Y")
+      } else "3 years prior to complaint date"
+
+      wt_end <- if (exists("mediation_date") && inherits(mediation_date, "Date")) {
+        format(mediation_date, "%B %d, %Y")
+      } else "mediation date"
+
+      # Build extrapolation text
+      extrap_text <- if (sample_size_val < 1 || time_extrap_factor < 1) {
+        paste0("<h4>Extrapolation Methodology</h4><ul>",
+               if (sample_size_val < 1) paste0("<li><strong>Population Extrapolation:</strong> Analysis uses a ", sample_size, " sample of the workforce.</li>") else "",
+               if (time_extrap_factor < 1) paste0(
+                 "<li><strong>Temporal Extrapolation:</strong> Data coverage extends from the earliest record date to ", class_end, ". ",
+                 "Extrapolation factors: ",
+                 "Class Period = ", sprintf("%.2f%%", time_extrap_factor * 100),
+                 if (wsv_time_extrap_factor < 1) paste0(", WSV Period = ", sprintf("%.2f%%", wsv_time_extrap_factor * 100)) else "",
+                 if (wt_time_extrap_factor < 1) paste0(", WT Period = ", sprintf("%.2f%%", wt_time_extrap_factor * 100)) else "",
+                 if (paga_time_extrap_factor < 1) paste0(", PAGA Period = ", sprintf("%.2f%%", paga_time_extrap_factor * 100)) else "",
+                 "</li>"
+               ) else "",
+               "<li><strong>Applicability:</strong> Extrapolation only applies to complete analysis results, not to filtered data or individual employee calculations.</li>",
+               "</ul>")
+      } else {
+        ""
+      }
+
+      HTML(paste0("
+        <div style='line-height: 1.8;'>
+          <h4>Data Processing</h4>
+          <ul>
+            <li><strong>Time Records:</strong> Each shift represents a distinct work period with In/Out punch times. Shifts are analyzed for hours worked, meal periods, and rest periods.</li>
+            <li><strong>Pay Records:</strong> Pay data is matched to time data by employee ID and period end date to enable rate validation and damages calculations.</li>
+            <li><strong>Missing Data:</strong> Records with missing critical fields (ID, Date) are flagged and may be excluded from analysis.</li>
+            <li><strong>Shift Classification:</strong> Shifts are categorized using a ", shift_hrs_cutoff, "-hour cutoff (see Non Work Hours table).</li>
+          </ul>
+
+          <h4>Meal & Rest Period Violations</h4>
+          <ul>
+            <li><strong>Meal Period Timing (No Waivers):</strong> First meal period must start by the end of the 5th hour of work (shift_hrs > 5.01). Second meal period required for shifts > 10 hours (shift_hrs > 10.01).</li>
+            <li><strong>Meal Period Timing (Waivers):</strong> When waivers apply, first meal period may be delayed to the end of the 6th hour (shift_hrs > 6.01). Second meal period delayed to > 12 hours (shift_hrs > 12.01).</li>
+            <li><strong>Meal Period Duration:</strong> Minimum 30 minutes (0.49 hours) required for compliant meal period. Periods between 0.01 and 0.49 hours are flagged as 'Short' violations.</li>
+            <li><strong>De Minimis Buffer:</strong> A 0.01 hour (36-second) buffer is applied to meal period calculations to account for rounding and minor timing variances.</li>
+            <li><strong>Rest Period Eligibility:</strong> One 10-minute rest period required for shifts > 3.5 hours (shift_hrs > 3.51). Additional rest periods required for longer shifts (>6 hrs, >10 hrs, >14 hrs per 4-hour rule).</li>
+            <li><strong>Waiver Analysis:</strong> Meal period waivers are analyzed as separate scenarios: 'no waivers' uses 5-hour rule, 'waivers' uses 6-hour rule.</li>
+          </ul>
+
+          <h4>Regular Rate of Pay (RROP)</h4>
+          <ul>
+            <li><strong>Calculation Method:</strong> RROP = (Total straight-time compensation including differential pay + non-discretionary bonuses) ÷ (Total straight-time hours). Overtime premiums, discretionary bonuses, and time off are excluded from the calculation.</li>
+            <li><strong>De Minimis Buffer:</strong> Under/overpayments below ", rrop_buffer, " ($", sprintf("%.0f", rrop_buffer * 100), " cents) are ignored as acceptable rounding differences.</li>
+          </ul>
+
+          <h4>Overtime & Double Time</h4>
+          <ul>
+            <li><strong>Daily OT:</strong> Hours worked over 8 in a single workday must be paid at 1.5x the regular rate.</li>
+            <li><strong>Daily DT:</strong> Hours worked over 12 in a single workday must be paid at 2x the regular rate.</li>
+            <li><strong>Weekly OT:</strong> Hours worked over 40 in a workweek must be paid at 1.5x the regular rate (if not already compensated as daily OT/DT).</li>
+            <li><strong>7th Day Rules:</strong> Special rules apply for the 7th consecutive day worked in a workweek:<br>
+              - First 8 hours on 7th day: 1.5x regular rate (OT)<br>
+              - Hours over 8 on 7th day: 2x regular rate (DT)<br>
+              These are analyzed separately from standard daily OT/DT calculations.</li>
+            <li><strong>Buffer Thresholds:</strong> OT/DT underpayments below ", min_ot_buffer, " hours are treated as acceptable aberrations. Maximum analysis threshold is ", max_ot_buffer, " hours to exclude extreme outliers.</li>
+          </ul>
+
+          <h4>Damages Calculations</h4>
+          <ul>
+            <li><strong>Interest:</strong> Prejudgment interest calculated from violation date to interest through date using ", sprintf("%.0f%%", annual_interest_rate * 100), " annual rate.</li>
+            <li><strong>Class Period:</strong> ", class_start, " to ", class_end, "</li>
+            <li><strong>PAGA Period:</strong> ", paga_start, " to ", paga_end, "</li>
+            <li><strong>Wage Statement Period:</strong> ", wsv_start, " to ", wsv_end, "</li>
+            <li><strong>Waiting Time Period:</strong> ", wt_start, " to ", wt_end, "</li>
+            <li><strong>Wage Statement Violations:</strong> $50 initial pay period penalty + $100 subsequent pay period penalties, capped at $4,000 per employee (Labor Code §226).</li>
+            <li><strong>Waiting Time Penalties:</strong> Up to 30 days of wages for terminated employees who did not receive timely final payment, calculated using RROP or final base rate (Labor Code §203).</li>
+          </ul>
+
+          <h4>PAGA Penalties</h4>
+          <ul>
+            <li><strong>Standard Penalties:</strong> $", initial_pp_penalty, " initial violation + $", subsequent_pp_penalty, " subsequent violations per employee per pay period (Labor Code §2699).</li>
+            <li><strong>Labor Code §226 (Wage Statements):</strong> $", initial_pp_penalty_226, " initial + $", subsequent_pp_penalty_226, " subsequent penalties for wage statement violations.</li>
+            <li><strong>Labor Code §558 (Meal/Rest):</strong> $", initial_pp_penalty_558, " initial + $", subsequent_pp_penalty_558, " subsequent penalties for meal and rest period violations.</li>
+            <li><strong>Labor Code §1174:</strong> $", penalty_1174, " penalty for itemized wage statement violations.</li>
+          </ul>
+
+          ", extrap_text, "
+        </div>
+      "))
+    })
+
     # ===========================================================================
     # Notes & Assumptions Tab - Log Outputs
     # ===========================================================================
@@ -3372,9 +3642,9 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       if (length(available_cols) == 0) {
         return(datatable(data.table(Message = "Punch detail columns not available"), rownames = FALSE, options = list(dom = 't')))
       }
-      
+
       display_data <- filtered[, ..available_cols]
-      
+
       datatable(
         display_data,
         rownames = FALSE,
@@ -3393,14 +3663,14 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     output$table_example_shift <- renderDT({
       req(input$example_period_select)
       data <- filtered_data()
-      
+
       if (is.null(data$shift_data1) || !"ID_Period_End" %in% names(data$shift_data1)) {
         return(datatable(data.table(Message = "No shift data available"), rownames = FALSE, options = list(dom = 't')))
       }
-      
+
       # Filter to selected period
       filtered <- data$shift_data1[ID_Period_End == input$example_period_select]
-      
+
       if (nrow(filtered) == 0) {
         return(datatable(data.table(Message = "No shift data for this period"), rownames = FALSE, options = list(dom = 't')))
       }
@@ -3453,14 +3723,14 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     output$table_example_pay <- renderDT({
       req(input$example_period_select)
       data <- filtered_data()
-      
+
       if (is.null(data$pay1) || !"Pay_ID_Period_End" %in% names(data$pay1)) {
         return(datatable(data.table(Message = "No pay data available"), rownames = FALSE, options = list(dom = 't')))
       }
-      
+
       # Filter to selected period
       filtered <- data$pay1[Pay_ID_Period_End == input$example_period_select]
-      
+
       if (nrow(filtered) == 0) {
         return(datatable(data.table(Message = "No pay data for this period"), rownames = FALSE, options = list(dom = 't')))
       }
