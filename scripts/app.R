@@ -943,16 +943,12 @@ filter_sidebar <- function(data_list) {
     ),
     
     hr(),
-    
-    checkboxInput("show_extrapolation", "Show Extrapolated Values", value = FALSE),
-    
-    hr(),
-    
+
     actionButton("apply_filters", "Apply Filters", class = "btn-primary w-100"),
     actionButton("reset_filters", "Reset All Filters", class = "btn-outline-secondary w-100 mt-2"),
-    
+
     hr(),
-   
+
     # Toggle extrapolation columns
     checkboxInput("toggle_extrap_cols", "Show Extrapolated Values", value = TRUE),
     
@@ -2329,20 +2325,19 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         sort(vals)
       }
 
-      # Key Groups - exclude "everyone else"
+      # Key Groups - include "Everyone Else"
       key_gps_cols <- find_cols("Key_Gps")
       all_key_gps <- get_unique_values(key_gps_cols)
-      all_key_gps <- all_key_gps[tolower(all_key_gps) != "everyone else"]
 
       if (length(all_key_gps) > 0) {
         updateSelectizeInput(session, "key_groups_filter",
                            choices = all_key_gps,
-                           options = list(placeholder = "All key groups..."),
+                           options = list(placeholder = "All key groups"),
                            server = TRUE)
       } else {
         updateSelectizeInput(session, "key_groups_filter",
                            choices = character(0),
-                           options = list(placeholder = "Key Groups field not available"),
+                           options = list(placeholder = "Key Groups not available"),
                            server = TRUE)
       }
 
@@ -2353,12 +2348,12 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       if (length(all_subclass) > 0) {
         updateSelectizeInput(session, "subclass_filter",
                            choices = all_subclass,
-                           options = list(placeholder = "All subclasses..."),
+                           options = list(placeholder = "All subclasses"),
                            server = TRUE)
       } else {
         updateSelectizeInput(session, "subclass_filter",
                            choices = character(0),
-                           options = list(placeholder = "Subclass field not available"),
+                           options = list(placeholder = "Subclass not available"),
                            server = TRUE)
       }
 
@@ -2369,12 +2364,12 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       if (length(all_location) > 0) {
         updateSelectizeInput(session, "location_filter",
                            choices = all_location,
-                           options = list(placeholder = "All locations..."),
+                           options = list(placeholder = "All locations"),
                            server = TRUE)
       } else {
         updateSelectizeInput(session, "location_filter",
                            choices = character(0),
-                           options = list(placeholder = "Location field not available"),
+                           options = list(placeholder = "Location not available"),
                            server = TRUE)
       }
 
@@ -2385,12 +2380,12 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       if (length(all_sample) > 0) {
         updateSelectizeInput(session, "sample_filter",
                            choices = all_sample,
-                           options = list(placeholder = "All samples..."),
+                           options = list(placeholder = "All samples"),
                            server = TRUE)
       } else {
         updateSelectizeInput(session, "sample_filter",
                            choices = character(0),
-                           options = list(placeholder = "Sample field not available"),
+                           options = list(placeholder = "Sample not available"),
                            server = TRUE)
       }
 
@@ -2401,12 +2396,12 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       if (length(all_dept) > 0) {
         updateSelectizeInput(session, "department_filter",
                            choices = all_dept,
-                           options = list(placeholder = "All departments..."),
+                           options = list(placeholder = "All departments"),
                            server = TRUE)
       } else {
         updateSelectizeInput(session, "department_filter",
                            choices = character(0),
-                           options = list(placeholder = "Department field not available"),
+                           options = list(placeholder = "Department not available"),
                            server = TRUE)
       }
     })
