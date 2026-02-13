@@ -1083,10 +1083,15 @@ ui <- function(data_list, metric_spec) {
           }
 
           /* Fix selectize placeholder text cutoff */
-          .selectize-input {
+          .selectize-control .selectize-input {
             overflow: visible !important;
           }
-          .selectize-input input::placeholder {
+          .selectize-control .selectize-input input {
+            width: 100% !important;
+            max-width: none !important;
+          }
+          .selectize-control .selectize-input input::placeholder,
+          .selectize-control .selectize-input .item {
             white-space: nowrap !important;
             overflow: visible !important;
             text-overflow: clip !important;
