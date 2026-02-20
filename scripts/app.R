@@ -1688,240 +1688,122 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         size = "xl",
         easyClose = TRUE,
         footer = div(
-          style = "display: flex; justify-content: space-between; align-items: center; padding-left: 0;",
-          div(
-            style = "margin-left: 0;",
-            checkboxInput("pdf_toggle_all", "Select / Deselect All", value = TRUE, width = "100%")
-          ),
-          div(
-            modalButton("Cancel"),
-            downloadButton("download_pdf", "Generate PDF",
-                           class = "btn-primary",
-                           icon = icon("file-pdf"),
-                           style = "margin-left: 10px;
-                                    background: linear-gradient(135deg, #90EE90 0%, #3CB371 50%, #2E8B57 100%);
-                                    border: none;
-                                    font-weight: bold;
-                                    box-shadow: 0 4px 6px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.4);
-                                    color: white;",
-                           onclick = "Shiny.setInputValue('pdf_download_clicked', Date.now(), {priority: 'event'});")
-          )
+          style = "display: flex; justify-content: flex-end; align-items: center; padding: 10px;",
+          modalButton("Cancel"),
+          downloadButton("download_pdf", "Generate PDF",
+                         class = "btn-primary",
+                         icon = icon("file-pdf"),
+                         style = "margin-left: 10px;
+                                  background: linear-gradient(135deg, #90EE90 0%, #3CB371 50%, #2E8B57 100%);
+                                  border: none;
+                                  font-weight: bold;
+                                  box-shadow: 0 4px 6px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.4);
+                                  color: white;",
+                         onclick = "Shiny.setInputValue('pdf_download_clicked', Date.now(), {priority: 'event'});")
         ),
-        
+
         # PDF Export Content
         div(
           style = "max-height: 70vh; overflow-y: auto; padding: 20px;",
-          
-          h5(style = "color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; margin-bottom: 20px;",
-             icon("clock"), " Time Data Statistics"),
-          layout_columns(
-            col_widths = c(3, 3, 3, 3),
-            checkboxGroupInput(
-              "pdf_sections_col1",
-              NULL,
-              choices = c(
-                "Overview Statistics" = "overview",
-                "Time - Summary" = "time_summary",
-                "Time - Shift Hours" = "time_shift_hours",
-                "Time - Punch Rounding" = "time_rounding"
-              ),
-              selected = c("overview", "time_summary", "time_shift_hours", "time_rounding")
+
+          h5(style = "color: #2c3e50; margin-bottom: 15px;", icon("file-pdf"), " Select PDF Sections"),
+          p(style = "color: #7f8c8d; margin-bottom: 20px; font-size: 14px;", "Choose which sections to include in your PDF report (in order of appearance):"),
+
+          checkboxGroupInput(
+            "pdf_sections",
+            NULL,
+            choices = c(
+              "Data Comparison (1-Page Landscape)" = "data_comparison",
+              "Summary - Time Data" = "time_summary",
+              "Summary - Pay Data" = "pay_summary",
+              "Meal Period Analysis" = "meal_analysis",
+              "Meal Period Violations (No Waivers)" = "meal_violations_no_waivers",
+              "Meal Period Violations (Waivers)" = "meal_violations_waivers",
+              "Rest Period Analysis" = "rest_analysis",
+              "Shift Hours Analysis" = "shift_hours",
+              "Time Punch Rounding" = "time_rounding",
+              "Regular Rate - Bonuses" = "regular_rate_bonuses",
+              "Regular Rate - Differentials" = "regular_rate_differentials",
+              "Regular Rate - RROP" = "regular_rate_rrop",
+              "Class Damages (No Waivers)" = "class_damages_no_waivers",
+              "Class Damages (Waivers)" = "class_damages_waivers",
+              "Damages - Meal Premiums (No Waivers)" = "damages_meal_no_waivers",
+              "Damages - Meal Premiums (Waivers)" = "damages_meal_waivers",
+              "Damages - Rest Premiums" = "damages_rest",
+              "Damages - RROP" = "damages_rrop",
+              "Damages - Off-the-Clock" = "damages_otc",
+              "Damages - Unpaid OT/DT" = "damages_unpaid_ot",
+              "Damages - Min Wage" = "damages_min_wage",
+              "Damages - Unreimbursed Expenses" = "damages_expenses",
+              "Damages - Wage Statement Penalties" = "damages_wsv",
+              "Damages - Waiting Time Penalties" = "damages_wt",
+              "PAGA - Summary" = "paga_summary",
+              "PAGA - Meal Periods" = "paga_meal",
+              "PAGA - Rest Periods" = "paga_rest",
+              "PAGA - RROP" = "paga_rrop",
+              "PAGA - Wage Statement (226)" = "paga_226",
+              "PAGA - Unpaid Wages (558)" = "paga_558",
+              "PAGA - Min Wage" = "paga_min_wage",
+              "PAGA - Unreimbursed Expenses" = "paga_expenses",
+              "PAGA - Recordkeeping" = "paga_recordkeeping",
+              "PAGA - Waiting Time" = "paga_waiting_time",
+              "Pay Codes" = "pay_codes",
+              "Rate Type Analysis" = "rate_type_analysis",
+              "Appendix Tables" = "appendix",
+              "Notes & Assumptions" = "assumptions"
             ),
-            checkboxGroupInput(
-              "pdf_sections_col2",
-              NULL,
-              choices = c(
-                "Meal - Analysis" = "meal_analysis",
-                "Meal - Violations (no waivers)" = "meal_5hr",
-                "Meal - Violations (waivers)" = "meal_6hr",
-                "Rest Periods" = "rest_periods"
-              ),
-              selected = c("meal_analysis", "meal_5hr", "meal_6hr", "rest_periods")
+            selected = c(
+              "data_comparison", "time_summary", "pay_summary", "meal_analysis",
+              "meal_violations_no_waivers", "meal_violations_waivers", "rest_analysis",
+              "shift_hours", "time_rounding", "regular_rate_bonuses", "regular_rate_differentials",
+              "regular_rate_rrop", "class_damages_no_waivers", "class_damages_waivers",
+              "damages_meal_no_waivers", "damages_meal_waivers", "damages_rest", "damages_rrop",
+              "damages_otc", "damages_unpaid_ot", "damages_min_wage", "damages_expenses",
+              "damages_wsv", "damages_wt", "paga_summary", "paga_meal", "paga_rest",
+              "paga_rrop", "paga_226", "paga_558", "paga_min_wage", "paga_expenses",
+              "paga_recordkeeping", "paga_waiting_time", "pay_codes", "rate_type_analysis",
+              "appendix", "assumptions"
             )
-          ),
-          
-          hr(),
-          h5(style = "color: #2c3e50; border-bottom: 2px solid #27ae60; padding-bottom: 10px; margin-bottom: 20px;",
-             icon("dollar-sign"), " Pay Data Statistics"),
-          layout_columns(
-            col_widths = c(3, 3, 3, 3),
-            checkboxGroupInput(
-              "pdf_sections_col3",
-              NULL,
-              choices = c(
-                "Pay - Summary" = "pay_summary",
-                "Pay - Regular Rate" = "pay_regular_rate",
-                "Pay - Codes" = "pay_codes",
-                "Pay - Rate Type" = "rate_type_analysis"
-              ),
-              selected = c("pay_summary", "pay_regular_rate", "pay_codes", "rate_type_analysis")
-            )
-          ),
-          
-          hr(),
-          h5(style = "color: #2c3e50; border-bottom: 2px solid #e74c3c; padding-bottom: 10px; margin-bottom: 20px;",
-             icon("gavel"), " Class / Individual Claim Damages"),
-          layout_columns(
-            col_widths = c(3, 3, 3, 3),
-            checkboxGroupInput(
-              "pdf_damages_class_col1",
-              NULL,
-              choices = c(
-                "Overview (Summary)" = "damages_class_overview",
-                "Meal Premium Damages" = "damages_meal",
-                "Rest Premium Damages" = "damages_rest",
-                "RROP Damages" = "damages_rrop"
-              ),
-              selected = c("damages_class_overview", "damages_meal", "damages_rest", "damages_rrop")
-            ),
-            checkboxGroupInput(
-              "pdf_damages_class_col2",
-              NULL,
-              choices = c(
-                "Off-the-Clock Damages" = "damages_otc",
-                "Unpaid OT/DT Damages" = "damages_unpaid_ot",
-                "Min Wage Damages" = "damages_min_wage",
-                "Unreimbursed Expenses" = "damages_expenses"
-              ),
-              selected = c("damages_otc", "damages_unpaid_ot", "damages_min_wage", "damages_expenses")
-            ),
-            checkboxGroupInput(
-              "pdf_damages_class_col3",
-              NULL,
-              choices = c(
-                "Wage Statement Penalties" = "damages_wsv",
-                "Waiting Time Penalties" = "damages_wt"
-              ),
-              selected = c("damages_wsv", "damages_wt")
-            )
-          ),
-          
-          hr(),
-          h5(style = "color: #2c3e50; border-bottom: 2px solid #9b59b6; padding-bottom: 10px; margin-bottom: 20px;",
-             icon("balance-scale"), " PAGA Damages"),
-          layout_columns(
-            col_widths = c(3, 3, 3, 3),
-            checkboxGroupInput(
-              "pdf_paga_col1",
-              NULL,
-              choices = c(
-                "Overview (Summary)" = "paga_overview",
-                "Meal Periods" = "paga_meal",
-                "Rest Periods" = "paga_rest",
-                "RROP" = "paga_rrop"
-              ),
-              selected = c("paga_overview", "paga_meal", "paga_rest", "paga_rrop")
-            ),
-            checkboxGroupInput(
-              "pdf_paga_col2",
-              NULL,
-              choices = c(
-                "Wage Statement (226)" = "paga_226",
-                "Unpaid Wages (558)" = "paga_558",
-                "Min Wage (1197.1)" = "paga_min_wage"
-              ),
-              selected = c("paga_226", "paga_558", "paga_min_wage")
-            ),
-            checkboxGroupInput(
-              "pdf_paga_col3",
-              NULL,
-              choices = c(
-                "Unreimbursed Expenses (2802)" = "paga_expenses",
-                "Recordkeeping (1174.1)" = "paga_recordkeeping",
-                "Waiting Time (203)" = "paga_waiting_time"
-              ),
-              selected = c("paga_expenses", "paga_recordkeeping", "paga_waiting_time")
-            )
-          ),
-          
-          hr(),
-          h5(style = "color: #2c3e50; border-bottom: 2px solid #95a5a6; padding-bottom: 10px; margin-bottom: 20px;",
-             icon("book"), " Additional Options"),
-          div(
-            checkboxInput("pdf_include_data_comparison", "Data Comparison (1-Page Landscape)", value = TRUE),
-            checkboxInput("pdf_include_extrap", "Include Extrapolation Column", value = FALSE),
-            checkboxInput("pdf_include_appendix", "Appendix Tables (All)", value = FALSE),
-            checkboxInput("pdf_include_assumptions", "Notes & Assumptions Summary", value = TRUE)
           ),
 
           hr(),
-          h5(style = "color: #2c3e50; border-bottom: 2px solid #f39c12; padding-bottom: 10px; margin-bottom: 20px;",
-             icon("sliders-h"), " Scenario Options"),
+
+          h5(style = "color: #2c3e50; margin-bottom: 15px;", icon("cog"), " Additional Options"),
+          checkboxInput("pdf_include_extrap", "Include Extrapolation Column", value = TRUE),
+
+          hr(),
+
           div(
-            style = "padding-left: 10px;",
-            p(style = "margin-bottom: 10px; color: #7f8c8d;", "Select which scenario variants to include for Class Damages and PAGA:"),
-            layout_columns(
-              col_widths = c(6, 6),
-              div(
-                h6(style = "color: #e74c3c; font-weight: bold;", icon("gavel"), " Class Damages Scenarios"),
-                checkboxInput("pdf_class_no_waivers", "No Waivers", value = TRUE),
-                checkboxInput("pdf_class_waivers", "Waivers", value = TRUE)
-              ),
-              div(
-                h6(style = "color: #9b59b6; font-weight: bold;", icon("balance-scale"), " PAGA Scenarios"),
-                checkboxInput("pdf_paga_no_waivers", "No Waivers", value = TRUE),
-                checkboxInput("pdf_paga_waivers", "Waivers", value = TRUE)
-              )
-            )
+            style = "text-align: center; margin-top: 20px;",
+            actionButton("pdf_select_all", "Select All", class = "btn btn-sm btn-outline-primary", style = "margin-right: 10px;"),
+            actionButton("pdf_deselect_all", "Deselect All", class = "btn btn-sm btn-outline-secondary")
           )
         )
       ))
     })
     
-    # PDF Toggle All checkbox
-    observeEvent(input$pdf_toggle_all, {
-      if (isTRUE(input$pdf_toggle_all)) {
-        # Select All
-        # Time/Pay sections
-        all_choices_col1 <- c("overview", "time_summary", "time_shift_hours", "time_rounding")
-        all_choices_col2 <- c("meal_analysis", "meal_5hr", "meal_6hr", "rest_periods")
-        all_choices_col3 <- c("pay_summary", "pay_regular_rate", "pay_codes", "rate_type_analysis")
+    # PDF Select All button
+    observeEvent(input$pdf_select_all, {
+      all_sections <- c(
+        "data_comparison", "time_summary", "pay_summary", "meal_analysis",
+        "meal_violations_no_waivers", "meal_violations_waivers", "rest_analysis",
+        "shift_hours", "time_rounding", "regular_rate_bonuses", "regular_rate_differentials",
+        "regular_rate_rrop", "class_damages_no_waivers", "class_damages_waivers",
+        "damages_meal_no_waivers", "damages_meal_waivers", "damages_rest", "damages_rrop",
+        "damages_otc", "damages_unpaid_ot", "damages_min_wage", "damages_expenses",
+        "damages_wsv", "damages_wt", "paga_summary", "paga_meal", "paga_rest",
+        "paga_rrop", "paga_226", "paga_558", "paga_min_wage", "paga_expenses",
+        "paga_recordkeeping", "paga_waiting_time", "pay_codes", "rate_type_analysis",
+        "appendix", "assumptions"
+      )
+      updateCheckboxGroupInput(session, "pdf_sections", selected = all_sections)
+      updateCheckboxInput(session, "pdf_include_extrap", value = TRUE)
+    })
 
-        # Damages - Class sections
-        all_damages_class_col1 <- c("damages_class_overview", "damages_meal", "damages_rest", "damages_rrop")
-        all_damages_class_col2 <- c("damages_otc", "damages_unpaid_ot", "damages_min_wage", "damages_expenses")
-        all_damages_class_col3 <- c("damages_wsv", "damages_wt")
-
-        # PAGA sections
-        all_paga_col1 <- c("paga_overview", "paga_meal", "paga_rest", "paga_rrop")
-        all_paga_col2 <- c("paga_226", "paga_558", "paga_min_wage")
-        all_paga_col3 <- c("paga_expenses", "paga_recordkeeping", "paga_waiting_time")
-
-        updateCheckboxGroupInput(session, "pdf_sections_col1", selected = all_choices_col1)
-        updateCheckboxGroupInput(session, "pdf_sections_col2", selected = all_choices_col2)
-        updateCheckboxGroupInput(session, "pdf_sections_col3", selected = all_choices_col3)
-
-        updateCheckboxGroupInput(session, "pdf_damages_class_col1", selected = all_damages_class_col1)
-        updateCheckboxGroupInput(session, "pdf_damages_class_col2", selected = all_damages_class_col2)
-        updateCheckboxGroupInput(session, "pdf_damages_class_col3", selected = all_damages_class_col3)
-
-        updateCheckboxGroupInput(session, "pdf_paga_col1", selected = all_paga_col1)
-        updateCheckboxGroupInput(session, "pdf_paga_col2", selected = all_paga_col2)
-        updateCheckboxGroupInput(session, "pdf_paga_col3", selected = all_paga_col3)
-
-        updateCheckboxInput(session, "pdf_include_appendix", value = FALSE)
-        updateCheckboxInput(session, "pdf_include_data_comparison", value = TRUE)
-        updateCheckboxInput(session, "pdf_include_extrap", value = FALSE)
-        updateCheckboxInput(session, "pdf_include_assumptions", value = TRUE)
-      } else {
-        # Deselect All
-        updateCheckboxGroupInput(session, "pdf_sections_col1", selected = character(0))
-        updateCheckboxGroupInput(session, "pdf_sections_col2", selected = character(0))
-        updateCheckboxGroupInput(session, "pdf_sections_col3", selected = character(0))
-
-        updateCheckboxGroupInput(session, "pdf_damages_class_col1", selected = character(0))
-        updateCheckboxGroupInput(session, "pdf_damages_class_col2", selected = character(0))
-        updateCheckboxGroupInput(session, "pdf_damages_class_col3", selected = character(0))
-
-        updateCheckboxGroupInput(session, "pdf_paga_col1", selected = character(0))
-        updateCheckboxGroupInput(session, "pdf_paga_col2", selected = character(0))
-        updateCheckboxGroupInput(session, "pdf_paga_col3", selected = character(0))
-
-        updateCheckboxInput(session, "pdf_include_appendix", value = FALSE)
-        updateCheckboxInput(session, "pdf_include_data_comparison", value = FALSE)
-        updateCheckboxInput(session, "pdf_include_extrap", value = FALSE)
-        updateCheckboxInput(session, "pdf_include_assumptions", value = FALSE)
-      }
+    # PDF Deselect All button
+    observeEvent(input$pdf_deselect_all, {
+      updateCheckboxGroupInput(session, "pdf_sections", selected = character(0))
+      updateCheckboxInput(session, "pdf_include_extrap", value = FALSE)
     })
     
     observeEvent(input$pdf_download_clicked, {
@@ -4158,76 +4040,69 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         results <- pipeline_results()    # Make available as "results"
         message("Data loaded for generate_report()")
 
-        # Build sections vector from checkbox selections
+        # Get selected sections from checkbox group
+        selected <- input$pdf_sections
+
+        # Map checkbox selections to high-level section categories
         pdf_sections <- c()
 
-        # Combine all section checkboxes
-        selected_sections <- c(
-          input$pdf_sections_col1,
-          input$pdf_sections_col2,
-          input$pdf_sections_col3
-        )
-
-        # Map selected sections to high-level categories
-        if (any(c("overview", "time_summary", "time_shift_hours", "time_rounding",
-                  "meal_analysis", "meal_5hr", "meal_6hr", "rest_periods") %in% selected_sections)) {
+        # Time section - any time-related checkbox
+        if (any(c("time_summary", "meal_analysis", "meal_violations_no_waivers", "meal_violations_waivers",
+                  "rest_analysis", "shift_hours", "time_rounding") %in% selected)) {
           pdf_sections <- c(pdf_sections, "time")
         }
 
-        if (any(c("pay_summary", "pay_regular_rate", "pay_codes", "rate_type_analysis") %in% selected_sections)) {
+        # Pay section - any pay-related checkbox
+        if (any(c("pay_summary", "regular_rate_bonuses", "regular_rate_differentials", "regular_rate_rrop") %in% selected)) {
           pdf_sections <- c(pdf_sections, "pay")
         }
 
-        # Check class damages sections
-        selected_damages <- c(
-          input$pdf_damages_class_col1,
-          input$pdf_damages_class_col2,
-          input$pdf_damages_class_col3
-        )
-        if (length(selected_damages) > 0) {
+        # Class section - any class damages checkbox
+        if (any(grepl("^class_damages_|^damages_", selected))) {
           pdf_sections <- c(pdf_sections, "class")
         }
 
-        # Check PAGA sections
-        selected_paga <- c(
-          input$pdf_paga_col1,
-          input$pdf_paga_col2,
-          input$pdf_paga_col3
-        )
-        if (length(selected_paga) > 0) {
+        # PAGA section - any PAGA checkbox
+        if (any(grepl("^paga_", selected))) {
           pdf_sections <- c(pdf_sections, "paga")
         }
 
-        # Analysis section is tied to pay codes / rate type
-        if (any(c("pay_codes", "rate_type_analysis") %in% selected_sections)) {
+        # Analysis section - pay codes or rate type
+        if (any(c("pay_codes", "rate_type_analysis") %in% selected)) {
           pdf_sections <- c(pdf_sections, "analysis")
         }
 
-        # Build scenario vectors
+        # Build scenario vectors based on checkbox selections
         class_scenarios <- c()
-        if (isTRUE(input$pdf_class_no_waivers)) class_scenarios <- c(class_scenarios, "no waivers")
-        if (isTRUE(input$pdf_class_waivers)) class_scenarios <- c(class_scenarios, "waivers")
+        if (any(grepl("no_waivers", selected))) class_scenarios <- c(class_scenarios, "no waivers")
+        if (any(grepl("waivers", selected) & !grepl("no_waivers", selected))) class_scenarios <- c(class_scenarios, "waivers")
 
         paga_scenarios <- c()
-        if (isTRUE(input$pdf_paga_no_waivers)) paga_scenarios <- c(paga_scenarios, "no waivers")
-        if (isTRUE(input$pdf_paga_waivers)) paga_scenarios <- c(paga_scenarios, "waivers")
+        # PAGA doesn't have waiver variants currently, default to both
+        paga_scenarios <- c("no waivers", "waivers")
 
-        # Default to both scenarios if none selected
+        # Default to both if none selected
         if (length(class_scenarios) == 0) class_scenarios <- c("no waivers", "waivers")
-        if (length(paga_scenarios) == 0) paga_scenarios <- c("no waivers", "waivers")
+
+        # Determine include flags from selections
+        include_data_comparison <- "data_comparison" %in% selected
+        include_appendix <- "appendix" %in% selected
+        include_assumptions <- "assumptions" %in% selected
 
         message("PDF sections selected: ", paste(pdf_sections, collapse = ", "))
         message("Class scenarios: ", paste(class_scenarios, collapse = ", "))
-        message("PAGA scenarios: ", paste(paga_scenarios, collapse = ", "))
+        message("Include data comparison: ", include_data_comparison)
+        message("Include appendix: ", include_appendix)
+        message("Include assumptions: ", include_assumptions)
 
         # Call standalone PDF generator
         generate_report(
           output_file = file,
           sections = pdf_sections,
           include_extrap = isTRUE(input$pdf_include_extrap),
-          include_appendix = isTRUE(input$pdf_include_appendix),
-          include_data_comparison = isTRUE(input$pdf_include_data_comparison),
-          include_assumptions = isTRUE(input$pdf_include_assumptions),
+          include_appendix = include_appendix,
+          include_data_comparison = include_data_comparison,
+          include_assumptions = include_assumptions,
           class_scenarios = class_scenarios,
           paga_scenarios = paga_scenarios,
           verbose = FALSE  # Don't show progress bar in Shiny
