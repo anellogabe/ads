@@ -52,10 +52,14 @@ generate_report <- function(
     include_appendix = FALSE,
     include_data_comparison = FALSE,
     include_assumptions = TRUE,
+    class_scenarios = c("no waivers", "waivers"),
+    paga_scenarios = c("no waivers", "waivers"),
     verbose = TRUE
 ) {
-  
+
   local_sections <- sections
+  local_class_scenarios <- class_scenarios
+  local_paga_scenarios <- paga_scenarios
   
   # Count steps more accurately based on new section structure
   total_steps <- 5  # Base: loading data, spec, analysis tables, generating PDF, final
@@ -535,8 +539,8 @@ table.pay-code-table td:last-child { text-align: left; }
     # Part 2: Wage Statement Penalties, Waiting Time Penalties, Grand Total (new page)
     damages_part2 <- c(damages_wsv, damages_wt, damages_grand_total)
 
-    # Loop through scenarios to avoid duplication
-    for (scenario in c("no waivers", "waivers")) {
+    # Loop through selected class scenarios to avoid duplication
+    for (scenario in local_class_scenarios) {
       scenario_label <- tools::toTitleCase(scenario)
       progress(paste0("Class Damages (", scenario_label, ")"))
 
@@ -559,8 +563,8 @@ table.pay-code-table td:last-child { text-align: left; }
       group_scenarios <- unique(metric_spec$scenario[metric_spec$metric_group == detail_group])
 
       if (any(c("no waivers", "waivers") %in% group_scenarios)) {
-        # Has scenario-specific rows - render per scenario
-        for (scenario in c("no waivers", "waivers")) {
+        # Has scenario-specific rows - render only selected scenarios
+        for (scenario in local_class_scenarios) {
           if (scenario %in% group_scenarios) {
             scenario_label <- tools::toTitleCase(scenario)
             html <- paste0(html, add_section(detail_group, paste0(detail_group, " (", scenario_label, ")"), scenario, hide_years = TRUE))
@@ -583,13 +587,15 @@ table.pay-code-table td:last-child { text-align: left; }
       group_scenarios <- unique(metric_spec$scenario[metric_spec$metric_group == detail_group])
 
       if (any(c("no waivers", "waivers") %in% group_scenarios)) {
-        for (scenario in c("no waivers", "waivers")) {
+        # Has scenario-specific rows - render only selected scenarios
+        for (scenario in local_paga_scenarios) {
           if (scenario %in% group_scenarios) {
             scenario_label <- tools::toTitleCase(scenario)
             html <- paste0(html, add_section(detail_group, paste0(detail_group, " (", scenario_label, ")"), scenario, hide_years = TRUE))
           }
         }
       } else {
+        # No scenario split (uses "all") - render once
         html <- paste0(html, add_section(detail_group, detail_group, hide_years = TRUE))
       }
     }

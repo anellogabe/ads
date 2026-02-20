@@ -1848,6 +1848,27 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
             checkboxInput("pdf_include_extrap", "Include Extrapolation Column", value = FALSE),
             checkboxInput("pdf_include_appendix", "Appendix Tables (All)", value = FALSE),
             checkboxInput("pdf_include_assumptions", "Notes & Assumptions Summary", value = TRUE)
+          ),
+
+          hr(),
+          h5(style = "color: #2c3e50; border-bottom: 2px solid #f39c12; padding-bottom: 10px; margin-bottom: 20px;",
+             icon("sliders-h"), " Scenario Options"),
+          div(
+            style = "padding-left: 10px;",
+            p(style = "margin-bottom: 10px; color: #7f8c8d;", "Select which scenario variants to include for Class Damages and PAGA:"),
+            layout_columns(
+              col_widths = c(6, 6),
+              div(
+                h6(style = "color: #e74c3c; font-weight: bold;", icon("gavel"), " Class Damages Scenarios"),
+                checkboxInput("pdf_class_no_waivers", "No Waivers", value = TRUE),
+                checkboxInput("pdf_class_waivers", "Waivers", value = TRUE)
+              ),
+              div(
+                h6(style = "color: #9b59b6; font-weight: bold;", icon("balance-scale"), " PAGA Scenarios"),
+                checkboxInput("pdf_paga_no_waivers", "No Waivers", value = TRUE),
+                checkboxInput("pdf_paga_waivers", "Waivers", value = TRUE)
+              )
+            )
           )
         )
       ))
@@ -4141,16 +4162,79 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         class1 <- data$class1           # Make available in environment
         results <- pipeline_results()    # Make available as "results"
         message("Data loaded for generate_report()")
-        
-        
+
+        # Build sections vector from checkbox selections
+        pdf_sections <- c()
+
+        # Combine all section checkboxes
+        selected_sections <- c(
+          input$pdf_sections_col1,
+          input$pdf_sections_col2,
+          input$pdf_sections_col3
+        )
+
+        # Map selected sections to high-level categories
+        if (any(c("overview", "time_summary", "time_shift_hours", "time_rounding",
+                  "meal_analysis", "meal_5hr", "meal_6hr", "rest_periods") %in% selected_sections)) {
+          pdf_sections <- c(pdf_sections, "time")
+        }
+
+        if (any(c("pay_summary", "pay_regular_rate", "pay_codes", "rate_type_analysis") %in% selected_sections)) {
+          pdf_sections <- c(pdf_sections, "pay")
+        }
+
+        # Check class damages sections
+        selected_damages <- c(
+          input$pdf_damages_class_col1,
+          input$pdf_damages_class_col2,
+          input$pdf_damages_class_col3
+        )
+        if (length(selected_damages) > 0) {
+          pdf_sections <- c(pdf_sections, "class")
+        }
+
+        # Check PAGA sections
+        selected_paga <- c(
+          input$pdf_paga_col1,
+          input$pdf_paga_col2,
+          input$pdf_paga_col3
+        )
+        if (length(selected_paga) > 0) {
+          pdf_sections <- c(pdf_sections, "paga")
+        }
+
+        # Analysis section is tied to pay codes / rate type
+        if (any(c("pay_codes", "rate_type_analysis") %in% selected_sections)) {
+          pdf_sections <- c(pdf_sections, "analysis")
+        }
+
+        # Build scenario vectors
+        class_scenarios <- c()
+        if (isTRUE(input$pdf_class_no_waivers)) class_scenarios <- c(class_scenarios, "no waivers")
+        if (isTRUE(input$pdf_class_waivers)) class_scenarios <- c(class_scenarios, "waivers")
+
+        paga_scenarios <- c()
+        if (isTRUE(input$pdf_paga_no_waivers)) paga_scenarios <- c(paga_scenarios, "no waivers")
+        if (isTRUE(input$pdf_paga_waivers)) paga_scenarios <- c(paga_scenarios, "waivers")
+
+        # Default to both scenarios if none selected
+        if (length(class_scenarios) == 0) class_scenarios <- c("no waivers", "waivers")
+        if (length(paga_scenarios) == 0) paga_scenarios <- c("no waivers", "waivers")
+
+        message("PDF sections selected: ", paste(pdf_sections, collapse = ", "))
+        message("Class scenarios: ", paste(class_scenarios, collapse = ", "))
+        message("PAGA scenarios: ", paste(paga_scenarios, collapse = ", "))
+
         # Call standalone PDF generator
         generate_report(
           output_file = file,
-          sections = c("time", "pay", "class", "paga", "analysis"),
+          sections = pdf_sections,
           include_extrap = isTRUE(input$pdf_include_extrap),
           include_appendix = isTRUE(input$pdf_include_appendix),
           include_data_comparison = isTRUE(input$pdf_include_data_comparison),
           include_assumptions = isTRUE(input$pdf_include_assumptions),
+          class_scenarios = class_scenarios,
+          paga_scenarios = paga_scenarios,
           verbose = FALSE  # Don't show progress bar in Shiny
         )
         
