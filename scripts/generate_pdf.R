@@ -223,7 +223,7 @@ generate_report <- function(
   regular_rate_differentials <- metric_groups[grepl("^Regular Rate - Differentials", metric_groups)]
   regular_rate_rrop <- metric_groups[grepl("^Regular Rate - RROP", metric_groups)]
   
-  # Damages
+  # Damages - overview groups (fixed structure)
   damages_summary <- metric_groups[grepl("^Damages - Summary$", metric_groups)]
   damages_principal <- metric_groups[grepl("^Damages - Principal$", metric_groups)]
   damages_interest <- metric_groups[grepl("^Damages - Interest$", metric_groups)]
@@ -231,25 +231,29 @@ generate_report <- function(
   damages_wsv <- metric_groups[grepl("^Damages - Wage Statement Penalties", metric_groups)]
   damages_wt <- metric_groups[grepl("^Damages - Waiting Time Penalties", metric_groups)]
   damages_grand_total <- metric_groups[grepl("^Damages - Grand Total", metric_groups)]
-  damages_meal <- metric_groups[grepl("^Damages - Meal Premiums", metric_groups)]
-  damages_rest <- metric_groups[grepl("^Damages - Rest Premiums", metric_groups)]
-  damages_rrop <- metric_groups[grepl("^Damages - Regular Rate of Pay$", metric_groups)]
-  damages_otc <- metric_groups[grepl("^Damages - Off-the-Clock", metric_groups)]
-  damages_expenses <- metric_groups[grepl("^Damages - Unreimbursed Expenses", metric_groups)]
-  damages_unpaid_ot <- metric_groups[grepl("^Damages - Unpaid OT", metric_groups)]
-  damages_min_wage <- metric_groups[grepl("^Damages - Unpaid Wages.*Min", metric_groups)]
-  
-  # PAGA
+  damages_credits <- metric_groups[grepl("^Damages - Credits or Offsets", metric_groups)]
+
+  # Damages - dynamically discover ALL detail groups (anything starting with "Damages - "
+  # that is NOT an overview/penalty/total group)
+  damages_overview_patterns <- c("Summary", "Principal", "Interest", "Sub-Total",
+                                  "Grand Total", "Credits or Offsets",
+                                  "Wage Statement Penalties", "Waiting Time Penalties")
+  all_damages_groups <- metric_groups[grepl("^Damages - ", metric_groups)]
+  damages_detail_groups <- all_damages_groups[!sapply(all_damages_groups, function(g) {
+    any(sapply(damages_overview_patterns, function(p) grepl(paste0("^Damages - ", p), g)))
+  })]
+  # Get unique detail group names (e.g., "Damages - Meal Premiums", "Damages - Rest Premiums", etc.)
+  damages_detail_unique <- unique(damages_detail_groups)
+  message("  Dynamic damages detail groups found: ", paste(damages_detail_unique, collapse = ", "))
+
+  # PAGA - overview groups (fixed structure)
   paga_summary <- metric_groups[grepl("^PAGA - Summary$", metric_groups)]
-  paga_meal <- metric_groups[grepl("^PAGA - Meal Periods", metric_groups)]
-  paga_rest <- metric_groups[grepl("^PAGA - Rest Periods", metric_groups)]
-  paga_rrop <- metric_groups[grepl("^PAGA - Regular Rate of Pay", metric_groups)]
-  paga_558 <- metric_groups[grepl("^PAGA - Unpaid Wages \\(558\\)", metric_groups)]
-  paga_226 <- metric_groups[grepl("^PAGA - Wage Statement \\(226\\)", metric_groups)]
-  paga_waiting <- metric_groups[grepl("^PAGA - Waiting Time \\(203\\)", metric_groups)]
-  paga_recordkeeping <- metric_groups[grepl("^PAGA - Recordkeeping", metric_groups)]
-  paga_min_wage <- metric_groups[grepl("^PAGA - Min Wage", metric_groups)]
-  paga_expenses <- metric_groups[grepl("^PAGA - Unreimbursed Expenses", metric_groups)]
+
+  # PAGA - dynamically discover ALL detail groups (anything starting with "PAGA - " that is NOT Summary)
+  all_paga_groups <- metric_groups[grepl("^PAGA - ", metric_groups)]
+  paga_detail_groups <- all_paga_groups[!grepl("^PAGA - Summary$", all_paga_groups)]
+  paga_detail_unique <- unique(paga_detail_groups)
+  message("  Dynamic PAGA detail groups found: ", paste(paga_detail_unique, collapse = ", "))
   
   progress("Loading analysis tables")
   
@@ -530,15 +534,15 @@ table.pay-code-table td:last-child { text-align: left; }
     damages_part1 <- c(damages_summary, damages_principal, damages_interest, damages_subtotal)
     # Part 2: Wage Statement Penalties, Waiting Time Penalties, Grand Total (new page)
     damages_part2 <- c(damages_wsv, damages_wt, damages_grand_total)
-    
+
     # Loop through scenarios to avoid duplication
     for (scenario in c("no waivers", "waivers")) {
       scenario_label <- tools::toTitleCase(scenario)
       progress(paste0("Class Damages (", scenario_label, ")"))
-      
+
       part1 <- get_group_data(damages_part1, scenario)
       part2 <- get_group_data(damages_part2, scenario)
-      
+
       if (nrow(part1) > 0) {
         html <- paste0(html, add_tbl(part1, paste0("Class Damages (", scenario_label, ")"), hide_years = TRUE))
       }
@@ -546,37 +550,49 @@ table.pay-code-table td:last-child { text-align: left; }
         html <- paste0(html, add_tbl(part2, paste0("Class Damages (", scenario_label, ") - Penalties"), hide_years = TRUE))
       }
     }
-    
-    # Breakdown by claim type (loop through scenarios for meal and rest)
-    for (scenario in c("no waivers", "waivers")) {
-      scenario_label <- tools::toTitleCase(scenario)
-      html <- paste0(html, add_section(damages_meal, paste0("Damages - Meal Premiums (", scenario_label, ")"), scenario, hide_years = TRUE))
-      html <- paste0(html, add_section(damages_rest, paste0("Damages - Rest Premiums (", scenario_label, ")"), scenario, hide_years = TRUE))
+
+    # Dynamically render each damages detail group
+    # For each unique detail group, check if it has scenario-specific rows (waivers/no waivers)
+    # If so, render per-scenario; otherwise render once with no scenario filter
+    for (detail_group in damages_detail_unique) {
+      # Get the scenarios this group uses from metric_spec
+      group_scenarios <- unique(metric_spec$scenario[metric_spec$metric_group == detail_group])
+
+      if (any(c("no waivers", "waivers") %in% group_scenarios)) {
+        # Has scenario-specific rows - render per scenario
+        for (scenario in c("no waivers", "waivers")) {
+          if (scenario %in% group_scenarios) {
+            scenario_label <- tools::toTitleCase(scenario)
+            html <- paste0(html, add_section(detail_group, paste0(detail_group, " (", scenario_label, ")"), scenario, hide_years = TRUE))
+          }
+        }
+      } else {
+        # No scenario split (uses "all") - render once
+        html <- paste0(html, add_section(detail_group, detail_group, hide_years = TRUE))
+      }
     }
-    
-    # Non-scenario-specific damages
-    html <- paste0(html, add_section(damages_rrop, "Damages - Regular Rate of Pay", hide_years = TRUE))
-    html <- paste0(html, add_section(damages_otc, "Damages - Off-the-Clock", hide_years = TRUE))
-    html <- paste0(html, add_section(damages_expenses, "Damages - Unreimbursed Expenses", hide_years = TRUE))
-    html <- paste0(html, add_section(damages_unpaid_ot, "Damages - Unpaid OT/DT", hide_years = TRUE))
-    html <- paste0(html, add_section(damages_min_wage, "Damages - Unpaid Wages (Min Wage)", hide_years = TRUE))
   }
   
   # ----- PAGA PENALTIES -----
   if ("paga" %in% local_sections) {
     # PAGA Summary - all scenarios together
     html <- paste0(html, add_section(paga_summary, "PAGA - Summary", hide_years = TRUE))
-    
-    # PAGA breakdowns
-    html <- paste0(html, add_section(paga_meal, "PAGA - Meal Periods", hide_years = TRUE))
-    html <- paste0(html, add_section(paga_rest, "PAGA - Rest Periods", hide_years = TRUE))
-    html <- paste0(html, add_section(paga_rrop, "PAGA - Regular Rate of Pay (RROP)", hide_years = TRUE))
-    html <- paste0(html, add_section(paga_558, "PAGA - Unpaid Wages (558)", hide_years = TRUE))
-    html <- paste0(html, add_section(paga_226, "PAGA - Wage Statement (226)", hide_years = TRUE))
-    html <- paste0(html, add_section(paga_waiting, "PAGA - Waiting Time (203)", hide_years = TRUE))
-    html <- paste0(html, add_section(paga_recordkeeping, "PAGA - Recordkeeping (1174.1)", hide_years = TRUE))
-    html <- paste0(html, add_section(paga_min_wage, "PAGA - Min Wage (1197.1)", hide_years = TRUE))
-    html <- paste0(html, add_section(paga_expenses, "PAGA - Unreimbursed Expenses (2802)", hide_years = TRUE))
+
+    # Dynamically render each PAGA detail group
+    for (detail_group in paga_detail_unique) {
+      group_scenarios <- unique(metric_spec$scenario[metric_spec$metric_group == detail_group])
+
+      if (any(c("no waivers", "waivers") %in% group_scenarios)) {
+        for (scenario in c("no waivers", "waivers")) {
+          if (scenario %in% group_scenarios) {
+            scenario_label <- tools::toTitleCase(scenario)
+            html <- paste0(html, add_section(detail_group, paste0(detail_group, " (", scenario_label, ")"), scenario, hide_years = TRUE))
+          }
+        }
+      } else {
+        html <- paste0(html, add_section(detail_group, detail_group, hide_years = TRUE))
+      }
+    }
   }
   
   # ANALYSIS - use compact styling
