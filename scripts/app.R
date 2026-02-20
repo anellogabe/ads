@@ -949,11 +949,6 @@ filter_sidebar <- function(data_list) {
 
     hr(),
 
-    # Toggle extrapolation columns
-    checkboxInput("toggle_extrap_cols", "Show Extrapolated Values", value = TRUE),
-    
-    hr(),
-    
     # Employee-Period Selection (for Example tab)
     h5("Select Employee-Period"),
     selectizeInput(
