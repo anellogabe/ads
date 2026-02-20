@@ -1691,8 +1691,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
           style = "display: flex; justify-content: space-between; align-items: center; padding-left: 0;",
           div(
             style = "margin-left: 0;",
-            actionButton("pdf_select_all", "Select All", class = "btn-sm btn-outline-primary"),
-            actionButton("pdf_deselect_all", "Deselect All", class = "btn-sm btn-outline-secondary", style = "margin-left: 10px;")
+            checkboxInput("pdf_toggle_all", "Select / Deselect All", value = TRUE, width = "100%")
           ),
           div(
             modalButton("Cancel"),
@@ -1726,7 +1725,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
                 "Time - Shift Hours" = "time_shift_hours",
                 "Time - Punch Rounding" = "time_rounding"
               ),
-              selected = c("overview", "time_summary")
+              selected = c("overview", "time_summary", "time_shift_hours", "time_rounding")
             ),
             checkboxGroupInput(
               "pdf_sections_col2",
@@ -1737,7 +1736,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
                 "Meal - Violations (waivers)" = "meal_6hr",
                 "Rest Periods" = "rest_periods"
               ),
-              selected = c()
+              selected = c("meal_analysis", "meal_5hr", "meal_6hr", "rest_periods")
             )
           ),
           
@@ -1755,7 +1754,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
                 "Pay - Codes" = "pay_codes",
                 "Pay - Rate Type" = "rate_type_analysis"
               ),
-              selected = c("pay_summary")
+              selected = c("pay_summary", "pay_regular_rate", "pay_codes", "rate_type_analysis")
             )
           ),
           
@@ -1773,7 +1772,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
                 "Rest Premium Damages" = "damages_rest",
                 "RROP Damages" = "damages_rrop"
               ),
-              selected = c()
+              selected = c("damages_class_overview", "damages_meal", "damages_rest", "damages_rrop")
             ),
             checkboxGroupInput(
               "pdf_damages_class_col2",
@@ -1784,7 +1783,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
                 "Min Wage Damages" = "damages_min_wage",
                 "Unreimbursed Expenses" = "damages_expenses"
               ),
-              selected = c()
+              selected = c("damages_otc", "damages_unpaid_ot", "damages_min_wage", "damages_expenses")
             ),
             checkboxGroupInput(
               "pdf_damages_class_col3",
@@ -1793,7 +1792,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
                 "Wage Statement Penalties" = "damages_wsv",
                 "Waiting Time Penalties" = "damages_wt"
               ),
-              selected = c()
+              selected = c("damages_wsv", "damages_wt")
             )
           ),
           
@@ -1811,7 +1810,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
                 "Rest Periods" = "paga_rest",
                 "RROP" = "paga_rrop"
               ),
-              selected = c()
+              selected = c("paga_overview", "paga_meal", "paga_rest", "paga_rrop")
             ),
             checkboxGroupInput(
               "pdf_paga_col2",
@@ -1821,7 +1820,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
                 "Unpaid Wages (558)" = "paga_558",
                 "Min Wage (1197.1)" = "paga_min_wage"
               ),
-              selected = c()
+              selected = c("paga_226", "paga_558", "paga_min_wage")
             ),
             checkboxGroupInput(
               "pdf_paga_col3",
@@ -1831,7 +1830,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
                 "Recordkeeping (1174.1)" = "paga_recordkeeping",
                 "Waiting Time (203)" = "paga_waiting_time"
               ),
-              selected = c()
+              selected = c("paga_expenses", "paga_recordkeeping", "paga_waiting_time")
             )
           ),
           
@@ -1869,59 +1868,60 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       ))
     })
     
-    # PDF Select All button
-    observeEvent(input$pdf_select_all, {
-      # Time/Pay sections
-      all_choices_col1 <- c("overview", "time_summary", "time_shift_hours", "time_rounding")
-      all_choices_col2 <- c("meal_analysis", "meal_5hr", "meal_6hr", "rest_periods")
-      all_choices_col3 <- c("pay_summary", "pay_regular_rate", "pay_codes", "rate_type_analysis")
-      
-      # Damages - Class sections
-      all_damages_class_col1 <- c("damages_class_overview", "damages_meal", "damages_rest", "damages_rrop")
-      all_damages_class_col2 <- c("damages_otc", "damages_unpaid_ot", "damages_min_wage", "damages_expenses")
-      all_damages_class_col3 <- c("damages_wsv", "damages_wt")
-      
-      # PAGA sections
-      all_paga_col1 <- c("paga_overview", "paga_meal", "paga_rest", "paga_rrop")
-      all_paga_col2 <- c("paga_226", "paga_558", "paga_min_wage")
-      all_paga_col3 <- c("paga_expenses", "paga_recordkeeping", "paga_waiting_time")
-      
-      updateCheckboxGroupInput(session, "pdf_sections_col1", selected = all_choices_col1)
-      updateCheckboxGroupInput(session, "pdf_sections_col2", selected = all_choices_col2)
-      updateCheckboxGroupInput(session, "pdf_sections_col3", selected = all_choices_col3)
-      
-      updateCheckboxGroupInput(session, "pdf_damages_class_col1", selected = all_damages_class_col1)
-      updateCheckboxGroupInput(session, "pdf_damages_class_col2", selected = all_damages_class_col2)
-      updateCheckboxGroupInput(session, "pdf_damages_class_col3", selected = all_damages_class_col3)
-      
-      updateCheckboxGroupInput(session, "pdf_paga_col1", selected = all_paga_col1)
-      updateCheckboxGroupInput(session, "pdf_paga_col2", selected = all_paga_col2)
-      updateCheckboxGroupInput(session, "pdf_paga_col3", selected = all_paga_col3)
-      
-      updateCheckboxInput(session, "pdf_include_appendix", value = TRUE)
-      updateCheckboxInput(session, "pdf_include_data_comparison", value = TRUE)
-      updateCheckboxInput(session, "pdf_include_extrap", value = FALSE)
-      updateCheckboxInput(session, "pdf_include_assumptions", value = TRUE)
-    })
-    
-    # PDF Deselect All button
-    observeEvent(input$pdf_deselect_all, {
-      updateCheckboxGroupInput(session, "pdf_sections_col1", selected = character(0))
-      updateCheckboxGroupInput(session, "pdf_sections_col2", selected = character(0))
-      updateCheckboxGroupInput(session, "pdf_sections_col3", selected = character(0))
-      
-      updateCheckboxGroupInput(session, "pdf_damages_class_col1", selected = character(0))
-      updateCheckboxGroupInput(session, "pdf_damages_class_col2", selected = character(0))
-      updateCheckboxGroupInput(session, "pdf_damages_class_col3", selected = character(0))
-      
-      updateCheckboxGroupInput(session, "pdf_paga_col1", selected = character(0))
-      updateCheckboxGroupInput(session, "pdf_paga_col2", selected = character(0))
-      updateCheckboxGroupInput(session, "pdf_paga_col3", selected = character(0))
-      
-      updateCheckboxInput(session, "pdf_include_appendix", value = FALSE)
-      updateCheckboxInput(session, "pdf_include_data_comparison", value = FALSE)
-      updateCheckboxInput(session, "pdf_include_extrap", value = FALSE)
-      updateCheckboxInput(session, "pdf_include_assumptions", value = FALSE)
+    # PDF Toggle All checkbox
+    observeEvent(input$pdf_toggle_all, {
+      if (isTRUE(input$pdf_toggle_all)) {
+        # Select All
+        # Time/Pay sections
+        all_choices_col1 <- c("overview", "time_summary", "time_shift_hours", "time_rounding")
+        all_choices_col2 <- c("meal_analysis", "meal_5hr", "meal_6hr", "rest_periods")
+        all_choices_col3 <- c("pay_summary", "pay_regular_rate", "pay_codes", "rate_type_analysis")
+
+        # Damages - Class sections
+        all_damages_class_col1 <- c("damages_class_overview", "damages_meal", "damages_rest", "damages_rrop")
+        all_damages_class_col2 <- c("damages_otc", "damages_unpaid_ot", "damages_min_wage", "damages_expenses")
+        all_damages_class_col3 <- c("damages_wsv", "damages_wt")
+
+        # PAGA sections
+        all_paga_col1 <- c("paga_overview", "paga_meal", "paga_rest", "paga_rrop")
+        all_paga_col2 <- c("paga_226", "paga_558", "paga_min_wage")
+        all_paga_col3 <- c("paga_expenses", "paga_recordkeeping", "paga_waiting_time")
+
+        updateCheckboxGroupInput(session, "pdf_sections_col1", selected = all_choices_col1)
+        updateCheckboxGroupInput(session, "pdf_sections_col2", selected = all_choices_col2)
+        updateCheckboxGroupInput(session, "pdf_sections_col3", selected = all_choices_col3)
+
+        updateCheckboxGroupInput(session, "pdf_damages_class_col1", selected = all_damages_class_col1)
+        updateCheckboxGroupInput(session, "pdf_damages_class_col2", selected = all_damages_class_col2)
+        updateCheckboxGroupInput(session, "pdf_damages_class_col3", selected = all_damages_class_col3)
+
+        updateCheckboxGroupInput(session, "pdf_paga_col1", selected = all_paga_col1)
+        updateCheckboxGroupInput(session, "pdf_paga_col2", selected = all_paga_col2)
+        updateCheckboxGroupInput(session, "pdf_paga_col3", selected = all_paga_col3)
+
+        updateCheckboxInput(session, "pdf_include_appendix", value = FALSE)
+        updateCheckboxInput(session, "pdf_include_data_comparison", value = TRUE)
+        updateCheckboxInput(session, "pdf_include_extrap", value = FALSE)
+        updateCheckboxInput(session, "pdf_include_assumptions", value = TRUE)
+      } else {
+        # Deselect All
+        updateCheckboxGroupInput(session, "pdf_sections_col1", selected = character(0))
+        updateCheckboxGroupInput(session, "pdf_sections_col2", selected = character(0))
+        updateCheckboxGroupInput(session, "pdf_sections_col3", selected = character(0))
+
+        updateCheckboxGroupInput(session, "pdf_damages_class_col1", selected = character(0))
+        updateCheckboxGroupInput(session, "pdf_damages_class_col2", selected = character(0))
+        updateCheckboxGroupInput(session, "pdf_damages_class_col3", selected = character(0))
+
+        updateCheckboxGroupInput(session, "pdf_paga_col1", selected = character(0))
+        updateCheckboxGroupInput(session, "pdf_paga_col2", selected = character(0))
+        updateCheckboxGroupInput(session, "pdf_paga_col3", selected = character(0))
+
+        updateCheckboxInput(session, "pdf_include_appendix", value = FALSE)
+        updateCheckboxInput(session, "pdf_include_data_comparison", value = FALSE)
+        updateCheckboxInput(session, "pdf_include_extrap", value = FALSE)
+        updateCheckboxInput(session, "pdf_include_assumptions", value = FALSE)
+      }
     })
     
     observeEvent(input$pdf_download_clicked, {
