@@ -2432,12 +2432,6 @@ generate_random_sample <- function(
 #   - outputs: .xlsx files saved to <OUT_DIR>/prod (absolute) by default
 #   - headers: underscores -> spaces, Proper Case; Pay_/Class_ removed in pay/class exports
 
-# GENERATE RANDOM SAMPLE PRODUCTION FILES (if needed) ------------------------------------------------------------------------------
-#   - time/pay: filtered to sample + filtered to class_dmgs_start_date
-#   - class list: NEVER filtered (full class1), but includes Class_Anon_ID if you want it
-#   - outputs: .xlsx files saved to <OUT_DIR>/prod (absolute) by default
-#   - headers: underscores -> spaces, Proper Case; Pay_/Class_ removed in pay/class exports
-
 # Helper functions: Validate output fields + Prettify Excel headers
 
 validate_prod_fields <- function(dt, fields, dt_name = deparse(substitute(dt))) {
