@@ -236,12 +236,12 @@ generate_report <- function(
   damages_wt <- metric_groups[grepl("^Damages - Waiting Time Penalties", metric_groups)]
   damages_grand_total <- metric_groups[grepl("^Damages - Grand Total", metric_groups)]
   damages_credits <- metric_groups[grepl("^Damages - Credits or Offsets", metric_groups)]
-
+  
   # Damages - dynamically discover ALL detail groups (anything starting with "Damages - "
   # that is NOT an overview/penalty/total group)
   damages_overview_patterns <- c("Summary", "Principal", "Interest", "Sub-Total",
-                                  "Grand Total", "Credits or Offsets",
-                                  "Wage Statement Penalties", "Waiting Time Penalties")
+                                 "Grand Total", "Credits or Offsets",
+                                 "Wage Statement Penalties", "Waiting Time Penalties")
   all_damages_groups <- metric_groups[grepl("^Damages - ", metric_groups)]
   damages_detail_groups <- all_damages_groups[!sapply(all_damages_groups, function(g) {
     any(sapply(damages_overview_patterns, function(p) grepl(paste0("^Damages - ", p), g)))
@@ -249,10 +249,10 @@ generate_report <- function(
   # Get unique detail group names (e.g., "Damages - Meal Premiums", "Damages - Rest Premiums", etc.)
   damages_detail_unique <- unique(damages_detail_groups)
   message("  Dynamic damages detail groups found: ", paste(damages_detail_unique, collapse = ", "))
-
+  
   # PAGA - overview groups (fixed structure)
   paga_summary <- metric_groups[grepl("^PAGA - Summary$", metric_groups)]
-
+  
   # PAGA - dynamically discover ALL detail groups (anything starting with "PAGA - " that is NOT Summary)
   all_paga_groups <- metric_groups[grepl("^PAGA - ", metric_groups)]
   paga_detail_groups <- all_paga_groups[!grepl("^PAGA - Summary$", all_paga_groups)]
@@ -538,7 +538,7 @@ table.pay-code-table td:last-child { text-align: left; }
     damages_part1 <- c(damages_summary, damages_principal, damages_interest, damages_subtotal)
     # Part 2: Wage Statement Penalties, Waiting Time Penalties, Grand Total (new page)
     damages_part2 <- c(damages_wsv, damages_wt, damages_grand_total)
-
+    
     # Loop through selected class scenarios to avoid duplication
     for (scenario in local_class_scenarios) {
       scenario_label <- tools::toTitleCase(scenario)
@@ -554,14 +554,14 @@ table.pay-code-table td:last-child { text-align: left; }
         html <- paste0(html, add_tbl(part2, paste0("Class Damages (", scenario_label, ") - Penalties"), hide_years = TRUE))
       }
     }
-
+    
     # Dynamically render each damages detail group
     # For each unique detail group, check if it has scenario-specific rows (waivers/no waivers)
     # If so, render per-scenario; otherwise render once with no scenario filter
     for (detail_group in damages_detail_unique) {
       # Get the scenarios this group uses from metric_spec
       group_scenarios <- unique(metric_spec$scenario[metric_spec$metric_group == detail_group])
-
+      
       if (any(c("no waivers", "waivers") %in% group_scenarios)) {
         # Has scenario-specific rows - render only selected scenarios
         for (scenario in local_class_scenarios) {
@@ -581,11 +581,11 @@ table.pay-code-table td:last-child { text-align: left; }
   if ("paga" %in% local_sections) {
     # PAGA Summary - all scenarios together
     html <- paste0(html, add_section(paga_summary, "PAGA - Summary", hide_years = TRUE))
-
+    
     # Dynamically render each PAGA detail group
     for (detail_group in paga_detail_unique) {
       group_scenarios <- unique(metric_spec$scenario[metric_spec$metric_group == detail_group])
-
+      
       if (any(c("no waivers", "waivers") %in% group_scenarios)) {
         # Has scenario-specific rows - render only selected scenarios
         for (scenario in local_paga_scenarios) {
