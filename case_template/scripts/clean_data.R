@@ -62,10 +62,9 @@ source(file.path(ADS_SHARED, "scripts", "generate_pdf.R"), local = FALSE, chdir 
 cat("✓ ADS generate PDF loaded successfully\n\n")
 
 # Initialize logging system
-init_logging(
-  log_file_path = file.path(OUT_DIR, "analysis_log.txt"),
-  case_name = "ADS Case Analysis"  # Will be updated with actual case name below
-)
+init_logging(log_file_path = file.path(OUT_DIR, "Logs", "Case_Log.txt"),
+             case_name = "Clean Data",
+             append = FALSE)
 
 
 # ----- ALL DATA:   Case configuration --------------------------
@@ -1056,9 +1055,5 @@ write_csv_and_rds(
 end.time <- Sys.time()
 duration <- difftime(end.time, start.time, units = "secs")
 
-log_msg(paste("Data cleaning completed successfully in", round(as.numeric(duration), 1), "seconds"), "SUCCESS")
 log_msg("Next step: Run analysis.R to generate metrics and damages calculations", "INFO")
-
 finalize_logging()
-end.time <- Sys.time()
-end.time - start.time  

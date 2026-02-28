@@ -49,6 +49,7 @@ generate_report <- function(
     output_file = NULL,
     sections = c("time", "pay", "class", "paga", "analysis"),
     include_extrap = FALSE,
+    include_credits = TRUE,
     include_appendix = FALSE,
     include_data_comparison = FALSE,
     include_assumptions = TRUE,
@@ -92,6 +93,7 @@ generate_report <- function(
   cat("==================================================\n")
   cat("Sections:", paste(local_sections, collapse = ", "), "\n")
   cat("Include Extrapolation:", include_extrap, "\n")
+  cat("Include Credits:", include_credits, "\n")
   cat("Include Appendix:", include_appendix, "\n")
   cat("Include Data Comparison:", include_data_comparison, "\n")
   cat("==================================================\n\n")
@@ -324,12 +326,24 @@ generate_report <- function(
     }
     
     if (nrow(dt) == 0) return(data.table())
-    
-    # Remove metric_group and scenario columns for display, rename metric_label to Metric
-    display_cols <- setdiff(names(dt), c("metric_group", "scenario"))
+
+    # Filter out credit-adjusted rows when include_credits = FALSE
+    if (!include_credits) {
+      if ("meal_rest_prems_credit" %in% names(dt)) {
+        dt <- dt[is.na(meal_rest_prems_credit) | meal_rest_prems_credit != TRUE]
+      }
+      if ("other_credit" %in% names(dt)) {
+        dt <- dt[is.na(other_credit) | other_credit != TRUE]
+      }
+    }
+    if (nrow(dt) == 0) return(data.table())
+
+    # Remove metadata columns: metric_group, scenario, credit flags
+    credit_flag_cols <- intersect(c("meal_rest_prems_credit", "other_credit"), names(dt))
+    display_cols <- setdiff(names(dt), c("metric_group", "scenario", credit_flag_cols))
     dt <- dt[, ..display_cols]
     if ("metric_label" %in% names(dt)) setnames(dt, "metric_label", "Metric")
-    
+
     dt
   }
   
