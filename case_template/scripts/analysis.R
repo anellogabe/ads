@@ -4344,6 +4344,9 @@ end.time <- Sys.time()
 duration <- difftime(end.time, start.time, units = "secs")
 finalize_logging()
 
+# Finalize logging and create summary
+end.time <- Sys.time()
+duration <- difftime(end.time, start.time, units = "secs")
 
 # ----- ALL DATA:                Generate PDF report -------------------------------------------------------------
 
