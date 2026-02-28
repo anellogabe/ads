@@ -99,12 +99,7 @@ finalize_logging <- function() {
         error = function(e) warning("Failed to save log summary RDS: ", e$message)
       )
 
-      sink()
-    }
-
-    # Stop sink if active
-    if (!is.null(.ads_log_env$log_file)) {
-      sink()
+      if (sink.number() > 0) sink()
     }
   }
   
