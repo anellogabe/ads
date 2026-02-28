@@ -54,6 +54,10 @@ message("✓ loaded processed data from: ", PROCESSED_DIR)
 #   all.x = TRUE
 # )
 
+init_logging(log_file_path = file.path(OUT_DIR, "Logs", "Case_Log.txt"),
+             case_name = "Analysis",
+             append = TRUE)
+
 
 # ----- ALL DATA:                DEV only - test subset of data (if needed) --------------------------
 
@@ -2666,11 +2670,71 @@ fix_rate_with_ca_min(pp_data1, "RROP")
 # Ensure RROP always as much or more than Base_Rate
 pp_data1[, RROP := pmax(RROP, Base_Rate, na.rm = TRUE)]
 
-# Pay and time hours worked comparison
-pp_data1[, pay_hours_less_pp_shift_hrs := fifelse(is.na(Pay_Hours) | is.na(pp_shift_hrs) | Pay_Hours == 0 | pp_shift_hrs == 0, NA_real_,
-                                                  round(Pay_Hours - pp_shift_hrs, 2))]
-pp_data1[, pay_hours_less_pp_Hours := fifelse(is.na(Pay_Hours) | is.na(pp_Hours) | Pay_Hours == 0 | pp_Hours == 0, NA_real_,
-                                              round(Pay_Hours - pp_Hours, 2))]
+# --- Pay period level hours analysis (pay period level rounding analysis) ----
+pp_data1[, pp_hrs_wkd_less_pp_shift_hrs :=
+           fifelse(is.na(pp_Hrs_Wkd) | is.na(pp_shift_hrs) | pp_Hrs_Wkd == 0 | pp_shift_hrs == 0,
+                   NA_real_,
+                   round(pp_Hrs_Wkd - pp_shift_hrs, 2))
+]
+
+pp_data1[, pp_hrs_wkd_less_pp_Hours :=
+           fifelse(is.na(pp_Hrs_Wkd) | is.na(pp_Hours) | pp_Hrs_Wkd == 0 | pp_Hours == 0,
+                   NA_real_,
+                   round(pp_Hrs_Wkd - pp_Hours, 2))
+]
+
+pp_data1[, pp_Hours_less_pp_shift_hrs :=
+           fifelse(is.na(pp_Hours) | is.na(pp_shift_hrs) | pp_Hours == 0 | pp_shift_hrs == 0,
+                   NA_real_,
+                   round(pp_Hours - pp_shift_hrs, 2))
+]
+
+# Max and min time and pay data comparison thresholds (pay period level)
+punches_per_shift <- 4L
+pp_lvl_hrs_max_threshold <- fifelse(
+  mode_days_btwn_pay_period_ends > 7,
+  punches_per_shift * 14 * (7/60),
+  punches_per_shift * 7  * (7/60)
+)
+
+pp_lvl_hrs_min_threshold <- (1/60) # One minute by default (<1 min. de minimis)
+
+pp_data1[, pp_hrs_wkd_less_pp_shift_hrs :=
+           fifelse(is.na(pp_hrs_wkd_less_pp_shift_hrs), NA_real_,
+                   fifelse(abs(pp_hrs_wkd_less_pp_shift_hrs) < pp_lvl_hrs_min_threshold, 0, pp_hrs_wkd_less_pp_shift_hrs))
+]
+
+pp_data1[, pp_hrs_wkd_less_pp_Hours :=
+           fifelse(is.na(pp_hrs_wkd_less_pp_Hours), NA_real_,
+                   fifelse(abs(pp_hrs_wkd_less_pp_Hours) < pp_lvl_hrs_min_threshold, 0, pp_hrs_wkd_less_pp_Hours))
+]
+
+pp_data1[, pp_Hours_less_pp_shift_hrs :=
+           fifelse(is.na(pp_Hours_less_pp_shift_hrs), NA_real_,
+                   fifelse(abs(pp_Hours_less_pp_shift_hrs) < pp_lvl_hrs_min_threshold, 0, pp_Hours_less_pp_shift_hrs))
+]
+
+pp_data1[, pp_lvl_diff :=
+           fifelse(is.na(pp_hrs_wkd_less_pp_shift_hrs) | abs(pp_hrs_wkd_less_pp_shift_hrs) > pp_lvl_hrs_max_threshold,
+                   NA_real_,
+                   pp_hrs_wkd_less_pp_shift_hrs)
+]
+
+# Lost/gained/match (pay period level)
+pp_data1[, pp_lvl_hrs_lost   := fifelse(is.na(pp_lvl_diff), NA_real_, fifelse(pp_lvl_diff > 0, 0, pp_lvl_diff))]
+pp_data1[, pp_lvl_hrs_gained := fifelse(is.na(pp_lvl_diff), NA_real_, fifelse(pp_lvl_diff < 0, 0, pp_lvl_diff))]
+pp_data1[, pp_lvl_hrs_match  := fifelse(is.na(pp_lvl_diff), NA_integer_, fifelse(pp_lvl_diff == 0, 1L, 0L))]
+
+# Employee-level totals (retain sign, repeat per row by ID)
+pp_data1[, ee_lvl_hrs_diff := fifelse(
+  all(is.na(pp_lvl_diff)), NA_real_, sum(pp_lvl_diff, na.rm = TRUE)
+), by = ID]
+
+pp_data1[, `:=`(
+  ee_lvl_net_loss    = fifelse(is.na(ee_lvl_hrs_diff), NA_integer_, fifelse(ee_lvl_hrs_diff < 0, 1L, 0L)),
+  ee_lvl_net_gain    = fifelse(is.na(ee_lvl_hrs_diff), NA_integer_, fifelse(ee_lvl_hrs_diff > 0, 1L, 0L)),
+  ee_lvl_net_neutral = fifelse(is.na(ee_lvl_hrs_diff), NA_integer_, fifelse(ee_lvl_hrs_diff == 0, 1L, 0L))
+)]
 
 
 # ----- ALL DATA (BY PP):        Principal damages -----------------------------------------
@@ -3642,6 +3706,10 @@ sum_fields_default <- c(
   "Gross_Overpayment", "Gross_rrop_dmgs", "Net_Overpayment", "Net_rrop_dmgs",
   "rrop_any_underpayment", "rrop_net_underpayment",
   
+  # --- Pay period level hours analysis and rounding ---
+  "pp_lvl_diff", "pp_lvl_hrs_lost", "pp_lvl_hrs_gained", "pp_lvl_hrs_match", 
+  "pp_hrs_wkd_less_pp_shift_hrs", "pp_hrs_wkd_less_pp_Hours",
+
   # --- Other damages ---
   "otc_dmgs", 
   "unreimb_exp_dmgs",
@@ -4274,13 +4342,11 @@ export_metrics(final_table, base_name = "Analysis")
 # Finalize logging and create summary
 end.time <- Sys.time()
 duration <- difftime(end.time, start.time, units = "secs")
-
-log_msg(paste("Data cleaning completed successfully in", round(as.numeric(duration), 1), "seconds"), "SUCCESS")
-
 finalize_logging()
-end.time <- Sys.time()
-end.time - start.time  
 
+# Finalize logging and create summary
+end.time <- Sys.time()
+duration <- difftime(end.time, start.time, units = "secs")
 
 # ----- ALL DATA:                Generate PDF report -------------------------------------------------------------
 
