@@ -72,7 +72,8 @@ finalize_logging <- function() {
     cat("Duration:", sprintf("%.1f seconds (%.2f minutes)", as.numeric(duration), as.numeric(duration)/60), "\n")
     cat("================================================================================\n")
     
-    # Create structured summary RDS (unique per step) — must happen before sink()
+    # Create structured summary RDS (unique per step), then close sink.
+    # sink() is called unconditionally so it always runs even if saveRDS fails.
     if (!is.null(.ads_log_env$log_file)) {
       safe_step <- gsub("[^A-Za-z0-9]+", "_", .ads_log_env$case_name)
       summary_file <- sub("\\.txt$", paste0("_", safe_step, "_summary.rds"), .ads_log_env$log_file)
@@ -90,12 +91,14 @@ finalize_logging <- function() {
         n_assumptions = sum(vapply(.ads_log_env$messages, function(m) m$category == "ASSUMPTION", logical(1)))
       )
 
-      saveRDS(summary, summary_file)
-      cat("\n✓ Log summary saved:", summary_file, "\n")
-    }
+      tryCatch(
+        {
+          saveRDS(summary, summary_file)
+          cat("\n✓ Log summary saved:", summary_file, "\n")
+        },
+        error = function(e) warning("Failed to save log summary RDS: ", e$message)
+      )
 
-    # Stop sink if active
-    if (!is.null(.ads_log_env$log_file)) {
       sink()
     }
   }
