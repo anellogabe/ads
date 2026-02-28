@@ -434,18 +434,25 @@ calculate_group_metrics <- function(data_list, spec, group_names, filters = list
 #' @param group_names Vector of metric_group names to include
 #' @param include_years Logical - whether to include year columns (TRUE for most, FALSE for Damages/PAGA)
 #' @return data.table formatted for display with Metric column
-pipeline_to_display_format <- function(pipeline_results, group_names = NULL, include_years = TRUE) {
+pipeline_to_display_format <- function(pipeline_results, group_names = NULL, include_years = TRUE, scenario_filter = NULL) {
   if (is.null(pipeline_results) || nrow(pipeline_results) == 0) return(data.table())
-  
+
   # Filter by metric groups if specified
   dt <- if (!is.null(group_names) && length(group_names) > 0) {
     pipeline_results[metric_group %in% group_names]
   } else {
     copy(pipeline_results)
   }
-  
+
   if (nrow(dt) == 0) return(data.table())
-  
+
+  # Filter by scenario if specified and scenario column exists
+  if (!is.null(scenario_filter) && "scenario" %in% names(dt)) {
+    dt <- dt[is.na(scenario) | scenario == "" | scenario %in% scenario_filter]
+  }
+
+  if (nrow(dt) == 0) return(data.table())
+
   # Format the results table
   formatted <- format_metrics_table(dt)
   
@@ -2546,37 +2553,37 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     
     output$table_meal_5hr_consolidated <- renderDT({
       results <- display_results()
-      display <- pipeline_to_display_format(results, time_meal_violations_5_summary, include_years = TRUE)
+      display <- pipeline_to_display_format(results, time_meal_violations_5_summary, include_years = TRUE, scenario_filter = "no waivers")
       create_dt_table(display)
     })
-    
+
     output$table_meal_5hr_short_details <- renderDT({
       results <- display_results()
-      display <- pipeline_to_display_format(results, time_meal_violations_5_short, include_years = TRUE)
+      display <- pipeline_to_display_format(results, time_meal_violations_5_short, include_years = TRUE, scenario_filter = "no waivers")
       create_dt_table(display)
     })
-    
+
     output$table_meal_5hr_late_details <- renderDT({
       results <- display_results()
-      display <- pipeline_to_display_format(results, time_meal_violations_5_late, include_years = TRUE)
+      display <- pipeline_to_display_format(results, time_meal_violations_5_late, include_years = TRUE, scenario_filter = "no waivers")
       create_dt_table(display)
     })
-    
+
     output$table_meal_6hr_consolidated <- renderDT({
       results <- display_results()
-      display <- pipeline_to_display_format(results, time_meal_violations_6_summary, include_years = TRUE)
+      display <- pipeline_to_display_format(results, time_meal_violations_6_summary, include_years = TRUE, scenario_filter = "waivers")
       create_dt_table(display)
     })
-    
+
     output$table_meal_6hr_short_details <- renderDT({
       results <- display_results()
-      display <- pipeline_to_display_format(results, time_meal_violations_6_short, include_years = TRUE)
+      display <- pipeline_to_display_format(results, time_meal_violations_6_short, include_years = TRUE, scenario_filter = "waivers")
       create_dt_table(display)
     })
-    
+
     output$table_meal_6hr_late_details <- renderDT({
       results <- display_results()
-      display <- pipeline_to_display_format(results, time_meal_violations_6_late, include_years = TRUE)
+      display <- pipeline_to_display_format(results, time_meal_violations_6_late, include_years = TRUE, scenario_filter = "waivers")
       create_dt_table(display)
     })
     
