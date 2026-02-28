@@ -101,6 +101,11 @@ finalize_logging <- function() {
 
       sink()
     }
+
+    # Stop sink if active
+    if (!is.null(.ads_log_env$log_file)) {
+      sink()
+    }
   }
   
   invisible(.ads_log_env$messages)
