@@ -248,7 +248,7 @@ ot_pay_codes      <- c("overtime", "over time", "ot straight", "ovt", "ot premiu
 dt_pay_codes      <- c("double", "dt")
 bon_pay_codes     <- c("comm", "bon", "spiff", "award", "awd", "bns")
 meal_pay_codes    <- c("meal", "brkm", "camp")
-rest_pay_codes    <- c("rest", "brkr", "")
+rest_pay_codes    <- c("rest", "brkr")
 diff_pay_codes    <- c("diff")
 diff_ot_pay_codes <- c("DO NOT USE THIS")
 diff_dt_pay_codes <- c("DO NOT USE THIS")
@@ -4254,6 +4254,10 @@ if (!file.exists(metrics_spec_path)) stop("Missing metrics_spec.csv at: ", metri
 metrics_spec <- fread(metrics_spec_path)
 setDT(metrics_spec)
 
+if (!"metric_order" %in% names(metrics_spec)) {
+  metrics_spec[, metric_order := .I]
+}
+
 metrics_spec[, metric_type := fcase(
   grepl("date", metric_label, ignore.case = TRUE), "date",
   grepl("percent", metric_label, ignore.case = TRUE), "percent",
@@ -4343,10 +4347,6 @@ export_metrics(final_table, base_name = "Analysis")
 end.time <- Sys.time()
 duration <- difftime(end.time, start.time, units = "secs")
 finalize_logging()
-
-# Finalize logging and create summary
-end.time <- Sys.time()
-duration <- difftime(end.time, start.time, units = "secs")
 
 # ----- ALL DATA:                Generate PDF report -------------------------------------------------------------
 

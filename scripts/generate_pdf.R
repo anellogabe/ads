@@ -55,8 +55,15 @@ generate_report <- function(
     include_assumptions = TRUE,
     class_scenarios = c("no waivers", "waivers"),
     paga_scenarios = c("no waivers", "waivers"),
+    # Granular subsection control: character vector of checkbox keys from the PDF
+    # modal (e.g. c("time_summary", "meal_analysis", ...)). NULL means include all.
+    selected_subsections = NULL,
     verbose = TRUE
 ) {
+
+  # Helper: returns TRUE if a specific subsection key is enabled.
+  # When selected_subsections is NULL every subsection is included.
+  include_sub <- function(key) is.null(selected_subsections) || key %in% selected_subsections
 
   local_sections <- sections
   local_class_scenarios <- class_scenarios
@@ -327,11 +334,10 @@ generate_report <- function(
     
     if (nrow(dt) == 0) return(data.table())
 
-    # Filter out credit-adjusted rows when include_credits = FALSE
+    # Filter out other-credit rows when include_credits = FALSE.
+    # Only other_credit == TRUE rows are removed; meal_rest_prems_credit rows
+    # (less-premiums variants) are always retained.
     if (!include_credits) {
-      if ("meal_rest_prems_credit" %in% names(dt)) {
-        dt <- dt[is.na(meal_rest_prems_credit) | meal_rest_prems_credit != TRUE]
-      }
       if ("other_credit" %in% names(dt)) {
         dt <- dt[is.na(other_credit) | other_credit != TRUE]
       }
@@ -483,16 +489,15 @@ table.pay-code-table td:last-child { text-align: left; }
   }
   
   # ----- SUMMARY - TIME & PAY -----
-  if ("time" %in% local_sections) {
+  if ("time" %in% local_sections && include_sub("time_summary")) {
     html <- paste0(html, add_section(time_summary, "Summary - Time Data"))
   }
-  if ("pay" %in% local_sections) {
+  if ("pay" %in% local_sections && include_sub("pay_summary")) {
     html <- paste0(html, add_section(pay_summary, "Summary - Pay Data"))
   }
-  
+
   # ----- MEAL PERIOD ANALYSIS (merged into one page) -----
-  if ("time" %in% local_sections) {
-    # Combine all meal analysis groups into one table
+  if ("time" %in% local_sections && include_sub("meal_analysis")) {
     all_meal_analysis <- c(meal_analysis, meal_analysis_punches, meal_analysis_punches_rounded, meal_analysis_no_punches)
     if (length(all_meal_analysis) > 0) {
       meal_data <- get_group_data(all_meal_analysis)
@@ -501,22 +506,31 @@ table.pay-code-table td:last-child { text-align: left; }
         html <- paste0(html, add_tbl(meal_data, "Meal Period Analysis"))
       }
     }
-    
-    # ----- MEAL PERIOD VIOLATIONS (split by waiver scenario) -----
+  }
+
+  # ----- MEAL PERIOD VIOLATIONS (split by waiver scenario) -----
+  if ("time" %in% local_sections) {
     # No Waivers
-    html <- paste0(html, add_section(meal_violations_summary, "Meal Period Violations (No Waivers)", "no waivers"))
-    html <- paste0(html, add_section(meal_violations_late, "Meal Period Violations - Late Detail (No Waivers)", "no waivers", compact = TRUE))
-    html <- paste0(html, add_section(meal_violations_short, "Meal Period Violations - Short Detail (No Waivers)", "no waivers", compact = TRUE))
-    
+    if (include_sub("meal_violations_no_waivers")) {
+      html <- paste0(html, add_section(meal_violations_summary, "Meal Period Violations (No Waivers)", "no waivers"))
+      html <- paste0(html, add_section(meal_violations_late, "Meal Period Violations - Late Detail (No Waivers)", "no waivers", compact = TRUE))
+      html <- paste0(html, add_section(meal_violations_short, "Meal Period Violations - Short Detail (No Waivers)", "no waivers", compact = TRUE))
+    }
     # Waivers
-    html <- paste0(html, add_section(meal_violations_summary, "Meal Period Violations (Waivers)", "waivers"))
-    html <- paste0(html, add_section(meal_violations_late, "Meal Period Violations - Late Detail (Waivers)", "waivers", compact = TRUE))
-    html <- paste0(html, add_section(meal_violations_short, "Meal Period Violations - Short Detail (Waivers)", "waivers", compact = TRUE))
-    
-    # ----- REST PERIOD ANALYSIS -----
+    if (include_sub("meal_violations_waivers")) {
+      html <- paste0(html, add_section(meal_violations_summary, "Meal Period Violations (Waivers)", "waivers"))
+      html <- paste0(html, add_section(meal_violations_late, "Meal Period Violations - Late Detail (Waivers)", "waivers", compact = TRUE))
+      html <- paste0(html, add_section(meal_violations_short, "Meal Period Violations - Short Detail (Waivers)", "waivers", compact = TRUE))
+    }
+  }
+
+  # ----- REST PERIOD ANALYSIS -----
+  if ("time" %in% local_sections && include_sub("rest_analysis")) {
     html <- paste0(html, add_section(rest_analysis, "Rest Period Analysis & Violations"))
-    
-    # ----- SHIFT HOURS ANALYSIS (all levels combined into one page) -----
+  }
+
+  # ----- SHIFT HOURS ANALYSIS (all levels combined into one page) -----
+  if ("time" %in% local_sections && include_sub("shift_hours")) {
     all_shift_groups <- c(shift_employee, shift_shift, shift_week, shift_pp, shift_total)
     if (length(all_shift_groups) > 0) {
       shift_data <- get_group_data(all_shift_groups)
@@ -525,10 +539,12 @@ table.pay-code-table td:last-child { text-align: left; }
         html <- paste0(html, add_tbl(shift_data, "Shift Hours Analysis"))
       }
     }
-    
-    # ----- TIME PUNCH ROUNDING (all levels combined into one page) -----
-    all_rounding_groups <- c(rounding_employee, rounding_shift, rounding_week, rounding_pp, 
-                             rounding_preshift_in, rounding_detail_preshift, rounding_detail_midshift_out, 
+  }
+
+  # ----- TIME PUNCH ROUNDING (all levels combined into one page) -----
+  if ("time" %in% local_sections && include_sub("time_rounding")) {
+    all_rounding_groups <- c(rounding_employee, rounding_shift, rounding_week, rounding_pp,
+                             rounding_preshift_in, rounding_detail_preshift, rounding_detail_midshift_out,
                              rounding_detail_midshift_in, rounding_detail_postshift, rounding_total)
     if (length(all_rounding_groups) > 0) {
       rounding_data <- get_group_data(all_rounding_groups)
@@ -538,12 +554,12 @@ table.pay-code-table td:last-child { text-align: left; }
       }
     }
   }
-  
+
   # ----- REGULAR RATE (split by Bonuses, Differentials, RROP) -----
   if ("pay" %in% local_sections) {
-    html <- paste0(html, add_section(regular_rate_bonuses, "Regular Rate - Bonuses"))
-    html <- paste0(html, add_section(regular_rate_differentials, "Regular Rate - Differentials"))
-    html <- paste0(html, add_section(regular_rate_rrop, "Regular Rate - RROP"))
+    if (include_sub("regular_rate_bonuses"))      html <- paste0(html, add_section(regular_rate_bonuses, "Regular Rate - Bonuses"))
+    if (include_sub("regular_rate_differentials")) html <- paste0(html, add_section(regular_rate_differentials, "Regular Rate - Differentials"))
+    if (include_sub("regular_rate_rrop"))          html <- paste0(html, add_section(regular_rate_rrop, "Regular Rate - RROP"))
   }
   
   # ----- CLASS DAMAGES -----
@@ -552,12 +568,14 @@ table.pay-code-table td:last-child { text-align: left; }
     damages_part1 <- c(damages_summary, damages_principal, damages_interest, damages_subtotal)
     # Part 2: Wage Statement Penalties, Waiting Time Penalties, Grand Total (new page)
     damages_part2 <- c(damages_wsv, damages_wt, damages_grand_total)
-    
+
     # Loop through selected class scenarios to avoid duplication
     for (scenario in local_class_scenarios) {
       scenario_label <- tools::toTitleCase(scenario)
-      progress(paste0("Class Damages (", scenario_label, ")"))
+      sub_key <- paste0("class_damages_", gsub(" ", "_", scenario))  # e.g. "class_damages_no_waivers"
+      if (!include_sub(sub_key)) next
 
+      progress(paste0("Class Damages (", scenario_label, ")"))
       part1 <- get_group_data(damages_part1, scenario)
       part2 <- get_group_data(damages_part2, scenario)
 
@@ -568,57 +586,73 @@ table.pay-code-table td:last-child { text-align: left; }
         html <- paste0(html, add_tbl(part2, paste0("Class Damages (", scenario_label, ") - Penalties"), hide_years = TRUE))
       }
     }
-    
+
     # Dynamically render each damages detail group
     # For each unique detail group, check if it has scenario-specific rows (waivers/no waivers)
     # If so, render per-scenario; otherwise render once with no scenario filter
     for (detail_group in damages_detail_unique) {
-      # Get the scenarios this group uses from metric_spec
       group_scenarios <- unique(metric_spec$scenario[metric_spec$metric_group == detail_group])
-      
+
       if (any(c("no waivers", "waivers") %in% group_scenarios)) {
         # Has scenario-specific rows - render only selected scenarios
         for (scenario in local_class_scenarios) {
           if (scenario %in% group_scenarios) {
+            # Build a checkbox key for this detail group + scenario
+            safe_group <- tolower(gsub("[^a-z0-9]+", "_", sub("^Damages - ", "", detail_group)))
+            sub_key <- paste0("damages_", safe_group, "_", gsub(" ", "_", scenario))
+            if (!include_sub(sub_key)) next
             scenario_label <- tools::toTitleCase(scenario)
             html <- paste0(html, add_section(detail_group, paste0(detail_group, " (", scenario_label, ")"), scenario, hide_years = TRUE))
           }
         }
       } else {
-        # No scenario split (uses "all") - render once
+        # No scenario split (uses "all") - build a generic key
+        safe_group <- tolower(gsub("[^a-z0-9]+", "_", sub("^Damages - ", "", detail_group)))
+        sub_key <- paste0("damages_", safe_group)
+        if (!include_sub(sub_key)) next
         html <- paste0(html, add_section(detail_group, detail_group, hide_years = TRUE))
       }
     }
   }
-  
+
   # ----- PAGA PENALTIES -----
   if ("paga" %in% local_sections) {
     # PAGA Summary - all scenarios together
-    html <- paste0(html, add_section(paga_summary, "PAGA - Summary", hide_years = TRUE))
-    
+    if (include_sub("paga_summary")) {
+      html <- paste0(html, add_section(paga_summary, "PAGA - Summary", hide_years = TRUE))
+    }
+
     # Dynamically render each PAGA detail group
     for (detail_group in paga_detail_unique) {
       group_scenarios <- unique(metric_spec$scenario[metric_spec$metric_group == detail_group])
-      
+
       if (any(c("no waivers", "waivers") %in% group_scenarios)) {
-        # Has scenario-specific rows - render only selected scenarios
         for (scenario in local_paga_scenarios) {
           if (scenario %in% group_scenarios) {
+            safe_group <- tolower(gsub("[^a-z0-9]+", "_", sub("^PAGA - ", "", detail_group)))
+            sub_key <- paste0("paga_", safe_group, "_", gsub(" ", "_", scenario))
+            if (!include_sub(sub_key)) next
             scenario_label <- tools::toTitleCase(scenario)
             html <- paste0(html, add_section(detail_group, paste0(detail_group, " (", scenario_label, ")"), scenario, hide_years = TRUE))
           }
         }
       } else {
-        # No scenario split (uses "all") - render once
+        safe_group <- tolower(gsub("[^a-z0-9]+", "_", sub("^PAGA - ", "", detail_group)))
+        sub_key <- paste0("paga_", safe_group)
+        if (!include_sub(sub_key)) next
         html <- paste0(html, add_section(detail_group, detail_group, hide_years = TRUE))
       }
     }
   }
-  
+
   # ANALYSIS - use compact styling
   if ("analysis" %in% local_sections) {
-    if (!is.null(analysis_tables$pay_code_summary) && nrow(analysis_tables$pay_code_summary) > 0) { progress("Pay Codes"); html <- paste0(html, add_simple_tbl(analysis_tables$pay_code_summary, "Pay Analysis - Pay Codes", compact = TRUE, extra_class = "pay-code-table")) }
-    if (!is.null(analysis_tables$rate_type_analysis) && nrow(analysis_tables$rate_type_analysis) > 0) { progress("Rate Type"); html <- paste0(html, add_simple_tbl(analysis_tables$rate_type_analysis, "Pay Analysis - Rate Type", compact = TRUE, extra_class = "pay-code-table")) }
+    if (include_sub("pay_codes") && !is.null(analysis_tables$pay_code_summary) && nrow(analysis_tables$pay_code_summary) > 0) {
+      progress("Pay Codes"); html <- paste0(html, add_simple_tbl(analysis_tables$pay_code_summary, "Pay Analysis - Pay Codes", compact = TRUE, extra_class = "pay-code-table"))
+    }
+    if (include_sub("rate_type_analysis") && !is.null(analysis_tables$rate_type_analysis) && nrow(analysis_tables$rate_type_analysis) > 0) {
+      progress("Rate Type"); html <- paste0(html, add_simple_tbl(analysis_tables$rate_type_analysis, "Pay Analysis - Rate Type", compact = TRUE, extra_class = "pay-code-table"))
+    }
   }
   
   # APPENDIX - Distribution tables only (Shift Hours Analysis is now in main TIME section)
@@ -636,16 +670,38 @@ table.pay-code-table td:last-child { text-align: left; }
     progress("Adding Notes & Assumptions")
     
     # Get parameter values with robust defaults
-    shift_hrs_cutoff <- tryCatch(if (exists("shift_hrs_cutoff", inherits = TRUE)) get("shift_hrs_cutoff") else 7, error = function(e) 7)
-    rrop_buffer <- tryCatch(if (exists("rrop_buffer", inherits = TRUE)) get("rrop_buffer") else 0.05, error = function(e) 0.05)
-    min_ot_buffer <- tryCatch(if (exists("min_ot_buffer", inherits = TRUE)) get("min_ot_buffer") else 0.25, error = function(e) 0.25)
-    max_ot_buffer <- tryCatch(if (exists("max_ot_buffer", inherits = TRUE)) get("max_ot_buffer") else 20, error = function(e) 20)
-    annual_interest_rate <- tryCatch(if (exists("annual_interest_rate", inherits = TRUE)) get("annual_interest_rate") else 0.07, error = function(e) 0.07)
-    initial_pp_penalty <- tryCatch(if (exists("initial_pp_penalty", inherits = TRUE)) get("initial_pp_penalty") else 100, error = function(e) 100)
-    subsequent_pp_penalty <- tryCatch(if (exists("subsequent_pp_penalty", inherits = TRUE)) get("subsequent_pp_penalty") else 100, error = function(e) 100)
-    initial_pp_penalty_226 <- tryCatch(if (exists("initial_pp_penalty_226", inherits = TRUE)) get("initial_pp_penalty_226") else 250, error = function(e) 250)
-    subsequent_pp_penalty_226 <- tryCatch(if (exists("subsequent_pp_penalty_226", inherits = TRUE)) get("subsequent_pp_penalty_226") else 250, error = function(e) 250)
-    
+    get_param <- function(nm, default) tryCatch(if (exists(nm, inherits = TRUE)) get(nm, inherits = TRUE) else default, error = function(e) default)
+
+    shift_hrs_cutoff          <- get_param("shift_hrs_cutoff",          7)
+    rrop_buffer               <- get_param("rrop_buffer",               0.05)
+    min_ot_buffer             <- get_param("min_ot_buffer",             0.25)
+    max_ot_buffer             <- get_param("max_ot_buffer",             20)
+    annual_interest_rate      <- get_param("annual_interest_rate",      0.07)
+    initial_pp_penalty        <- get_param("initial_pp_penalty",        100)
+    subsequent_pp_penalty     <- get_param("subsequent_pp_penalty",     100)
+    initial_pp_penalty_226    <- get_param("initial_pp_penalty_226",    250)
+    subsequent_pp_penalty_226 <- get_param("subsequent_pp_penalty_226", 250)
+    initial_pp_penalty_558    <- get_param("initial_pp_penalty_558",    100)
+    subsequent_pp_penalty_558 <- get_param("subsequent_pp_penalty_558", 100)
+    penalty_1174              <- get_param("penalty_1174",              500)
+
+    # Meal & Rest period thresholds
+    meal_1_threshold_no_waiver <- get_param("meal_1_threshold_no_waiver", 5)
+    meal_2_threshold_no_waiver <- get_param("meal_2_threshold_no_waiver", 10)
+    meal_1_threshold_waiver    <- get_param("meal_1_threshold_waiver",    6)
+    meal_2_threshold_waiver    <- get_param("meal_2_threshold_waiver",    12)
+    rest_threshold             <- get_param("rest_threshold",             3.5)
+    meal_min_hrs               <- get_param("meal_min_hrs",               0.49)
+    meal_buffer                <- get_param("meal_buffer",                0.01)
+
+    # Wage Statement Violation penalty amounts
+    wsv_initial_penalty    <- get_param("wsv_initial_penalty",    50)
+    wsv_subsequent_penalty <- get_param("wsv_subsequent_penalty", 100)
+    wsv_cap                <- get_param("wsv_cap",                4000)
+
+    # Waiting Time penalty period (days)
+    wt_max_days <- get_param("wt_max_days", 30)
+
     assumptions_html <- tryCatch({
       paste0('
 <div class="page-break"></div>
@@ -658,21 +714,21 @@ table.pay-code-table td:last-child { text-align: left; }
     <li><strong>Pay Records:</strong> Pay data is matched to time data by employee ID and period end date.</li>
   </ul>
 
-  <h3>Meal & Rest Period Violations</h3>
+  <h3>Meal &amp; Rest Period Violations</h3>
   <ul>
-    <li><strong>Meal Period Timing (No Waivers):</strong> First meal must start by end of 5th hour. Second meal required for shifts > 10 hours.</li>
-    <li><strong>Meal Period Timing (Waivers):</strong> First meal may be delayed to end of 6th hour. Second meal > 12 hours.</li>
-    <li><strong>Meal Period Duration:</strong> Minimum 30 minutes (0.49 hours) required. 0.01 hour buffer applied.</li>
-    <li><strong>Rest Period Eligibility:</strong> One 10-minute rest period required for shifts > 3.5 hours.</li>
+    <li><strong>Meal Period Timing (No Waivers):</strong> First meal must start by end of ', meal_1_threshold_no_waiver, 'th hour (shift_hrs &gt; ', meal_1_threshold_no_waiver + 0.01, '). Second meal required for shifts &gt; ', meal_2_threshold_no_waiver, ' hours (shift_hrs &gt; ', meal_2_threshold_no_waiver + 0.01, ').</li>
+    <li><strong>Meal Period Timing (Waivers):</strong> First meal may be delayed to end of ', meal_1_threshold_waiver, 'th hour (shift_hrs &gt; ', meal_1_threshold_waiver + 0.01, '). Second meal &gt; ', meal_2_threshold_waiver, ' hours (shift_hrs &gt; ', meal_2_threshold_waiver + 0.01, ').</li>
+    <li><strong>Meal Period Duration:</strong> Minimum 30 minutes (', meal_min_hrs, ' hours) required. ', meal_buffer, ' hour buffer applied.</li>
+    <li><strong>Rest Period Eligibility:</strong> One 10-minute rest period required for shifts &gt; ', rest_threshold, ' hours (shift_hrs &gt; ', rest_threshold + 0.01, ').</li>
   </ul>
 
   <h3>Regular Rate of Pay (RROP)</h3>
   <ul>
-    <li><strong>Calculation:</strong> Total straight-time compensation ÷ Total straight-time hours. Excludes overtime premiums and time off.</li>
+    <li><strong>Calculation:</strong> Total straight-time compensation &divide; Total straight-time hours. Excludes overtime premiums and time off.</li>
     <li><strong>De Minimis Buffer:</strong> Under/overpayments below ', sprintf("$%.2f", rrop_buffer), ' ignored as acceptable rounding.</li>
   </ul>
 
-  <h3>Overtime & Double Time</h3>
+  <h3>Overtime &amp; Double Time</h3>
   <ul>
     <li><strong>Daily OT:</strong> Hours over 8 in a workday paid at 1.5x regular rate.</li>
     <li><strong>Daily DT:</strong> Hours over 12 in a workday paid at 2x regular rate.</li>
@@ -684,14 +740,16 @@ table.pay-code-table td:last-child { text-align: left; }
   <h3>Damages Calculations</h3>
   <ul>
     <li><strong>Interest:</strong> Prejudgment interest at ', sprintf("%.0f%%", annual_interest_rate * 100), ' annually.</li>
-    <li><strong>Wage Statement Violations:</strong> $50 initial + $100 subsequent penalties, capped at $4,000 per employee (Labor Code §226).</li>
-    <li><strong>Waiting Time Penalties:</strong> Up to 30 days wages for terminated employees (Labor Code §203).</li>
+    <li><strong>Wage Statement Violations:</strong> $', wsv_initial_penalty, ' initial + $', wsv_subsequent_penalty, ' subsequent penalties, capped at $', formatC(wsv_cap, format = "f", digits = 0, big.mark = ","), ' per employee (Labor Code &sect;226).</li>
+    <li><strong>Waiting Time Penalties:</strong> Up to ', wt_max_days, ' days wages for terminated employees (Labor Code &sect;203).</li>
   </ul>
 
   <h3>PAGA Penalties</h3>
   <ul>
-    <li><strong>Standard:</strong> $', initial_pp_penalty, ' initial + $', subsequent_pp_penalty, ' subsequent per employee per pay period (Labor Code §2699).</li>
-    <li><strong>Labor Code §226:</strong> $', initial_pp_penalty_226, ' initial + $', subsequent_pp_penalty_226, ' subsequent for wage statement violations.</li>
+    <li><strong>Standard:</strong> $', initial_pp_penalty, ' initial + $', subsequent_pp_penalty, ' subsequent per employee per pay period (Labor Code &sect;2699).</li>
+    <li><strong>Labor Code &sect;226:</strong> $', initial_pp_penalty_226, ' initial + $', subsequent_pp_penalty_226, ' subsequent for wage statement violations.</li>
+    <li><strong>Labor Code &sect;558 (Meal/Rest):</strong> $', initial_pp_penalty_558, ' initial + $', subsequent_pp_penalty_558, ' subsequent for meal and rest period violations.</li>
+    <li><strong>Labor Code &sect;1174:</strong> $', penalty_1174, ' penalty for itemized wage statement violations.</li>
   </ul>
 </div>')
     }, error = function(e) {

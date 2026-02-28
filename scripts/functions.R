@@ -49,6 +49,15 @@ init_logging <- function(log_file_path = NULL, case_name = "Analysis", append = 
   invisible(TRUE)
 }
 
+# Log a message (captured by sink + stored for summary counts)
+log_msg <- function(message, category = "INFO") {
+  timestamp <- format(Sys.time(), "%H:%M:%S")
+  cat(sprintf("[%s] [%s] %s\n", timestamp, category, message))
+  entry <- list(time = Sys.time(), category = category, message = message)
+  .ads_log_env$messages <- c(.ads_log_env$messages, list(entry))
+  invisible(entry)
+}
+
 # Finalize logging and create summary
 finalize_logging <- function() {
   if (!is.null(.ads_log_env$start_time)) {
@@ -63,16 +72,12 @@ finalize_logging <- function() {
     cat("Duration:", sprintf("%.1f seconds (%.2f minutes)", as.numeric(duration), as.numeric(duration)/60), "\n")
     cat("================================================================================\n")
     
-    # Stop sink if active
-    if (!is.null(.ads_log_env$log_file)) {
-      sink()
-    }
-    
-    # Create structured summary RDS (unique per step)
+    # Create structured summary RDS (unique per step), then close sink.
+    # sink() is called unconditionally so it always runs even if saveRDS fails.
     if (!is.null(.ads_log_env$log_file)) {
       safe_step <- gsub("[^A-Za-z0-9]+", "_", .ads_log_env$case_name)
       summary_file <- sub("\\.txt$", paste0("_", safe_step, "_summary.rds"), .ads_log_env$log_file)
-      
+
       summary <- list(
         case_name = .ads_log_env$case_name,
         start_time = .ads_log_env$start_time,
@@ -85,9 +90,16 @@ finalize_logging <- function() {
         n_data_summaries = sum(vapply(.ads_log_env$messages, function(m) m$category == "DATA_SUMMARY", logical(1))),
         n_assumptions = sum(vapply(.ads_log_env$messages, function(m) m$category == "ASSUMPTION", logical(1)))
       )
-      
-      saveRDS(summary, summary_file)
-      cat("\n✓ Log summary saved:", summary_file, "\n")
+
+      tryCatch(
+        {
+          saveRDS(summary, summary_file)
+          cat("\n✓ Log summary saved:", summary_file, "\n")
+        },
+        error = function(e) warning("Failed to save log summary RDS: ", e$message)
+      )
+
+      if (sink.number() > 0) sink()
     }
   }
   
