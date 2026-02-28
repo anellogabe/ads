@@ -2260,11 +2260,16 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     })
 
     # Credit-filtered pipeline results for display
-    # When show_credits = FALSE, removes rows where other_credit = TRUE before formatting
+    # When show_credits = FALSE, removes rows where either credit flag is TRUE before formatting
     display_results <- reactive({
       results <- pipeline_results()
-      if (!isTRUE(input$show_credits) && "other_credit" %in% names(results)) {
-        results <- results[is.na(other_credit) | other_credit != TRUE]
+      if (!isTRUE(input$show_credits)) {
+        if ("meal_rest_prems_credit" %in% names(results)) {
+          results <- results[is.na(meal_rest_prems_credit) | meal_rest_prems_credit != TRUE]
+        }
+        if ("other_credit" %in% names(results)) {
+          results <- results[is.na(other_credit) | other_credit != TRUE]
+        }
       }
       results
     })
@@ -2979,7 +2984,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
 
     # Load log summary if available
     log_summary <- reactive({
-      log_summary_file <- file.path(OUT_DIR, "analysis_log_summary.rds")
+      log_summary_file <- file.path(OUT_DIR, "Logs", "Case_Log_summary.rds")
       if (file.exists(log_summary_file)) {
         readRDS(log_summary_file)
       } else {
@@ -3074,7 +3079,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
 
     # Render full log file
     output$full_log <- renderText({
-      log_file <- file.path(OUT_DIR, "analysis_log.txt")
+      log_file <- file.path(OUT_DIR, "Logs", "Case_Log.txt")
       if (file.exists(log_file)) {
         paste(readLines(log_file), collapse = "\n")
       } else {
@@ -3088,7 +3093,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         paste0("analysis_log_", format(Sys.Date(), "%Y%m%d"), ".txt")
       },
       content = function(file) {
-        log_file <- file.path(OUT_DIR, "analysis_log.txt")
+        log_file <- file.path(OUT_DIR, "Logs", "Case_Log.txt")
         if (file.exists(log_file)) {
           file.copy(log_file, file)
         } else {
@@ -3245,7 +3250,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     
     # Load log summary if available
     log_summary <- reactive({
-      log_summary_file <- file.path(OUT_DIR, "analysis_log_summary.rds")
+      log_summary_file <- file.path(OUT_DIR, "Logs", "Case_Log_summary.rds")
       if (file.exists(log_summary_file)) {
         readRDS(log_summary_file)
       } else {
@@ -3340,7 +3345,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     
     # Render full log file
     output$full_log <- renderText({
-      log_file <- file.path(OUT_DIR, "analysis_log.txt")
+      log_file <- file.path(OUT_DIR, "Logs", "Case_Log.txt")
       if (file.exists(log_file)) {
         paste(readLines(log_file), collapse = "\n")
       } else {
@@ -3354,7 +3359,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         paste0("analysis_log_", format(Sys.Date(), "%Y%m%d"), ".txt")
       },
       content = function(file) {
-        log_file <- file.path(OUT_DIR, "analysis_log.txt")
+        log_file <- file.path(OUT_DIR, "Logs", "Case_Log.txt")
         if (file.exists(log_file)) {
           file.copy(log_file, file)
         } else {
@@ -3511,7 +3516,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     
     # Load log summary if available
     log_summary <- reactive({
-      log_summary_file <- file.path(OUT_DIR, "analysis_log_summary.rds")
+      log_summary_file <- file.path(OUT_DIR, "Logs", "Case_Log_summary.rds")
       if (file.exists(log_summary_file)) {
         readRDS(log_summary_file)
       } else {
@@ -3606,7 +3611,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     
     # Render full log file
     output$full_log <- renderText({
-      log_file <- file.path(OUT_DIR, "analysis_log.txt")
+      log_file <- file.path(OUT_DIR, "Logs", "Case_Log.txt")
       if (file.exists(log_file)) {
         paste(readLines(log_file), collapse = "\n")
       } else {
@@ -3620,7 +3625,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         paste0("analysis_log_", format(Sys.Date(), "%Y%m%d"), ".txt")
       },
       content = function(file) {
-        log_file <- file.path(OUT_DIR, "analysis_log.txt")
+        log_file <- file.path(OUT_DIR, "Logs", "Case_Log.txt")
         if (file.exists(log_file)) {
           file.copy(log_file, file)
         } else {
@@ -3777,7 +3782,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     
     # Load log summary if available
     log_summary <- reactive({
-      log_summary_file <- file.path(OUT_DIR, "analysis_log_summary.rds")
+      log_summary_file <- file.path(OUT_DIR, "Logs", "Case_Log_summary.rds")
       if (file.exists(log_summary_file)) {
         readRDS(log_summary_file)
       } else {
@@ -3872,7 +3877,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     
     # Render full log file
     output$full_log <- renderText({
-      log_file <- file.path(OUT_DIR, "analysis_log.txt")
+      log_file <- file.path(OUT_DIR, "Logs", "Case_Log.txt")
       if (file.exists(log_file)) {
         paste(readLines(log_file), collapse = "\n")
       } else {
@@ -3886,7 +3891,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         paste0("analysis_log_", format(Sys.Date(), "%Y%m%d"), ".txt")
       },
       content = function(file) {
-        log_file <- file.path(OUT_DIR, "analysis_log.txt")
+        log_file <- file.path(OUT_DIR, "Logs", "Case_Log.txt")
         if (file.exists(log_file)) {
           file.copy(log_file, file)
         } else {

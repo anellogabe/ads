@@ -4202,8 +4202,8 @@ generate_metadata(ee_data1, "time_ee_metadata.csv")
 generate_metadata(shift_data1, "time_shift_metadata.csv")
 generate_metadata(time1, "time_punch_metadata.csv")
 generate_metadata(pay1, "pay_metadata.csv")
-generate_metadata(ee_data1, "pp_metadata.csv")
-generate_metadata(pp_data1, "ee_metadata.csv")
+generate_metadata(pp_data1, "pp_metadata.csv")
+generate_metadata(ee_data1, "ee_metadata.csv")
 
 # Toggle per table: TRUE = write CSV filtered to Key_Gps; FALSE = write full CSV
 write_key_gps_time  <- FALSE
