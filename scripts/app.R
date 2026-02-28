@@ -4143,7 +4143,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     
     # Render full log file
     output$full_log <- renderText({
-      log_file <- file.path(OUT_DIR, "analysis_log.txt")
+      log_file <- file.path(OUT_DIR, "Logs", "Case_Log.txt")
       if (file.exists(log_file)) {
         paste(readLines(log_file), collapse = "\n")
       } else {
@@ -4157,7 +4157,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         paste0("analysis_log_", format(Sys.Date(), "%Y%m%d"), ".txt")
       },
       content = function(file) {
-        log_file <- file.path(OUT_DIR, "analysis_log.txt")
+        log_file <- file.path(OUT_DIR, "Logs", "Case_Log.txt")
         if (file.exists(log_file)) {
           file.copy(log_file, file)
         } else {
@@ -4409,7 +4409,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     
     # Render full log file
     output$full_log <- renderText({
-      log_file <- file.path(OUT_DIR, "analysis_log.txt")
+      log_file <- file.path(OUT_DIR, "Logs", "Case_Log.txt")
       if (file.exists(log_file)) {
         paste(readLines(log_file), collapse = "\n")
       } else {
@@ -4423,7 +4423,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         paste0("analysis_log_", format(Sys.Date(), "%Y%m%d"), ".txt")
       },
       content = function(file) {
-        log_file <- file.path(OUT_DIR, "analysis_log.txt")
+        log_file <- file.path(OUT_DIR, "Logs", "Case_Log.txt")
         if (file.exists(log_file)) {
           file.copy(log_file, file)
         } else {
@@ -4675,7 +4675,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
 
     # Render full log file
     output$full_log <- renderText({
-      log_file <- file.path(OUT_DIR, "analysis_log.txt")
+      log_file <- file.path(OUT_DIR, "Logs", "Case_Log.txt")
       if (file.exists(log_file)) {
         paste(readLines(log_file), collapse = "\n")
       } else {
@@ -4689,7 +4689,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         paste0("analysis_log_", format(Sys.Date(), "%Y%m%d"), ".txt")
       },
       content = function(file) {
-        log_file <- file.path(OUT_DIR, "analysis_log.txt")
+        log_file <- file.path(OUT_DIR, "Logs", "Case_Log.txt")
         if (file.exists(log_file)) {
           file.copy(log_file, file)
         } else {
@@ -4941,7 +4941,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     
     # Render full log file
     output$full_log <- renderText({
-      log_file <- file.path(OUT_DIR, "analysis_log.txt")
+      log_file <- file.path(OUT_DIR, "Logs", "Case_Log.txt")
       if (file.exists(log_file)) {
         paste(readLines(log_file), collapse = "\n")
       } else {
@@ -4955,7 +4955,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         paste0("analysis_log_", format(Sys.Date(), "%Y%m%d"), ".txt")
       },
       content = function(file) {
-        log_file <- file.path(OUT_DIR, "analysis_log.txt")
+        log_file <- file.path(OUT_DIR, "Logs", "Case_Log.txt")
         if (file.exists(log_file)) {
           file.copy(log_file, file)
         } else {
@@ -5207,7 +5207,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     
     # Render full log file
     output$full_log <- renderText({
-      log_file <- file.path(OUT_DIR, "analysis_log.txt")
+      log_file <- file.path(OUT_DIR, "Logs", "Case_Log.txt")
       if (file.exists(log_file)) {
         paste(readLines(log_file), collapse = "\n")
       } else {
@@ -5221,7 +5221,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         paste0("analysis_log_", format(Sys.Date(), "%Y%m%d"), ".txt")
       },
       content = function(file) {
-        log_file <- file.path(OUT_DIR, "analysis_log.txt")
+        log_file <- file.path(OUT_DIR, "Logs", "Case_Log.txt")
         if (file.exists(log_file)) {
           file.copy(log_file, file)
         } else {
@@ -5473,7 +5473,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     
     # Render full log file
     output$full_log <- renderText({
-      log_file <- file.path(OUT_DIR, "analysis_log.txt")
+      log_file <- file.path(OUT_DIR, "Logs", "Case_Log.txt")
       if (file.exists(log_file)) {
         paste(readLines(log_file), collapse = "\n")
       } else {
@@ -5487,7 +5487,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         paste0("analysis_log_", format(Sys.Date(), "%Y%m%d"), ".txt")
       },
       content = function(file) {
-        log_file <- file.path(OUT_DIR, "analysis_log.txt")
+        log_file <- file.path(OUT_DIR, "Logs", "Case_Log.txt")
         if (file.exists(log_file)) {
           file.copy(log_file, file)
         } else {
