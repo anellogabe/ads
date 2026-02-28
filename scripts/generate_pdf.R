@@ -56,7 +56,7 @@ generate_report <- function(
     paga_scenarios = c("no waivers", "waivers"),
     verbose = TRUE
 ) {
-  
+
   local_sections <- sections
   local_class_scenarios <- class_scenarios
   local_paga_scenarios <- paga_scenarios
@@ -543,10 +543,10 @@ table.pay-code-table td:last-child { text-align: left; }
     for (scenario in local_class_scenarios) {
       scenario_label <- tools::toTitleCase(scenario)
       progress(paste0("Class Damages (", scenario_label, ")"))
-      
+
       part1 <- get_group_data(damages_part1, scenario)
       part2 <- get_group_data(damages_part2, scenario)
-      
+
       if (nrow(part1) > 0) {
         html <- paste0(html, add_tbl(part1, paste0("Class Damages (", scenario_label, ")"), hide_years = TRUE))
       }
