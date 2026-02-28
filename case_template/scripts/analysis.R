@@ -4254,6 +4254,10 @@ if (!file.exists(metrics_spec_path)) stop("Missing metrics_spec.csv at: ", metri
 metrics_spec <- fread(metrics_spec_path)
 setDT(metrics_spec)
 
+if (!"metric_order" %in% names(metrics_spec)) {
+  metrics_spec[, metric_order := .I]
+}
+
 metrics_spec[, metric_type := fcase(
   grepl("date", metric_label, ignore.case = TRUE), "date",
   grepl("percent", metric_label, ignore.case = TRUE), "percent",
@@ -4343,10 +4347,6 @@ export_metrics(final_table, base_name = "Analysis")
 end.time <- Sys.time()
 duration <- difftime(end.time, start.time, units = "secs")
 finalize_logging()
-
-# Finalize logging and create summary
-end.time <- Sys.time()
-duration <- difftime(end.time, start.time, units = "secs")
 
 # ----- ALL DATA:                Generate PDF report -------------------------------------------------------------
 
