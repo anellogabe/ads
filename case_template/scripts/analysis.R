@@ -248,7 +248,7 @@ ot_pay_codes      <- c("overtime", "over time", "ot straight", "ovt", "ot premiu
 dt_pay_codes      <- c("double", "dt")
 bon_pay_codes     <- c("comm", "bon", "spiff", "award", "awd", "bns")
 meal_pay_codes    <- c("meal", "brkm", "camp")
-rest_pay_codes    <- c("rest", "brkr", "")
+rest_pay_codes    <- c("rest", "brkr")
 diff_pay_codes    <- c("diff")
 diff_ot_pay_codes <- c("DO NOT USE THIS")
 diff_dt_pay_codes <- c("DO NOT USE THIS")
