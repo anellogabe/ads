@@ -2866,7 +2866,15 @@ calculate_metrics <- function(data_list, spec, extrap_env = list(), globals_env 
     
     if ("scenario" %in% names(spec)) out$scenario <- spec$scenario[i]
     if ("no_year_breakdown" %in% names(spec)) out$no_year_breakdown <- spec$no_year_breakdown[i]
-    
+    if ("meal_rest_prems_credit" %in% names(spec)) {
+      x <- spec$meal_rest_prems_credit[i]
+      out$meal_rest_prems_credit <- if (is.logical(x)) x else tolower(trimws(as.character(x))) %chin% c("true","t","1","yes","y")
+    }
+    if ("other_credit" %in% names(spec)) {
+      x <- spec$other_credit[i]
+      out$other_credit <- if (is.logical(x)) x else tolower(trimws(as.character(x))) %chin% c("true","t","1","yes","y")
+    }
+
     out
   })
   
@@ -3059,6 +3067,8 @@ format_metrics_table <- function(results_dt) {
   
   # IMPORTANT: use a unique key for casting & merging (metric_order alone is NOT safe)
   id_cols <- c("metric_order","metric_group","metric_label","scenario","metric_type","digits","no_year_breakdown")
+  if ("meal_rest_prems_credit" %in% names(dt)) id_cols <- c(id_cols, "meal_rest_prems_credit")
+  if ("other_credit" %in% names(dt)) id_cols <- c(id_cols, "other_credit")
   
   # wide values
   wide_dt <- dcast(

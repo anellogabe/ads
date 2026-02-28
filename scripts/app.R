@@ -461,7 +461,11 @@ pipeline_to_display_format <- function(pipeline_results, group_names = NULL, inc
   if ("scenario" %in% names(formatted)) {
     formatted[, scenario := NULL]
   }
-  
+
+  # Remove credit flag columns (metadata, not for display)
+  credit_cols <- intersect(c("meal_rest_prems_credit", "other_credit"), names(formatted))
+  if (length(credit_cols) > 0) formatted[, (credit_cols) := NULL]
+
   # If not including years, remove year columns
   if (!include_years) {
     year_cols <- names(formatted)[grepl("^\\d{4}$", names(formatted))]
@@ -522,7 +526,11 @@ pipeline_to_damages_format <- function(pipeline_results, section_definitions, sc
     if ("scenario" %in% names(formatted)) {
       formatted[, scenario := NULL]
     }
-    
+
+    # Remove credit flag columns (metadata, not for display)
+    credit_cols <- intersect(c("meal_rest_prems_credit", "other_credit"), names(formatted))
+    if (length(credit_cols) > 0) formatted[, (credit_cols) := NULL]
+
     # Create section header
     header_row <- data.table(Metric = paste0("### ", section_name))
     for (col in setdiff(names(formatted), "Metric")) {
@@ -799,6 +807,7 @@ create_dt_table <- function(dt, metric_col = "Metric") {
       scrollX = TRUE,
       scrollY = "calc(100vh - 300px)",  # Dynamic height based on viewport
       dom = 'frti',  # Removed 'p' for pagination
+      order = list(),  # Preserve metric_order from pipeline (no auto-sort by column)
       columnDefs = col_defs,
       initComplete = JS(
         "function(settings, json) {",
@@ -973,12 +982,9 @@ filter_sidebar <- function(data_list) {
     
     hr(),
    
-    # Toggle extrapolation columns
     checkboxInput("toggle_extrap_cols", "Show Extrapolated Values", value = TRUE),
-    
-    # Toggle extrapolation columns
-    checkboxInput("toggle_extrap_cols", "Show Extrapolated Values", value = TRUE),
-    
+    checkboxInput("show_credits", "Show Credit-Adjusted Metrics", value = TRUE),
+
     actionButton("open_pdf_modal", "Generate PDF Report",
                  class = "w-100 mt-2 btn-primary",
                  icon = icon("file-pdf"),
@@ -1787,6 +1793,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
           
           h5(style = "color: #2c3e50; margin-bottom: 15px;", icon("cog"), " Additional Options"),
           checkboxInput("pdf_include_extrap", "Include Extrapolation Column", value = TRUE),
+          checkboxInput("pdf_include_credits", "Include Credit-Adjusted Metrics", value = TRUE),
           
           hr(),
           
@@ -1815,12 +1822,14 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       )
       updateCheckboxGroupInput(session, "pdf_sections", selected = all_sections)
       updateCheckboxInput(session, "pdf_include_extrap", value = TRUE)
+      updateCheckboxInput(session, "pdf_include_credits", value = TRUE)
     })
 
     # PDF Deselect All button
     observeEvent(input$pdf_deselect_all, {
       updateCheckboxGroupInput(session, "pdf_sections", selected = character(0))
       updateCheckboxInput(session, "pdf_include_extrap", value = FALSE)
+      updateCheckboxInput(session, "pdf_include_credits", value = FALSE)
     })
     
     observeEvent(input$pdf_download_clicked, {
@@ -2235,7 +2244,17 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       
       results
     })
-    
+
+    # Credit-filtered pipeline results for display
+    # When show_credits = FALSE, removes rows where other_credit = TRUE before formatting
+    display_results <- reactive({
+      results <- pipeline_results()
+      if (!isTRUE(input$show_credits) && "other_credit" %in% names(results)) {
+        results <- results[is.na(other_credit) | other_credit != TRUE]
+      }
+      results
+    })
+
     # Populate filter choices from pp_data1 (source of truth)
     observe({
       pp <- data_list$pp_data1
@@ -2483,79 +2502,79 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     extrap_factor <- reactive({ 1.0 })
     
     output$table_time_summary <- renderDT({
-      results <- pipeline_results()
+      results <- display_results()
       display <- pipeline_to_display_format(results, time_summary_groups, include_years = TRUE)
       create_dt_table(display)
     })
     
     output$table_shift_hours <- renderDT({
-      results <- pipeline_results()
+      results <- display_results()
       display <- pipeline_to_display_format(results, time_shift_groups, include_years = TRUE)
       create_dt_table(display)
     })
     
     output$table_rounding_consolidated <- renderDT({
-      results <- pipeline_results()
+      results <- display_results()
       display <- pipeline_to_display_format(results, time_rounding_groups, include_years = TRUE)
       create_dt_table(display)
     })
     
     output$table_meal_consolidated <- renderDT({
-      results <- pipeline_results()
+      results <- display_results()
       display <- pipeline_to_display_format(results, time_meal_analysis, include_years = TRUE)
       create_dt_table(display)
     })
     
     output$table_meal_5hr_consolidated <- renderDT({
-      results <- pipeline_results()
+      results <- display_results()
       display <- pipeline_to_display_format(results, time_meal_violations_5_summary, include_years = TRUE)
       create_dt_table(display)
     })
     
     output$table_meal_5hr_short_details <- renderDT({
-      results <- pipeline_results()
+      results <- display_results()
       display <- pipeline_to_display_format(results, time_meal_violations_5_short, include_years = TRUE)
       create_dt_table(display)
     })
     
     output$table_meal_5hr_late_details <- renderDT({
-      results <- pipeline_results()
+      results <- display_results()
       display <- pipeline_to_display_format(results, time_meal_violations_5_late, include_years = TRUE)
       create_dt_table(display)
     })
     
     output$table_meal_6hr_consolidated <- renderDT({
-      results <- pipeline_results()
+      results <- display_results()
       display <- pipeline_to_display_format(results, time_meal_violations_6_summary, include_years = TRUE)
       create_dt_table(display)
     })
     
     output$table_meal_6hr_short_details <- renderDT({
-      results <- pipeline_results()
+      results <- display_results()
       display <- pipeline_to_display_format(results, time_meal_violations_6_short, include_years = TRUE)
       create_dt_table(display)
     })
     
     output$table_meal_6hr_late_details <- renderDT({
-      results <- pipeline_results()
+      results <- display_results()
       display <- pipeline_to_display_format(results, time_meal_violations_6_late, include_years = TRUE)
       create_dt_table(display)
     })
     
     output$table_rest_consolidated <- renderDT({
-      results <- pipeline_results()
+      results <- display_results()
       display <- pipeline_to_display_format(results, time_rest, include_years = TRUE)
       create_dt_table(display)
     })
     
     output$table_pay_consolidated <- renderDT({
-      results <- pipeline_results()
+      results <- display_results()
       display <- pipeline_to_display_format(results, pay_summary_groups, include_years = TRUE)
       create_dt_table(display)
     })
     
     output$table_rrop_consolidated <- renderDT({
-      results <- pipeline_results()
+      results <- display_results()
       display <- pipeline_to_display_format(results, pay_regular_rate, include_years = TRUE)
       
       if (nrow(display) > 0 && "Metric" %in% names(display)) {
@@ -2574,7 +2593,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     # Class/Individual Claims - Overview
     output$table_damages_class_overview <- renderDT({
       tryCatch({
-        results <- pipeline_results()
+        results <- display_results()
         
         # Build section definitions for overview (all financial metrics)
         sections <- list()
@@ -2594,7 +2613,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
           )
         }
         
-        if (length(damages_credits_groups) > 0 && is.character(damages_credits_groups)) {
+        if (isTRUE(input$show_credits) && length(damages_credits_groups) > 0 && is.character(damages_credits_groups)) {
           sections[[length(sections) + 1]] <- list(
             section_name = "CREDITS OR OFFSETS",
             groups = as.character(damages_credits_groups)
@@ -2645,7 +2664,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     # Class/Individual Claims - No Waivers (dynamically built from damages_detail_unique)
     output$table_damages_class_no_waivers <- renderDT({
       tryCatch({
-        results <- pipeline_results()
+        results <- display_results()
         
         # Dynamically build sections from all damages detail groups
         sections <- list()
@@ -2683,7 +2702,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     # Class/Individual Claims - Waivers (dynamically built from damages_detail_unique)
     output$table_damages_class_waivers <- renderDT({
       tryCatch({
-        results <- pipeline_results()
+        results <- display_results()
         
         # Dynamically build sections from all damages detail groups
         sections <- list()
@@ -2720,7 +2739,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     # PAGA - Overview
     output$table_paga_overview <- renderDT({
       tryCatch({
-        results <- pipeline_results()
+        results <- display_results()
         
         # Build section definitions for PAGA overview
         # paga_summary_groups includes both basic stats (dates, counts) and financial totals (PAGA totals with all variants)
@@ -2756,7 +2775,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     # PAGA - No Waivers (dynamically built from paga_detail_unique)
     output$table_paga_no_waivers <- renderDT({
       tryCatch({
-        results <- pipeline_results()
+        results <- display_results()
         
         # Dynamically build sections from all PAGA detail groups
         sections <- list()
@@ -2794,7 +2813,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     # PAGA - Waivers (dynamically built from paga_detail_unique)
     output$table_paga_waivers <- renderDT({
       tryCatch({
-        results <- pipeline_results()
+        results <- display_results()
         
         # Dynamically build sections from all PAGA detail groups
         sections <- list()
@@ -4649,6 +4668,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
           output_file = file,
           sections = pdf_sections,
           include_extrap = isTRUE(input$pdf_include_extrap),
+          include_credits = isTRUE(input$pdf_include_credits),
           include_appendix = include_appendix,
           include_data_comparison = include_data_comparison,
           include_assumptions = include_assumptions,
