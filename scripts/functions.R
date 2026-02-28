@@ -2287,7 +2287,7 @@ generate_random_sample <- function(
   cat(sprintf("  - Time Data IDs: %s\n", format(time_population, big.mark = ",")))
   cat(sprintf("  - Pay Data IDs: %s\n", format(pay_population, big.mark = ",")))
   if (use_class1) {
-    cat(sprintf("  - Employee List IDs: %s\n", format(class1_population, big.mark = ",")))
+    cat(sprintf("  - Employee List IDs: %s\n", format(class_population, big.mark = ",")))
   }
   cat(sprintf("  - IDs in both Time AND Pay: %s\n", format(nrow(both_time_pay), big.mark = ",")))
   

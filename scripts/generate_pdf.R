@@ -328,8 +328,13 @@ generate_report <- function(
     if (nrow(dt) == 0) return(data.table())
 
     # Filter out credit-adjusted rows when include_credits = FALSE
-    if (!include_credits && "other_credit" %in% names(dt)) {
-      dt <- dt[is.na(other_credit) | other_credit != TRUE]
+    if (!include_credits) {
+      if ("meal_rest_prems_credit" %in% names(dt)) {
+        dt <- dt[is.na(meal_rest_prems_credit) | meal_rest_prems_credit != TRUE]
+      }
+      if ("other_credit" %in% names(dt)) {
+        dt <- dt[is.na(other_credit) | other_credit != TRUE]
+      }
     }
     if (nrow(dt) == 0) return(data.table())
 
