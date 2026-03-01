@@ -1387,9 +1387,19 @@ ui <- function(data_list, metric_spec) {
       nav_panel(
         "Waivers",
         withSpinner(DTOutput("table_damages_class_waivers"), type = 6, color = "#2c3e50")
+      ),
+
+      nav_panel(
+        "Wage Statement Penalties",
+        withSpinner(DTOutput("table_damages_wsv"), type = 6, color = "#2c3e50")
+      ),
+
+      nav_panel(
+        "Waiting Time Penalties",
+        withSpinner(DTOutput("table_damages_wt"), type = 6, color = "#2c3e50")
       )
     ),
-    
+
     # =======================================================================
     # PAGA DAMAGES
     # =======================================================================
@@ -2769,6 +2779,54 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       })
     })
     
+    # Class/Individual Claims - Wage Statement Penalties
+    output$table_damages_wsv <- renderDT({
+      tryCatch({
+        results <- display_results()
+
+        if (length(damages_wsv_groups) == 0) {
+          return(datatable(data.table(Message = "No wage statement penalty data available"),
+                           rownames = FALSE, options = list(dom = 't')))
+        }
+
+        display <- pipeline_to_display_format(results, damages_wsv_groups)
+
+        if (is.null(display) || nrow(display) == 0) {
+          return(datatable(data.table(Message = "No wage statement penalty data available"),
+                           rownames = FALSE, options = list(dom = 't')))
+        }
+
+        create_dt_table(display)
+      }, error = function(e) {
+        datatable(data.table(Error = paste("Error rendering wage statement penalties:", e$message)),
+                  rownames = FALSE, options = list(dom = 't'))
+      })
+    })
+
+    # Class/Individual Claims - Waiting Time Penalties
+    output$table_damages_wt <- renderDT({
+      tryCatch({
+        results <- display_results()
+
+        if (length(damages_wt_groups) == 0) {
+          return(datatable(data.table(Message = "No waiting time penalty data available"),
+                           rownames = FALSE, options = list(dom = 't')))
+        }
+
+        display <- pipeline_to_display_format(results, damages_wt_groups)
+
+        if (is.null(display) || nrow(display) == 0) {
+          return(datatable(data.table(Message = "No waiting time penalty data available"),
+                           rownames = FALSE, options = list(dom = 't')))
+        }
+
+        create_dt_table(display)
+      }, error = function(e) {
+        datatable(data.table(Error = paste("Error rendering waiting time penalties:", e$message)),
+                  rownames = FALSE, options = list(dom = 't'))
+      })
+    })
+
     # PAGA - Overview
     output$table_paga_overview <- renderDT({
       tryCatch({
@@ -2888,23 +2946,17 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     observe({
       data <- filtered_data()
       
-      # Get unique ID_Period_End from shift data
-      shift_periods <- if (!is.null(data$shift_data1) && "ID_Period_End" %in% names(data$shift_data1)) {
-        unique(data$shift_data1$ID_Period_End)
+      # Use ID_Period_End from shift_data1 as the canonical key.
+      # time1, shift_data1, and pp_data1 all filter by ID_Period_End.
+      # pay1 filters by Pay_ID_Period_End, which uses the same format.
+      all_periods <- if (!is.null(data$shift_data1) && "ID_Period_End" %in% names(data$shift_data1)) {
+        sort(unique(data$shift_data1$ID_Period_End))
+      } else if (!is.null(data$pp_data1) && "ID_Period_End" %in% names(data$pp_data1)) {
+        sort(unique(data$pp_data1$ID_Period_End))
       } else {
         character(0)
       }
-      
-      # Get unique Pay_ID_Period_End from pay data
-      pay_periods <- if (!is.null(data$pay1) && "Pay_ID_Period_End" %in% names(data$pay1)) {
-        unique(data$pay1$Pay_ID_Period_End)
-      } else {
-        character(0)
-      }
-      
-      # Combine and sort unique periods
-      all_periods <- sort(unique(c(shift_periods, pay_periods)))
-      
+
       updateSelectizeInput(session, "example_period_select", choices = all_periods)
     })
     
@@ -4478,8 +4530,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       if (!"ID_Period_End" %in% names(data_list$time1)) {
         return(datatable(data.table(Message = paste("ID_Period_End column not found in time1. Available columns:", paste(head(names(data_list$time1), 20), collapse = ", "))), rownames = FALSE, options = list(dom = 't')))
       }
-      if (!is.null(filters$Pay_ID))   pay_filtered <- pay_filtered[Pay_ID %in% filters$Pay_ID]
-      
+
       # Debug: Show what we're filtering for and what's available
       selected_value <- input$example_period_select
       message("Filtering time1 for ID_Period_End = ", selected_value)
@@ -4583,14 +4634,8 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         class = 'cell-border stripe hover',
         style = 'bootstrap4'
       )
-      
-      # Store in cache
-      cache$filtered_data_key <- cache_key
-      cache$filtered_data_value <- result
-      
-      result
     })
-    
+
     # Pay Data (pay1) - Show specific columns as requested
     output$table_example_pay <- renderDT({
       req(input$example_period_select)
