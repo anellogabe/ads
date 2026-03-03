@@ -5,6 +5,7 @@
 # This file contains proprietary information and trade secrets.
 # Unauthorized copying, distribution, or use is strictly prohibited.
 # For authorized use by ANELLO DATA SOLUTIONS LLC contracted analysts only.
+source("D:/Shared/Master_Scripts/path_guard.R")
 
 # ADS LOGGING SYSTEM ------------------------------------------------------------------------------
 
@@ -15,7 +16,7 @@
 .ads_log_env$start_time <- NULL
 
 # Initialize logging system
-init_logging <- function(log_file_path = NULL, case_name = "Analysis", append = FALSE) {
+init_logging <- function(log_file_path = NULL, case_name = "Analysis") {
   .ads_log_env$messages <- list()
   .ads_log_env$start_time <- Sys.time()
   .ads_log_env$case_name <- case_name
@@ -23,38 +24,64 @@ init_logging <- function(log_file_path = NULL, case_name = "Analysis", append = 
   if (!is.null(log_file_path)) {
     .ads_log_env$log_file <- log_file_path
     
+    # Create log directory if needed
     log_dir <- dirname(log_file_path)
     dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
     
     # Start sink to capture ALL console output
-    sink(log_file_path, append = append, split = TRUE)
+    sink(log_file_path, append = FALSE, split = TRUE)
     
-    if (!append) {
-      cat("================================================================================\n")
-      cat("  ADS ANALYSIS LOG\n")
-      cat("================================================================================\n")
-      cat("Case:", case_name, "\n")
-      cat("Started:", format(.ads_log_env$start_time, "%Y-%m-%d %H:%M:%S"), "\n")
-      cat("================================================================================\n\n")
-    } else {
-      cat("\n\n================================================================================\n")
-      cat("  NEW STEP\n")
-      cat("================================================================================\n")
-      cat("Step:", case_name, "\n")
-      cat("Started:", format(.ads_log_env$start_time, "%Y-%m-%d %H:%M:%S"), "\n")
-      cat("================================================================================\n\n")
-    }
+    cat("================================================================================\n")
+    cat("  ADS ANALYSIS LOG\n")
+    cat("================================================================================\n")
+    cat("Case:", case_name, "\n")
+    cat("Started:", format(.ads_log_env$start_time, "%Y-%m-%d %H:%M:%S"), "\n")
+    cat("================================================================================\n\n")
   }
   
   invisible(TRUE)
 }
 
-# Log a message (captured by sink + stored for summary counts)
-log_msg <- function(message, category = "INFO") {
-  timestamp <- format(Sys.time(), "%H:%M:%S")
-  cat(sprintf("[%s] [%s] %s\n", timestamp, category, message))
-  entry <- list(time = Sys.time(), category = category, message = message)
-  .ads_log_env$messages <- c(.ads_log_env$messages, list(entry))
+# Log a message with category
+log_msg <- function(message, category = "INFO", data = NULL) {
+  timestamp <- Sys.time()
+  
+  # Create structured log entry
+  entry <- list(
+    timestamp = timestamp,
+    category = category,
+    message = message,
+    data = data
+  )
+  
+  # Add to in-memory log
+  .ads_log_env$messages[[length(.ads_log_env$messages) + 1]] <- entry
+  
+  # Format for console/file output
+  prefix <- switch(category,
+                   "INFO"         = "ℹ",
+                   "SUCCESS"      = "✓",
+                   "WARNING"      = "⚠",
+                   "ERROR"        = "❌",
+                   "DATA_SUMMARY" = "📊",
+                   "ASSUMPTION"   = "📝",
+                   "SETUP"        = "⚙",
+                   "•"  # default
+  )
+  
+  cat(sprintf("%s %s\n", prefix, message))
+  
+  # If there's additional data, print it indented
+  if (!is.null(data)) {
+    if (is.character(data) && length(data) == 1) {
+      cat(sprintf("  %s\n", data))
+    } else if (is.list(data)) {
+      for (name in names(data)) {
+        cat(sprintf("  %s: %s\n", name, as.character(data[[name]])))
+      }
+    }
+  }
+  
   invisible(entry)
 }
 
@@ -65,41 +92,38 @@ finalize_logging <- function() {
     duration <- difftime(end_time, .ads_log_env$start_time, units = "secs")
     
     cat("\n================================================================================\n")
-    cat("  STEP COMPLETE\n")
+    cat("  ANALYSIS COMPLETE\n")
     cat("================================================================================\n")
-    cat("Step:", .ads_log_env$case_name, "\n")
     cat("Completed:", format(end_time, "%Y-%m-%d %H:%M:%S"), "\n")
     cat("Duration:", sprintf("%.1f seconds (%.2f minutes)", as.numeric(duration), as.numeric(duration)/60), "\n")
     cat("================================================================================\n")
     
-    # Create structured summary RDS (unique per step), then close sink.
-    # sink() is called unconditionally so it always runs even if saveRDS fails.
+    # Stop sink if active
     if (!is.null(.ads_log_env$log_file)) {
-      safe_step <- gsub("[^A-Za-z0-9]+", "_", .ads_log_env$case_name)
-      summary_file <- sub("\\.txt$", paste0("_", safe_step, "_summary.rds"), .ads_log_env$log_file)
-
+      sink()
+    }
+    
+    # Create structured summary RDS
+    if (!is.null(.ads_log_env$log_file)) {
+      summary_file <- sub("\\.txt$", "_summary.rds", .ads_log_env$log_file)
+      
       summary <- list(
         case_name = .ads_log_env$case_name,
         start_time = .ads_log_env$start_time,
         end_time = end_time,
         duration_seconds = as.numeric(duration),
         messages = .ads_log_env$messages,
+        
+        # Summary statistics
         n_messages = length(.ads_log_env$messages),
-        n_errors = sum(vapply(.ads_log_env$messages, function(m) m$category == "ERROR", logical(1))),
-        n_warnings = sum(vapply(.ads_log_env$messages, function(m) m$category == "WARNING", logical(1))),
-        n_data_summaries = sum(vapply(.ads_log_env$messages, function(m) m$category == "DATA_SUMMARY", logical(1))),
-        n_assumptions = sum(vapply(.ads_log_env$messages, function(m) m$category == "ASSUMPTION", logical(1)))
+        n_errors = sum(sapply(.ads_log_env$messages, function(m) m$category == "ERROR")),
+        n_warnings = sum(sapply(.ads_log_env$messages, function(m) m$category == "WARNING")),
+        n_data_summaries = sum(sapply(.ads_log_env$messages, function(m) m$category == "DATA_SUMMARY")),
+        n_assumptions = sum(sapply(.ads_log_env$messages, function(m) m$category == "ASSUMPTION"))
       )
-
-      tryCatch(
-        {
-          saveRDS(summary, summary_file)
-          cat("\n✓ Log summary saved:", summary_file, "\n")
-        },
-        error = function(e) warning("Failed to save log summary RDS: ", e$message)
-      )
-
-      if (sink.number() > 0) sink()
+      
+      saveRDS(summary, summary_file)
+      cat("\n✓ Log summary saved:", summary_file, "\n")
     }
   }
   
@@ -2299,7 +2323,7 @@ generate_random_sample <- function(
   cat(sprintf("  - Time Data IDs: %s\n", format(time_population, big.mark = ",")))
   cat(sprintf("  - Pay Data IDs: %s\n", format(pay_population, big.mark = ",")))
   if (use_class1) {
-    cat(sprintf("  - Employee List IDs: %s\n", format(class_population, big.mark = ",")))
+    cat(sprintf("  - Employee List IDs: %s\n", format(class1_population, big.mark = ",")))
   }
   cat(sprintf("  - IDs in both Time AND Pay: %s\n", format(nrow(both_time_pay), big.mark = ",")))
   
@@ -2402,6 +2426,12 @@ generate_random_sample <- function(
 # Returned object (invisibly) includes:
 #   results$sample_list, results$full_list, results$samplesize,
 #   results$sample_file, results$full_file, etc.
+
+# GENERATE RANDOM SAMPLE PRODUCTION FILES (if needed) ------------------------------------------------------------------------------
+#   - time/pay: filtered to sample + filtered to class_dmgs_start_date
+#   - class list: NEVER filtered (full class1), but includes Class_Anon_ID if you want it
+#   - outputs: .xlsx files saved to <OUT_DIR>/prod (absolute) by default
+#   - headers: underscores -> spaces, Proper Case; Pay_/Class_ removed in pay/class exports
 
 # GENERATE RANDOM SAMPLE PRODUCTION FILES (if needed) ------------------------------------------------------------------------------
 #   - time/pay: filtered to sample + filtered to class_dmgs_start_date
@@ -2843,15 +2873,7 @@ calculate_metrics <- function(data_list, spec, extrap_env = list(), globals_env 
     
     if ("scenario" %in% names(spec)) out$scenario <- spec$scenario[i]
     if ("no_year_breakdown" %in% names(spec)) out$no_year_breakdown <- spec$no_year_breakdown[i]
-    if ("meal_rest_prems_credit" %in% names(spec)) {
-      x <- spec$meal_rest_prems_credit[i]
-      out$meal_rest_prems_credit <- if (is.logical(x)) x else tolower(trimws(as.character(x))) %chin% c("true","t","1","yes","y")
-    }
-    if ("other_credit" %in% names(spec)) {
-      x <- spec$other_credit[i]
-      out$other_credit <- if (is.logical(x)) x else tolower(trimws(as.character(x))) %chin% c("true","t","1","yes","y")
-    }
-
+    
     out
   })
   
@@ -3044,8 +3066,6 @@ format_metrics_table <- function(results_dt) {
   
   # IMPORTANT: use a unique key for casting & merging (metric_order alone is NOT safe)
   id_cols <- c("metric_order","metric_group","metric_label","scenario","metric_type","digits","no_year_breakdown")
-  if ("meal_rest_prems_credit" %in% names(dt)) id_cols <- c(id_cols, "meal_rest_prems_credit")
-  if ("other_credit" %in% names(dt)) id_cols <- c(id_cols, "other_credit")
   
   # wide values
   wide_dt <- dcast(
@@ -3091,4 +3111,3 @@ export_metrics <- function(wide_dt, base_name = "Metrics_Table", out_dir = NULL)
   write_csv_and_rds(wide_dt, out_csv)
   invisible(list(csv = out_csv, rds = sub("\\.csv$", ".rds", out_csv)))
 }
-
