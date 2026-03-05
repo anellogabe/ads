@@ -28,49 +28,16 @@ library(openxlsx)
 library(stringr)
 library(purrr)
 
-# Set ADS_Shared and load functions
-ADS_SHARED <- "D:/Shared/Master_Scripts"
+# Set case directory
+CASE_DIR      <- "D:/Cases/..." # Add case directory here.
+CASE_DIR <- normalizePath(CASE_DIR, winslash = "/", mustWork = TRUE)
 
-if (!dir.exists(ADS_SHARED)) {
-  stop(
-    "ADS_SHARED not found at: ", ADS_SHARED, "\n\n",
-    "Fix:\n",
-    "  1) Confirm Dropbox is signed in and up to date\n",
-    "  2) Confirm D: drive is mapped (subst)\n",
-    "  3) Confirm folder exists: D:/Shared/Master_Scripts"
-  )
-}
-
-# Case directory path (auto-detected from this file location)
-this_file <- tryCatch(
-  normalizePath(sys.frames()[[1]]$ofile, winslash = "/", mustWork = TRUE),
-  error = function(e) NA_character_
-)
-
-if (is.na(this_file) || !nzchar(this_file)) {
-  args <- commandArgs(trailingOnly = FALSE)
-  file_arg <- grep("^--file=", args, value = TRUE)
-  if (length(file_arg) == 1) {
-    this_file <- normalizePath(sub("^--file=", "", file_arg), winslash = "/", mustWork = TRUE)
-  }
-}
-
-if (is.na(this_file) || !nzchar(this_file)) {
-  stop(
-    "Cannot determine the path of clean_data.R.\n\n",
-    "Fix:\n",
-    "  Use: source('D:/Cases/.../scripts/clean_data.R')\n",
-    "  or in RStudio, open this file and click Source."
-  )
-}
-
-SCRIPTS_DIR <- dirname(this_file)
-CASE_DIR    <- normalizePath(file.path(SCRIPTS_DIR, ".."), winslash = "/", mustWork = TRUE)
-
+SCRIPTS_DIR   <- file.path(CASE_DIR, "data", "scripts")
 RAW_DIR       <- file.path(CASE_DIR, "data", "raw")
 PROCESSED_DIR <- file.path(CASE_DIR, "data", "processed")
 OUT_DIR       <- file.path(CASE_DIR, "output")
 
+dir.create(SCRIPTS_DIR,   recursive = TRUE, showWarnings = FALSE)
 dir.create(RAW_DIR,       recursive = TRUE, showWarnings = FALSE)
 dir.create(PROCESSED_DIR, recursive = TRUE, showWarnings = FALSE)
 dir.create(OUT_DIR,       recursive = TRUE, showWarnings = FALSE)
@@ -81,11 +48,14 @@ message("PROCESSED_DIR = ", PROCESSED_DIR)
 message("OUT_DIR       = ", OUT_DIR)
 message("SCRIPTS_DIR   = ", SCRIPTS_DIR)
 
+# Set ADS_Shared and load functions
+ADS_SHARED <- "D:/Shared/Master_Scripts"
+
 # Load ADS shared functions (read-only)
-source(file.path(ADS_SHARED, "scripts", "functions.R"), local = FALSE, chdir = FALSE)
+source(file.path(ADS_SHARED, "functions.R"), local = FALSE, chdir = FALSE)
 cat("✓ ADS functions loaded successfully\n\n")
 
-source(file.path(ADS_SHARED, "scripts", "generate_pdf.R"), local = FALSE, chdir = FALSE)
+source(file.path(ADS_SHARED, "generate_pdf.R"), local = FALSE, chdir = FALSE)
 cat("✓ ADS generate PDF loaded successfully\n\n")
 
 # Initialize logging (case-specific output)
