@@ -26,21 +26,6 @@ suppressPackageStartupMessages({
   library(pagedown)
 })
 
-# Source functions.R - try multiple locations
-if (!exists("load_metric_spec")) {
-  # Try current directory
-  
-  if (file.exists("functions.R")) {
-    source("functions.R")
-  } else if (exists("SCRIPTS_DIR") && file.exists(file.path(SCRIPTS_DIR, "functions.R"))) {
-    source(file.path(SCRIPTS_DIR, "functions.R"))
-  } else if (exists("ADS_SHARED") && file.exists(file.path(ADS_SHARED, "scripts", "functions.R"))) {
-    source(file.path(ADS_SHARED, "scripts", "functions.R"))
-  } else {
-    stop("Cannot find functions.R - please source it first or set SCRIPTS_DIR/ADS_SHARED")
-  }
-}
-
 # ============================================================================
 # MAIN FUNCTION
 # ============================================================================
