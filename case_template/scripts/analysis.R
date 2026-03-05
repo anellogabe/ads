@@ -54,6 +54,10 @@ message("✓ loaded processed data from: ", PROCESSED_DIR)
 #   all.x = TRUE
 # )
 
+init_logging(log_file_path = file.path(OUT_DIR, "Logs", "Case_Log.txt"),
+             case_name = "Analysis",
+             append = TRUE)
+
 
 # ----- ALL DATA:                DEV only - test subset of data (if needed) --------------------------
 
@@ -856,21 +860,23 @@ pay1[, rrop_net_underpayment := as.integer(Net_rrop_dmgs > 0)]
 
 time1[, ID_Date := paste(ID, Date, sep = "_")]
 
-# Week end day mapping for floor_date() and ceiling_date()
-# week_end = 1  ->  Sunday
-# week_end = 2  ->  Monday
-# week_end = 3  ->  Tuesday
-# week_end = 4  ->  Wednesday
-# week_end = 5  ->  Thursday
-# week_end = 6  ->  Friday
-# week_end = 7  ->  Saturday
-workweek_value = 7
+# Convert weekday name to lubridate week_start value
+weekday_map <- c(
+  "Monday"    = 1,
+  "Tuesday"   = 2,
+  "Wednesday" = 3,
+  "Thursday"  = 4,
+  "Friday"    = 5,
+  "Saturday"  = 6,
+  "Sunday"    = 7
+)
 
-# Add week ending date ADJUST AS NEEDED BASED ON THE PAY DATA
-time1[, Week_End := floor_date(Date, "week", week_start = workweek_value) + days(6)]
+workweek_value <- unname(weekday_map[most_common_period_end_weekday])
 
-# Add day of week name to verify
-time1[, Week_End_Day := weekdays(Week_End)]
+if (is.na(workweek_value)) {
+  stop("Invalid weekday detected in most_common_period_end_weekday: ",
+       most_common_period_end_weekday)
+}
 
 time1[, ID_Week_End := paste(ID, Week_End, sep = "-")]
 
@@ -1554,13 +1560,13 @@ first_fields_default <- c("Source", "Sheet", "Page", "Bates", "Key_Gps", "ID", "
 #NOTE: Hours field is default "Sum" field but it could be a "Max" field depending on your time data format.
 sum_fields_default <- c("mp", "mp_lt_twenty", "mp_lt_thirty", "mp_thirty", "mp_gt_thirty", "mp_forty_five", 
                         "mp_gt_two_hrs", "mp_gt_four_hrs", "Hours"
-
+                        
                         # Rest period punches in data? Add:
                         #, "rp", "rp_lt_ten", "rp_ten", "rp_gt_ten", "rp_fifteen"
                         
                         # Auto-deducted meal periods in data? Add:
                         #, "auto_mp", "auto_mp_lt_twenty", "auto_mp_lt_thirty", "auto_mp_thirty", "auto_mp_gt_thirty", "auto_mp_forty_five", 
-                        # "auto_mp_gt_two_hrs", "auto_mp_gt_four_hrs",
+                        # "auto_mp_gt_two_hrs", "auto_mp_gt_four_hrs"
                         
                         # Rounded and actual punches analysis? Add:
                         #, "r_diff", "r_mp_lt_twenty", "r_mp_lt_thirty", "r_mp_thirty", "r_mp_gt_thirty", "r_mp_forty_five", 
@@ -1571,7 +1577,7 @@ max_fields_default <- c("shift_hrs", "mp1_hrs", "mp2_hrs", "shift_mps", "hrs_to_
                         "mp1_mins_short", "mp2_mins_short", "mp1_mins_late", "mp2_mins_late"
                         
                         # Auto-deducted meal periods in data? Add:
-                        #, "auto_mp_hrs", "auto_mp"
+                        #, "auto_mp_hrs"
                         
                         # Rest period punches in data? Add:
                         #, "rp", "shift_rps", "rp1_hrs", "rp2_hrs", "rp3_hrs", "rp4_hrs", "hrs_to_rp1", "hrs_to_rp2", "hrs_to_rp3", "hrs_to_rp4"
@@ -1798,7 +1804,7 @@ shift_data1[, `:=`(
 #  Standard CA daily OT/DT (non-AWS baseline) 
 shift_data1[, `:=`(
   calc_daily_ot = fifelse(shift_hrs > 12, 4,
-                                      fifelse(shift_hrs > 8, shift_hrs - 8, 0)),
+                          fifelse(shift_hrs > 8, shift_hrs - 8, 0)),
   calc_daily_dt = fifelse(shift_hrs > 12, shift_hrs - 12, 0)
 )]
 
@@ -2464,12 +2470,21 @@ sum_fields_default <- c(
   # "r_mp_gt_two_hrs", "r_mp_gt_four_hrs", "r_Hours", "r_shift_hrs", 
   # "pre_shift_hrs_lost", "pre_shift_hrs_gained", "mid_shift_out_hrs_lost",
   # "mid_shift_out_hrs_gained", "mid_shift_in_hrs_lost", "mid_shift_in_hrs_gained", "post_shift_hrs_lost", "post_shift_hrs_gained",
-
+  
   "MissMP1", "LateMP1", "ShortMP1", "MissMP2", "LateMP2", "ShortMP2",
   "mp1_violation", "mp2_violation",
   
   "MissMP1_w", "LateMP1_w", "ShortMP1_w", "MissMP2_w", "LateMP2_w", "ShortMP2_w",
   "mp1_violation_w", "mp2_violation_w"
+  
+  # Auto-deducted meal periods? Add:
+  # , "auto_mp", "auto_mp_lt_twenty", "auto_mp_lt_thirty", "auto_mp_thirty", "auto_mp_gt_thirty", "auto_mp_forty_five",           
+  # "auto_mp_gt_two_hrs", "auto_mp_gt_four_hrs", 
+  # 
+  # "auto_MissMP1", "auto_LateMP1", "auto_ShortMP1", "auto_MissMP2", "auto_LateMP2", "auto_ShortMP2", "auto_mpv_shift", 
+  # "auto_MissMP1_w", "auto_LateMP1_w", "auto_ShortMP1_w", "auto_MissMP2_w", "auto_LateMP2_w",  "auto_ShortMP2_w", "auto_mpv_shift_w", 
+  # 
+  # "auto_mpv_shift_less_prems", "auto_mpv_shift_less_prems_w"
 )
 
 max_fields_default <- c(
@@ -2538,13 +2553,82 @@ pp_data1[, has_pay   := as.integer(!is.na(pay_row_id))]
 stopifnot(pp_data1[has_shift == 1, .N] == n_shift0)
 stopifnot(nrow(pp_data1) >= n_shift0)
 
-pp_data1[, .(
-  rows_total      = .N,
-  rows_shift_data = sum(has_shift == 1, na.rm = TRUE),
-  rows_pay_data   = sum(has_pay == 1, na.rm = TRUE),
-  rows_shift_only = sum(has_shift == 1 & has_pay == 0, na.rm = TRUE),
-  rows_pay_only   = sum(has_shift == 0 & has_pay == 1, na.rm = TRUE)
-)]
+# alignment_failsafe <- function(pp_data,
+#                                overlap_warn_pct = 0.80,
+#                                overlap_stop_pct = 0.50,   # STOP if overlap < 50% on either side
+#                                action = c("keep_all", "keep_overlap_only", "drop_one_sided"),
+#                                drop = c("pay_only", "shift_only")) {
+#   
+#   stopifnot(is.data.table(pp_data))
+#   action <- match.arg(action)
+#   
+#   n_total <- nrow(pp_data)
+#   n_both  <- pp_data[has_shift == 1 & has_pay == 1, .N]
+#   n_shift <- pp_data[has_shift == 1, .N]
+#   n_pay   <- pp_data[has_pay   == 1, .N]
+#   n_shift_only <- pp_data[has_shift == 1 & has_pay == 0, .N]
+#   n_pay_only   <- pp_data[has_shift == 0 & has_pay == 1, .N]
+#   n_neither    <- pp_data[has_shift == 0 & has_pay == 0, .N]
+#   
+#   shift_overlap_pct <- if (n_shift > 0) n_both / n_shift else NA_real_
+#   pay_overlap_pct   <- if (n_pay   > 0) n_both / n_pay   else NA_real_
+#   
+#   cat("\n",
+#       "====================== PP DATA ALIGNMENT CHECK ======================\n",
+#       "Total rows:            ", format(n_total, big.mark=","), "\n",
+#       "Rows w/ BOTH:          ", format(n_both, big.mark=","), " (", sprintf("%.1f%%", 100*n_both/max(n_total,1)), ")\n",
+#       "Shift rows (has_shift):", format(n_shift, big.mark=","), "\n",
+#       "Pay rows (has_pay):    ", format(n_pay, big.mark=","), "\n",
+#       "Shift-only:            ", format(n_shift_only, big.mark=","), "\n",
+#       "Pay-only:              ", format(n_pay_only, big.mark=","), "\n",
+#       "Neither (unexpected):  ", format(n_neither, big.mark=","), "\n",
+#       "Overlap within shift:  ", ifelse(is.na(shift_overlap_pct), "NA", sprintf("%.1f%%", 100*shift_overlap_pct)), "\n",
+#       "Overlap within pay:    ", ifelse(is.na(pay_overlap_pct),   "NA", sprintf("%.1f%%", 100*pay_overlap_pct)), "\n",
+#       "=====================================================================\n",
+#       sep=""
+#   )
+#   
+#   # Warn if overlap is low-ish
+#   if ((!is.na(shift_overlap_pct) && shift_overlap_pct < overlap_warn_pct) ||
+#       (!is.na(pay_overlap_pct)   && pay_overlap_pct   < overlap_warn_pct)) {
+#     warning(sprintf(
+#       "Possible misalignment: overlap below warning threshold. shift_overlap=%.1f%%, pay_overlap=%.1f%%",
+#       100*shift_overlap_pct, 100*pay_overlap_pct
+#     ))
+#   }
+#   
+#   # STOP if >50% mismatch on either side (i.e., overlap < 50%)
+#   if ((!is.na(shift_overlap_pct) && shift_overlap_pct < overlap_stop_pct) ||
+#       (!is.na(pay_overlap_pct)   && pay_overlap_pct   < overlap_stop_pct)) {
+#     
+#     stop(sprintf(
+#       paste0(
+#         "DATA NOT ALIGNED: overlap below stop threshold (%.0f%%).\n",
+#         "Shift overlap: %.1f%% (%.1f%% shift rows do NOT match pay)\n",
+#         "Pay overlap:   %.1f%% (%.1f%% pay rows do NOT match shift)\n",
+#         "Action: review join keys / aggregation level before proceeding."
+#       ),
+#       100*overlap_stop_pct,
+#       100*shift_overlap_pct, 100*(1 - shift_overlap_pct),
+#       100*pay_overlap_pct,   100*(1 - pay_overlap_pct)
+#     ))
+#   }
+#   
+#   # Actions (3 alternatives)
+#   if (action == "keep_all") return(pp_data[])
+#   
+#   if (action == "keep_overlap_only") {
+#     return(pp_data[has_shift == 1 & has_pay == 1])
+#   }
+#   
+#   drop <- match.arg(drop, several.ok = TRUE)
+#   out <- pp_data[]
+#   if ("pay_only" %in% drop)   out <- out[!(has_shift == 0 & has_pay == 1)]
+#   if ("shift_only" %in% drop) out <- out[!(has_shift == 1 & has_pay == 0)]
+#   out
+# }
+# 
+# pp_data1 <- alignment_failsafe(pp_data1, action = "keep_all", overlap_warn_pct = 0.8, overlap_stop_pct = 0.5)
 
 # Coalesce matching columns (prefer non-NA), then drop redundant Pay_ versions
 pp_data1[, `:=`(
@@ -2666,6 +2750,72 @@ fix_rate_with_ca_min(pp_data1, "RROP")
 # Ensure RROP always as much or more than Base_Rate
 pp_data1[, RROP := pmax(RROP, Base_Rate, na.rm = TRUE)]
 
+# --- Pay period level hours analysis (pay period level rounding analysis) ----
+pp_data1[, pp_hrs_wkd_less_pp_shift_hrs :=
+           fifelse(is.na(pp_Hrs_Wkd) | is.na(pp_shift_hrs) | pp_Hrs_Wkd == 0 | pp_shift_hrs == 0,
+                   NA_real_,
+                   round(pp_Hrs_Wkd - pp_shift_hrs, 2))
+]
+
+pp_data1[, pp_hrs_wkd_less_pp_Hours :=
+           fifelse(is.na(pp_Hrs_Wkd) | is.na(pp_Hours) | pp_Hrs_Wkd == 0 | pp_Hours == 0,
+                   NA_real_,
+                   round(pp_Hrs_Wkd - pp_Hours, 2))
+]
+
+pp_data1[, pp_Hours_less_pp_shift_hrs :=
+           fifelse(is.na(pp_Hours) | is.na(pp_shift_hrs) | pp_Hours == 0 | pp_shift_hrs == 0,
+                   NA_real_,
+                   round(pp_Hours - pp_shift_hrs, 2))
+]
+
+# Max and min time and pay data comparison thresholds (pay period level)
+punches_per_shift <- 4L
+pp_lvl_hrs_max_threshold <- fifelse(
+  mode_days_btwn_pay_period_ends > 7,
+  punches_per_shift * 14 * (7/60),
+  punches_per_shift * 7  * (7/60)
+)
+
+pp_lvl_hrs_min_threshold <- (1/60) # One minute by default (<1 min. de minimis)
+
+pp_data1[, pp_hrs_wkd_less_pp_shift_hrs :=
+           fifelse(is.na(pp_hrs_wkd_less_pp_shift_hrs), NA_real_,
+                   fifelse(abs(pp_hrs_wkd_less_pp_shift_hrs) < pp_lvl_hrs_min_threshold, 0, pp_hrs_wkd_less_pp_shift_hrs))
+]
+
+pp_data1[, pp_hrs_wkd_less_pp_Hours :=
+           fifelse(is.na(pp_hrs_wkd_less_pp_Hours), NA_real_,
+                   fifelse(abs(pp_hrs_wkd_less_pp_Hours) < pp_lvl_hrs_min_threshold, 0, pp_hrs_wkd_less_pp_Hours))
+]
+
+pp_data1[, pp_Hours_less_pp_shift_hrs :=
+           fifelse(is.na(pp_Hours_less_pp_shift_hrs), NA_real_,
+                   fifelse(abs(pp_Hours_less_pp_shift_hrs) < pp_lvl_hrs_min_threshold, 0, pp_Hours_less_pp_shift_hrs))
+]
+
+pp_data1[, pp_lvl_diff :=
+           fifelse(is.na(pp_hrs_wkd_less_pp_shift_hrs) | abs(pp_hrs_wkd_less_pp_shift_hrs) > pp_lvl_hrs_max_threshold,
+                   NA_real_,
+                   pp_hrs_wkd_less_pp_shift_hrs)
+]
+
+# Lost/gained/match (pay period level)
+pp_data1[, pp_lvl_hrs_lost   := fifelse(is.na(pp_lvl_diff), NA_real_, fifelse(pp_lvl_diff > 0, 0, pp_lvl_diff))]
+pp_data1[, pp_lvl_hrs_gained := fifelse(is.na(pp_lvl_diff), NA_real_, fifelse(pp_lvl_diff < 0, 0, pp_lvl_diff))]
+pp_data1[, pp_lvl_hrs_match  := fifelse(is.na(pp_lvl_diff), NA_integer_, fifelse(pp_lvl_diff == 0, 1L, 0L))]
+
+# Employee-level totals (retain sign, repeat per row by ID)
+pp_data1[, ee_lvl_hrs_diff := fifelse(
+  all(is.na(pp_lvl_diff)), NA_real_, sum(pp_lvl_diff, na.rm = TRUE)
+), by = ID]
+
+pp_data1[, `:=`(
+  ee_lvl_net_loss    = fifelse(is.na(ee_lvl_hrs_diff), NA_integer_, fifelse(ee_lvl_hrs_diff < 0, 1L, 0L)),
+  ee_lvl_net_gain    = fifelse(is.na(ee_lvl_hrs_diff), NA_integer_, fifelse(ee_lvl_hrs_diff > 0, 1L, 0L)),
+  ee_lvl_net_neutral = fifelse(is.na(ee_lvl_hrs_diff), NA_integer_, fifelse(ee_lvl_hrs_diff == 0, 1L, 0L))
+)]
+
 
 # ----- ALL DATA (BY PP):        Principal damages -----------------------------------------
 
@@ -2688,26 +2838,26 @@ pp_data1[, RROP_ee := {
 
 # Principal damages by claim 
 pp_data1[, `:=`(
-# Meal 
+  # Meal 
   mp_dmgs                 = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp)   | is.na(RROP), NA_real_, mpv_per_pp   * RROP),
   mp_dmgs_w               = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp_w) | is.na(RROP), NA_real_, mpv_per_pp_w * RROP),
   mp_dmgs_less_prems      = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp_less_prems)   | is.na(RROP), NA_real_, mpv_per_pp_less_prems   * RROP),
   mp_dmgs_less_prems_w    = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp_less_prems_w) | is.na(RROP), NA_real_, mpv_per_pp_less_prems_w * RROP),
-# Rest 
+  # Rest 
   rp_dmgs                 = fifelse(rp_dmgs_switch == FALSE | is.na(rpv_per_pp) | is.na(RROP), NA_real_, rpv_per_pp * RROP),
   rp_dmgs_less_prems      = fifelse(rp_dmgs_switch == FALSE | is.na(rpv_per_pp_less_prems) | is.na(RROP), NA_real_, rpv_per_pp_less_prems * RROP),
-# RROP (pulled in from pay1, already at pp level) 
+  # RROP (pulled in from pay1, already at pp level) 
   Net_rrop_dmgs           = fifelse(rep_len(!rrop_dmgs_switch, .N), 0, fcoalesce(Net_rrop_dmgs, 0)),
   Gross_rrop_dmgs         = fifelse(rep_len(!rrop_dmgs_switch, .N), 0, fcoalesce(Gross_rrop_dmgs, 0)),                   
-# Off-the-clock
+  # Off-the-clock
   otc_dmgs                = fifelse(is.na(RROP), 0, otc_hrs_per_shift * Shifts * RROP),                                                   # MUST BE UPDATED
-# Unreimbursed expenses
+  # Unreimbursed expenses
   unreimb_exp_dmgs        = unreimb_exp_per_pp,
-# Clock rounding
+  # Clock rounding
   clock_rounding_dmgs     = fifelse(!clock_rounding_dmgs_switch | is.na(RROP), 0, 0 * RROP),                                              # MUST BE UPDATED
-# Unpaid wages (min wage)
+  # Unpaid wages (min wage)
   min_wage_dmgs           = fifelse(min_wage_dmgs_switch == FALSE | is.na(RROP), 0, 0)
-                                    # e.g., (short_break_reg_hrs * CA_min_wage) + (short_break_ot_hrs * RROP))                                                     
+  # e.g., (short_break_reg_hrs * CA_min_wage) + (short_break_ot_hrs * RROP))                                                     
 )]
 
 # --- Unpaid overtime and double time ---
@@ -2798,8 +2948,8 @@ pay1_credits <- pay1[
 ]
 
 # Join credit values to pp_data1
- setDT(pp_data1)
- setDT(pay1_credits)
+setDT(pp_data1)
+setDT(pay1_credits)
 pp_data1 <- safe_left_join(pp_data1, pay1_credits, by = c("ID_Period_End" = "Pay_ID_Period_End"))
 
 # Default missing credits to 0
@@ -3605,7 +3755,7 @@ sum_fields_default <- c(
   "shift", "mp",
   "mp_lt_twenty", "mp_lt_thirty", "mp_thirty", "mp_gt_thirty",
   "mp_gt_two_hrs", "mp_gt_four_hrs",
-
+  
   # --- Meal violations ---
   "MissMP1", "LateMP1", "ShortMP1", "MissMP2", "LateMP2", "ShortMP2",
   "mp1_violation", "mp2_violation",
@@ -3622,19 +3772,23 @@ sum_fields_default <- c(
   # "r_mp_gt_two_hrs", "r_mp_gt_four_hrs", "r_Hours", "r_shift_hrs", 
   # "pre_shift_hrs_lost", "pre_shift_hrs_gained", "mid_shift_out_hrs_lost",
   # "mid_shift_out_hrs_gained", "mid_shift_in_hrs_lost", "mid_shift_in_hrs_gained", "post_shift_hrs_lost", "post_shift_hrs_gained",
-   
+  
   # --- Meal damages (pp-level) ---
   "mp_dmgs", "mp_dmgs_w", "mp_dmgs_less_prems", "mp_dmgs_less_prems_w",
-
+  
   # --- Rest damages (pp-level) ---
   "rp_dmgs", "rp_dmgs_less_prems",
-
+  
   # --- RROP ---
   "rrop_by_code_underpayment", "Wage_Diff", "OT_Diff", "DT_Diff", "Meal_Diff", "Rest_Diff", "Sick_Diff",
   "OT_Overpayment", "DT_Overpayment", "Meal_Overpayment", "Rest_Overpayment", "Sick_Overpayment",
   "OT_rrop_dmgs", "DT_rrop_dmgs", "Meal_rrop_dmgs", "Rest_rrop_dmgs", "Sick_rrop_dmgs",
   "Gross_Overpayment", "Gross_rrop_dmgs", "Net_Overpayment", "Net_rrop_dmgs",
   "rrop_any_underpayment", "rrop_net_underpayment",
+  
+  # --- Pay period level hours analysis and rounding ---
+  "pp_lvl_diff", "pp_lvl_hrs_lost", "pp_lvl_hrs_gained", "pp_lvl_hrs_match", 
+  "pp_hrs_wkd_less_pp_shift_hrs", "pp_hrs_wkd_less_pp_Hours",
 
   # --- Other damages ---
   "otc_dmgs", 
@@ -4069,14 +4223,11 @@ wsv_time_extrap_factor  <- wsv_data_coverage / wsv_period
 wt_time_extrap_factor   <- wt_data_coverage / wt_period
 paga_time_extrap_factor <- paga_data_coverage / paga_period
 
-message(sprintf("Class Period extrap factor = %.4f (%.1f%%)", 
-                time_extrap_factor, time_extrap_factor * 100))
-message(sprintf("WSV Period extrap factor = %.4f (%.1f%%)", 
-                wsv_time_extrap_factor, wsv_time_extrap_factor * 100))
-message(sprintf("WT Period extrap factor = %.4f (%.1f%%)", 
-                wt_time_extrap_factor, wt_time_extrap_factor * 100))
-message(sprintf("PAGA Period extrap factor = %.4f (%.1f%%)", 
-                paga_time_extrap_factor, paga_time_extrap_factor * 100))
+log_msg("Temporal Extrapolation Factors (Data Coverage / Period Length):", "DATA_SUMMARY")
+log_msg(sprintf("  Class Period: %.4f (%.1f%% coverage)", time_extrap_factor, time_extrap_factor * 100), "DATA_SUMMARY")
+log_msg(sprintf("  WSV Period: %.4f (%.1f%% coverage)", wsv_time_extrap_factor, wsv_time_extrap_factor * 100), "DATA_SUMMARY")
+log_msg(sprintf("  WT Period: %.4f (%.1f%% coverage)", wt_time_extrap_factor, wt_time_extrap_factor * 100), "DATA_SUMMARY")
+log_msg(sprintf("  PAGA Period: %.4f (%.1f%% coverage)", paga_time_extrap_factor, paga_time_extrap_factor * 100), "DATA_SUMMARY")
 
 # Extrapolated counts
 extrap_class_pps      <- round(((uniqueN(pp_data1$ID_Period_End, na.rm = TRUE) / class_data_ees) * extrap_class_ees) / time_extrap_factor, 0)
@@ -4131,8 +4282,8 @@ generate_metadata(ee_data1, "time_ee_metadata.csv")
 generate_metadata(shift_data1, "time_shift_metadata.csv")
 generate_metadata(time1, "time_punch_metadata.csv")
 generate_metadata(pay1, "pay_metadata.csv")
-generate_metadata(ee_data1, "pp_metadata.csv")
-generate_metadata(pp_data1, "ee_metadata.csv")
+generate_metadata(pp_data1, "pp_metadata.csv")
+generate_metadata(ee_data1, "ee_metadata.csv")
 
 # Toggle per table: TRUE = write CSV filtered to Key_Gps; FALSE = write full CSV
 write_key_gps_time  <- FALSE
@@ -4214,11 +4365,44 @@ custom_filters <- setNames(lapply(unique_groups, function(g) {
   )
 }), unique_groups)
 
+# # --- TEMPLATE column filters ---
+# 
+# s1 <- if ("Sample" %in% names(shift_data1)) unique(shift_data1$Sample) else NULL
+# s2 <- if ("Sample" %in% names(pay1))        unique(pay1$Sample)        else NULL
+# s3 <- if ("Sample" %in% names(pp_data1))    unique(pp_data1$Sample)    else NULL
+# s4 <- if (!is.null(ee_data1) && "Sample" %in% names(ee_data1)) unique(ee_data1$Sample) else NULL
+# 
+# sample_vals <- sort(unique(c(s1, s2, s3, s4)))
+# sample_vals <- sample_vals[!is.na(sample_vals)]
+# 
+# sample_filters <- setNames(lapply(sample_vals, function(s) {
+#   list(
+#     time_filter = if ("Sample" %in% names(shift_data1)) bquote(Sample == .(s)) else NULL,
+#     pay_filter  = if ("Sample" %in% names(pay1))        bquote(Sample == .(s)) else NULL,
+#     pp_filter   = if ("Sample" %in% names(pp_data1))    bquote(Sample == .(s)) else NULL,
+#     ee_filter   = if (!is.null(ee_data1) && "Sample" %in% names(ee_data1)) bquote(Sample == .(s)) else NULL
+#   )
+# }), paste0("Sample: ", sample_vals))
+# 
+# # Merge with Key_Gps filters
+# custom_filters <- c(custom_filters, sample_filters)
+
+# Extrapolation environment
 extrap_env <- list(
-  class_ees = extrap_class_ees,
-  class_pps = extrap_class_pps,
-  wsv_ees   = extrap_wsv_ees,
-  wsv_pps   = extrap_wsv_pps,
+  extrap_class_ees = extrap_class_ees,
+  extrap_class_pps = extrap_class_pps,
+  extrap_class_wks = extrap_class_wks,
+  extrap_class_shifts = extrap_class_shifts,
+  extrap_wsv_ees   = extrap_wsv_ees,
+  extrap_wsv_pps   = extrap_wsv_pps,
+  extrap_wt_ees    = extrap_wt_ees,
+  extrap_wt_former_ees = extrap_wt_former_ees,
+  extrap_paga_ees  = extrap_paga_ees,
+  extrap_paga_pps  = extrap_paga_pps,
+  time_extrap_factor = time_extrap_factor,
+  wsv_time_extrap_factor = wsv_time_extrap_factor,
+  wt_time_extrap_factor = wt_time_extrap_factor,
+  paga_time_extrap_factor = paga_time_extrap_factor,
   class_dmgs_start_date = class_dmgs_start_date
 )
 
@@ -4237,17 +4421,25 @@ final_table <- format_metrics_table(raw_results)
 export_metrics(final_table, base_name = "Analysis")
 
 
+# ----- ALL DATA:                END Log -----------------------------------------
+
+# Finalize logging and create summary
+end.time <- Sys.time()
+duration <- difftime(end.time, start.time, units = "secs")
+finalize_logging()
+
+
 # ----- ALL DATA:                Generate PDF report -------------------------------------------------------------
 
-
-generate_report(include_extrap = TRUE,
-                include_appendix = TRUE,
-                include_data_comparison = TRUE)
+generate_report(
+  #output_file = "Brown v Cedars Analysis.pdf",
+  #sections = c("class", "paga"),  # Only damages & PAGA
+  #class_scenarios = c("no waivers"),  # Only no-waivers for Class
+  #paga_scenarios = c("waivers"),  # Only waivers for PAGA
+  include_extrap = TRUE,
+  include_appendix = TRUE
+)
 
 # generate_paga_report(include_extrap = TRUE,
 #                 include_appendix = TRUE,
 #                 include_data_comparison = TRUE)
-
-# ----- END  -----------------------------------------
-end.time <- Sys.time()
-end.time - start.time    
