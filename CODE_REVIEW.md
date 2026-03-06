@@ -131,20 +131,45 @@ However, there are several **critical bugs**, significant **code duplication**, 
 
 ---
 
-## 5. `case_template/scripts/analysis.R` (~2,100 lines)
+## 5. `case_template/scripts/analysis.R` (~4,450 lines)
 
-### Issues
+### Critical Bugs
 
-| # | Severity | Issue |
-|---|----------|-------|
-| 1 | **High** | CA minimum wage table hardcoded through 2026 only (line 116-119) -- will silently fail to join for 2027+ data without error |
-| 2 | **High** | `RROP_MIN`/`RROP_MAX`/`RROP_WARN` redefined at lines 747-749, overwriting values from `clean_data.R` config (lines 107-109) -- user's config is silently discarded |
-| 3 | **Medium** | `Rate_Mult` computed twice identically (lines 446 and 452) |
-| 4 | **Medium** | Relies on many undefined globals: `mode_days_btwn_pay_period_ends`, `most_common_period_end_weekday`, `separate_key_gps`, `rrop_buffer`, `rounding_hrs_cutoff`, `all_ids`, `OUT_DIR`, `PROCESSED_DIR` -- all must exist from `clean_data.R` |
-| 5 | **Medium** | `Straight_Time_Amt` calculation (line 636) has operator precedence issue: `Reg_Pay_Code == 1 & Hrs_Wkd_Pay_Code == 1 | (Diff...)` -- `&` binds tighter than `|`, so the logic may not match intent without explicit parentheses |
-| 6 | **Medium** | AWW detection flags `is_3_12_candidate` checks for `shifts_near_8hrs` (line 1478) instead of `shifts_near_12hrs` -- copy-paste error |
-| 7 | **Low** | `var_half_time_OT_multiplier` and `var_half_time1_multiplier` re-checked with `exists()` at lines 697-698 after being defined at lines 671-672 |
-| 8 | **Low** | Large amounts of commented-out code (~40% of file) -- should be removed or moved to separate feature-branch scripts |
+| # | Issue | Location |
+|---|-------|----------|
+| 1 | **`all_ids` undefined** when `TEST_SUBSET = TRUE` -- crash on line 77 | lines 77, 97 |
+| 2 | **AWW `is_3_12_candidate` checks `shifts_near_8hrs` instead of `shifts_near_12hrs`** -- copy-paste error | line 1478 |
+| 3 | **AWW filter uses `!= "Standard"` but no schedule is ever classified as "Standard"** -- all employees appear in the AWW detail report (should be `!= "Other"`) | line 1542 |
+| 4 | **`week` flag uses `shift()` without `by = ID`** -- last row of one employee compared to first row of the next, incorrectly marking it as mid-week | line 1730 |
+| 5 | **PAGA `has_paga_penalties` uses un-suffixed column names inside the scenario-suffix loop** -- all scenarios write the same flag using base scenario columns, not scenario-specific ones | lines 3565-3582 |
+| 6 | **`metrics_spec_no_year` and `metrics_spec_year_ok` labels are swapped** -- "no year breakdown is FALSE" assigned to the `_no_year` variable and vice versa | lines 3348-3354 |
+
+### High-Severity Issues
+
+| # | Issue | Location |
+|---|-------|----------|
+| 7 | CA minimum wage table hardcoded through 2026 only -- silently produces NA for 2027+ data | lines 116-119 |
+| 8 | `RROP_MIN`/`RROP_MAX`/`RROP_WARN` redefined, silently overriding user config from `clean_data.R` | lines 747-749 |
+| 9 | Differential "Premium Only" check (`Calc_Rate < thresh_max`) fires before more specific half-time/base-inclusive checks in `fcase` -- swallows legitimate categories | lines 505-506 |
+
+### Medium-Severity Issues
+
+| # | Issue | Location |
+|---|-------|----------|
+| 10 | `Rate_Mult` computed twice identically | lines 446 vs 452 |
+| 11 | `Straight_Time_Amt` has operator precedence issue: `& ... |` without explicit parentheses | line 636 |
+| 12 | Floating-point equality checks: `mp_hrs == 0.5`, `mp_hrs == 0.75` -- unreliable due to FP arithmetic | lines 1274-1275 |
+| 13 | Relies on 25+ undefined globals (`rrop_buffer`, `rounding_hrs_cutoff`, `min_ot_buffer`, `max_ot_buffer`, `wt_use_rrop`, etc.) -- no validation at top of script | throughout |
+| 14 | Mixes `dplyr` pipe syntax with `data.table` on lines 734-738 -- unnecessary dependency | lines 734-738 |
+| 15 | `install.packages("zoo")` in production code (line 2679) -- security/reproducibility concern | line 2679 |
+| 16 | `first_fields_default`/`sum_fields_default`/`max_fields_default` silently overwritten multiple times via global reassignment | lines 1557, 2406, 2459, 3747 |
+
+### Code Quality
+
+- **~30-40% commented-out code** -- several hundred lines that obscure active logic
+- **8 damage scenarios** create massive repetition (~400 lines of near-identical column name lists) -- should be generated programmatically
+- **Redundant `setDT()` calls** on `pay1` at 12+ locations
+- **Bare `nrow()` calls** with `#_______` comments provide no output in batch mode (lines 890, 892, 1610, 1612)
 
 ### Strengths
 
@@ -152,6 +177,7 @@ However, there are several **critical bugs**, significant **code duplication**, 
 - Thorough RROP (Regular Rate of Pay) analysis with distribution tracking
 - Well-designed meal period violation detection with waiver scenarios
 - Good use of data.table for performance
+- No hardcoded credentials or sensitive data
 
 ---
 
@@ -171,8 +197,12 @@ However, there are several **critical bugs**, significant **code duplication**, 
 4. **`app.R` lines 2447-2490**: Fix duplicate data aggregation in `employee_coverage_plot`
 5. **`functions.R` line ~3109**: Fix `export_metrics()` to use its `out_dir` parameter instead of overwriting with `OUT_DIR`
 6. **`analysis.R` line 1478**: Fix `is_3_12_candidate` to use `shifts_near_12hrs` instead of `shifts_near_8hrs`
-7. **`analysis.R` lines 747-749**: Remove duplicate `RROP_MIN`/`RROP_MAX`/`RROP_WARN` definitions that override user config
-8. **`clean_data.R` line 854**: Fix `na.rm` parenthesis placement in `min_time_date`
+7. **`analysis.R` line 1542**: Change `!= "Standard"` to `!= "Other"` for AWW filter
+8. **`analysis.R` line 1730**: Add `by = ID` to the `week` flag `shift()` call
+9. **`analysis.R` lines 3348-3354**: Swap `metrics_spec_no_year` / `metrics_spec_year_ok` label assignments
+10. **`analysis.R` lines 3565-3582**: Fix PAGA `has_paga_penalties` to use scenario-specific column names
+11. **`analysis.R` lines 747-749**: Remove duplicate `RROP_MIN`/`RROP_MAX`/`RROP_WARN` definitions that override user config
+12. **`clean_data.R` line 854**: Fix `na.rm` parenthesis placement in `min_time_date`
 
 ## Recommendations
 
