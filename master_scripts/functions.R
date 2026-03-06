@@ -2323,7 +2323,7 @@ generate_random_sample <- function(
   cat(sprintf("  - Time Data IDs: %s\n", format(time_population, big.mark = ",")))
   cat(sprintf("  - Pay Data IDs: %s\n", format(pay_population, big.mark = ",")))
   if (use_class1) {
-    cat(sprintf("  - Employee List IDs: %s\n", format(class1_population, big.mark = ",")))
+    cat(sprintf("  - Employee List IDs: %s\n", format(class_population, big.mark = ",")))
   }
   cat(sprintf("  - IDs in both Time AND Pay: %s\n", format(nrow(both_time_pay), big.mark = ",")))
   
@@ -3106,7 +3106,7 @@ format_metrics_table <- function(results_dt) {
 }
 
 export_metrics <- function(wide_dt, base_name = "Metrics_Table", out_dir = NULL) {
-  out_dir <- OUT_DIR
+  if (is.null(out_dir)) out_dir <- OUT_DIR
   out_csv <- file.path(out_dir, paste0(base_name, ".csv"))
   write_csv_and_rds(wide_dt, out_csv)
   invisible(list(csv = out_csv, rds = sub("\\.csv$", ".rds", out_csv)))

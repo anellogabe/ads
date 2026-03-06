@@ -449,8 +449,6 @@ pay1[, Rate_Mult := fifelse(Base_Rate1 > 0, round(Calc_Rate / Base_Rate1, 2), NA
 rate_type_threshold <- 0.2   # +/- buffer around target multipliers
 thresh_max <- 5              # Max rate for "Premium Only"
 
-pay1[, Rate_Mult := fifelse(Base_Rate1 > 0, round(Calc_Rate / Base_Rate1, 2), NA_real_)]
-
 pay1[, Rate_Type := fcase(
   Calc_Rate == 0 | is.na(Calc_Rate), "No Rate",
   
@@ -633,10 +631,10 @@ write_csv_and_rds(rate_type_summary, file.path(OUT_DIR, "Rate_Type_Analysis.csv"
 
 # Calculate straight time amounts (needed for group_pay_data function)
 pay1[, Straight_Time_Amt := fifelse(
-  Reg_Pay_Code == 1 & Hrs_Wkd_Pay_Code == 1 | (Diff_Pay_Code == 1 & Diff_OT_Pay_Code != 1 & Diff_DT_Pay_Code != 1), Pay_Amount,
+  (Reg_Pay_Code == 1 & Hrs_Wkd_Pay_Code == 1) | (Diff_Pay_Code == 1 & Diff_OT_Pay_Code != 1 & Diff_DT_Pay_Code != 1), Pay_Amount,
   fifelse(
-    OT_Pay_Code == 1 & Hrs_Wkd_Pay_Code == 1 | Diff_OT_Pay_Code == 1, Pay_Amount / 1.5,
-    fifelse(DT_Pay_Code == 1 & Hrs_Wkd_Pay_Code == 1 | Diff_DT_Pay_Code == 1, Pay_Amount / 2, 0))
+    (OT_Pay_Code == 1 & Hrs_Wkd_Pay_Code == 1) | Diff_OT_Pay_Code == 1, Pay_Amount / 1.5,
+    fifelse((DT_Pay_Code == 1 & Hrs_Wkd_Pay_Code == 1) | Diff_DT_Pay_Code == 1, Pay_Amount / 2, 0))
 )]
 
 
@@ -731,11 +729,9 @@ for (val in rrop_cols) {
 bon_underpay_cols <- names(pay1)[grepl("FLSA_rrop_(OT|DT|Meal|Rest|Sick)_wage$", names(pay1))]
 
 if(length(bon_underpay_cols) > 0) {
-  pay1 <- pay1 %>%
-    mutate(rrop_by_code_underpayment = as.integer(rowSums(select(., all_of(bon_underpay_cols)), na.rm = TRUE) > 0))
+  pay1[, rrop_by_code_underpayment := as.integer(rowSums(.SD, na.rm = TRUE) > 0), .SDcols = bon_underpay_cols]
 } else {
-  pay1 <- pay1 %>%
-    mutate(rrop_by_code_underpayment = 0)
+  pay1[, rrop_by_code_underpayment := 0L]
 }
 
 
@@ -743,7 +739,10 @@ if(length(bon_underpay_cols) > 0) {
 
 setDT(pay1)
 
-# Define bounds
+# Define bounds (override config values if already set from clean_data.R)
+if (exists("RROP_MIN")) message("NOTE: RROP_MIN was already set to ", RROP_MIN, " from config; overriding with 7.25")
+if (exists("RROP_MAX")) message("NOTE: RROP_MAX was already set to ", RROP_MAX, " from config; overriding with 1500")
+if (exists("RROP_WARN")) message("NOTE: RROP_WARN was already set to ", RROP_WARN, " from config; overriding with 500")
 RROP_MIN <- 7.25
 RROP_MAX <- 1500
 RROP_WARN <- 500
@@ -1271,8 +1270,8 @@ sum(time1$mp_one_min, na.rm = TRUE)
 
 time1[, mp_lt_twenty := fifelse(mp == 1 & mp_hrs > 0 & mp_hrs < (20/60), 1L, 0L)]
 time1[, mp_lt_thirty := fifelse(mp == 1 & mp_hrs > 0 & mp_hrs < 0.5, 1L, 0L)]
-time1[, mp_thirty     := fifelse(mp == 1 & mp_hrs == 0.5, 1L, 0L)]
-time1[, mp_forty_five    := fifelse(mp == 1 & mp_hrs == 0.75, 1L, 0L)]
+time1[, mp_thirty     := fifelse(mp == 1 & abs(mp_hrs - 0.5) < 0.001, 1L, 0L)]
+time1[, mp_forty_five    := fifelse(mp == 1 & abs(mp_hrs - 0.75) < 0.001, 1L, 0L)]
 time1[, mp_gt_thirty := fifelse(mp == 1 & mp_hrs > 0.5, 1L, 0L)]
 time1[, mp_gt_two_hrs := fifelse(mp == 1 & mp_hrs > 2, 1L, 0L)]
 time1[, mp_gt_four_hrs := fifelse(mp == 1 & mp_hrs > 4, 1L, 0L)]
@@ -1475,7 +1474,7 @@ weekly_summary[, is_4_10_candidate := (shifts_worked == 4 & shifts_near_10hrs ==
                  (shifts_worked == shifts_near_10hrs)]
 
 # 3/12 schedule
-weekly_summary[, is_3_12_candidate := (shifts_worked == 3 & shifts_near_8hrs == 3) |
+weekly_summary[, is_3_12_candidate := (shifts_worked == 3 & shifts_near_12hrs == 3) |
                  (shifts_worked == shifts_near_12hrs)]
 
 # 6+ shifts worked schedule detection 
@@ -1539,7 +1538,7 @@ write_csv_and_rds(
 )
 
 # Create detailed report for employees on AWW
-aww_employees <- employee_aww_summary[AWW_schedule != "Standard", ID]
+aww_employees <- employee_aww_summary[AWW_schedule != "Other", ID]
 
 aww_detail <- weekly_summary[ID %in% aww_employees]
 aww_detail <- merge(
@@ -1728,7 +1727,7 @@ shift_data1[, `:=` (
 
 shift_data1[, `:=`(
   week = fifelse(shift(ID_Week_End, type = "lead") == ID_Week_End, 0, 1)
-)]
+), by = ID]
 
 
 # ----- SHIFT (TIME) DATA:       Pay period aggregations -----------------------------------------
@@ -3565,16 +3564,18 @@ build_paga_for_scenario <- function(sc) {
   # ---------------- HAS ANY PAGA (PAY PERIOD LEVEL) ----------------
   
   paga_flag_cols <- c(
-    "PAGA_meal_flag",
-    "PAGA_rest_flag",
-    "PAGA_rrop_flag",
-    "PAGA_226_flag",
-    "PAGA_558_flag",
-    "PAGA_1197_1_flag",
-    "PAGA_2802_flag"
+    paste0("PAGA_meal_flag", suf),
+    paste0("PAGA_rest_flag", suf),
+    paste0("PAGA_rrop_flag", suf),
+    paste0("PAGA_226_flag", suf),
+    paste0("PAGA_558_flag", suf),
+    paste0("PAGA_1197_1_flag", suf),
+    paste0("PAGA_2802_flag", suf)
   )
-  
-  pp_data1[, has_paga_penalties :=
+  # Only use columns that actually exist in pp_data1
+  paga_flag_cols <- intersect(paga_flag_cols, names(pp_data1))
+
+  pp_data1[, (paste0("has_paga_penalties", suf)) :=
              as.integer(
                in_PAGA_period == 1L &
                  rowSums(.SD, na.rm = TRUE) > 0
@@ -4345,10 +4346,10 @@ metrics_spec[, metric_type := fcase(
 )]
 
 # Rows that should NOT be broken out by year
-metrics_spec_no_year <- metrics_spec[no_year_breakdown == FALSE]
+metrics_spec_no_year <- metrics_spec[no_year_breakdown == TRUE]
 
 # Rows that CAN be broken out by year
-metrics_spec_year_ok <- metrics_spec[no_year_breakdown == TRUE]
+metrics_spec_year_ok <- metrics_spec[no_year_breakdown == FALSE]
 
 # Build Key_Gps filters dynamically (exclude Everyone Else + NA)
 tg <- unique(shift_data1$Key_Gps)

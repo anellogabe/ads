@@ -851,8 +851,8 @@ time1[, Date := as.Date(Date, format = "%Y-%m-%d")]
 min_pay_period_end <- min(as.Date(pay1$Pay_Period_End), na.rm = TRUE)
 max_pay_period_end <- max(as.Date(pay1$Pay_Period_End), na.rm = TRUE)
 
-min_time_date <- min(as.Date(time1$Date, na.rm = TRUE))
-max_time_date <- max(as.Date(time1$Date, na.rm = TRUE))
+min_time_date <- min(as.Date(time1$Date), na.rm = TRUE)
+max_time_date <- max(as.Date(time1$Date), na.rm = TRUE)
 
 # Calculate days between pay period ends and the weekday
 pay1[, pay_period_end_weekday := weekdays(Pay_Period_End)]
