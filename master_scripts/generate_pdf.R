@@ -444,6 +444,49 @@ generate_report <- function(
     paste0('<div class="page-break"></div><h2>', title, '</h2><table', tbl_class, '><thead><tr>', hdr, '</tr></thead><tbody>', paste(rows, collapse = ""), '</tbody></table>')
   }
   
+
+  get_case_version <- function(default = NULL) {
+    pick_version <- function(x) {
+      if (is.null(x) || length(x) == 0) return(NA_character_)
+      v <- trimws(as.character(x[[1]]))
+      if (!nzchar(v)) return(NA_character_)
+      v
+    }
+
+    if (exists("version", inherits = TRUE)) {
+      v <- pick_version(get("version", inherits = TRUE))
+      if (!is.na(v)) return(v)
+    }
+
+    if (exists("case_version", inherits = TRUE)) {
+      v <- pick_version(get("case_version", inherits = TRUE))
+      if (!is.na(v)) return(v)
+    }
+
+    version_file <- file.path(DATA_DIR, "version.txt")
+    if (file.exists(version_file)) {
+      v <- tryCatch(readLines(version_file, n = 1, warn = FALSE), error = function(e) "")
+      v <- pick_version(v)
+      if (!is.na(v)) return(v)
+    }
+
+    if (!is.null(default) && nzchar(trimws(as.character(default)))) {
+      trimws(as.character(default))
+    } else {
+      "N/A"
+    }
+  }
+
+  get_case_version_label <- function(default = NULL) {
+    v <- get_case_version(default = default)
+    if (is.na(v) || !nzchar(v) || toupper(v) == "N/A") {
+      "N/A"
+    } else if (grepl("^v", v, ignore.case = TRUE)) {
+      v
+    } else {
+      paste0("v", v)
+    }
+  }
   # Build HTML
   rpt <- if (exists("case_name") && !is.null(case_name)) case_name else "Report"
   cno <- if (exists("case_no") && !is.null(case_no) && nzchar(case_no)) paste0(" (", case_no, ")") else ""
@@ -455,9 +498,9 @@ generate_report <- function(
   n_pp_pay <- prettyNum(uniqueN(local_pay$Pay_ID_Period_End), big.mark = ",")
   n_weeks <- prettyNum(uniqueN(local_shift$ID_Week_End), big.mark = ",")
   sample_info <- if (exists("sample_size")) as.character(sample_size) else "Not specified"
-  app_version <- "1.0.0"
+  app_version <- get_case_version_label()
   report_timestamp <- format(Sys.time(), "%B %d, %Y %I:%M %p")
-  footer_text <- paste0(if (exists("contract_footer") && !is.na(contract_footer) && nzchar(contract_footer)) paste0(contract_footer, " | ") else "", "Anello Data Solutions LLC | v", app_version, " | Generated: ", report_timestamp)
+  footer_text <- paste0(if (exists("contract_footer") && !is.na(contract_footer) && nzchar(contract_footer)) paste0(contract_footer, " | ") else "", "Anello Data Solutions LLC | ", app_version, " | Generated: ", report_timestamp)
   
   html <- paste0('<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
@@ -499,6 +542,7 @@ table.pay-code-table td:last-child { text-align: left; }
 <tr><td>Relevant Period</td><td>', if(exists("class_dmgs_start_date") && !is.null(class_dmgs_start_date)) paste0(format(as.Date(class_dmgs_start_date), "%B %d, %Y"), " to present") else "N/A", '</td></tr>
 <tr><td>Mediation Date</td><td>', if(exists("mediation_date") && !is.null(mediation_date)) format(as.Date(mediation_date), "%B %d, %Y") else "N/A", '</td></tr>
 <tr><td>Sample Information</td><td>', sample_info, '</td></tr>
+<tr><td>Analysis Version</td><td>', app_version, '</td></tr>
 </table>
 <h2>Data Summary</h2>
 <table class="case-tbl">
@@ -751,6 +795,7 @@ table.pay-code-table td:last-child { text-align: left; }
 <div class="assumptions">
   <h3>Data Processing</h3>
   <ul>
+    <li><strong>Analysis Version:</strong> ', app_version, '.</li>
     <li><strong>Shift Classification:</strong> Shifts are categorized using a ', shift_hrs_cutoff, '-hour cutoff.</li>
     <li><strong>Time Records:</strong> Each shift represents a distinct work period with In/Out punch times.</li>
     <li><strong>Pay Records:</strong> Pay data is matched to time data by employee ID and period end date.</li>

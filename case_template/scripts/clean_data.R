@@ -85,6 +85,7 @@ case_no <- "4:49:cv-494949-NINERS"
 date_filed <- as.Date("1981-09-15")
 sample_size <- "100%" # Use as text field
 sample_size_val <- 1  # e.g., 1 = 100%
+version         <- "1.0.2"
 
 # --- Key groups (named plaintiff(s)) ---
 key_employees <- c("999999999" = "Chief, Chieify")

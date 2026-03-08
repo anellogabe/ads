@@ -96,6 +96,54 @@ if (!exists("complaint_date"))  complaint_date <- Sys.Date()
 if (!exists("mediation_date"))  mediation_date <- Sys.Date()
 if (!exists("class_dmgs_start_date")) class_dmgs_start_date <- Sys.Date() %m-% years(4)
 
+get_case_version <- function(default = NULL) {
+  pick_version <- function(x) {
+    if (is.null(x) || length(x) == 0) return(NA_character_)
+    v <- trimws(as.character(x[[1]]))
+    if (!nzchar(v)) return(NA_character_)
+    v
+  }
+
+  if (exists("version", inherits = TRUE)) {
+    v <- pick_version(get("version", inherits = TRUE))
+    if (!is.na(v)) return(v)
+  }
+
+  if (exists("case_version", inherits = TRUE)) {
+    v <- pick_version(get("case_version", inherits = TRUE))
+    if (!is.na(v)) return(v)
+  }
+
+  if (exists("OUT_DIR", inherits = TRUE)) {
+    out_dir_val <- tryCatch(get("OUT_DIR", inherits = TRUE), error = function(e) NA_character_)
+    if (!is.na(out_dir_val) && nzchar(out_dir_val)) {
+      version_file <- file.path(out_dir_val, "version.txt")
+      if (file.exists(version_file)) {
+        v <- tryCatch(readLines(version_file, n = 1, warn = FALSE), error = function(e) "")
+        v <- pick_version(v)
+        if (!is.na(v)) return(v)
+      }
+    }
+  }
+
+  if (!is.null(default) && nzchar(trimws(as.character(default)))) {
+    trimws(as.character(default))
+  } else {
+    "N/A"
+  }
+}
+
+get_case_version_label <- function(default = NULL) {
+  v <- get_case_version(default = default)
+  if (is.na(v) || !nzchar(v) || toupper(v) == "N/A") {
+    "N/A"
+  } else if (grepl("^v", v, ignore.case = TRUE)) {
+    v
+  } else {
+    paste0("v", v)
+  }
+}
+
 # ---- UTILITY FUNCTIONS ----
 
 # Format column names: underscore -> space; proper case
@@ -1084,8 +1132,8 @@ ui <- function(data_list, metric_spec) {
   # Get current year for watermark
   current_year <- format(Sys.Date(), "%Y")
 
-  # Version information
-  app_version <- "v1.0.1"
+  # Version information (from clean_data version variable when available)
+  app_version <- get_case_version_label()
 
   metric_scenarios <- if ("scenario" %in% names(metric_spec)) normalize_scenario_value(metric_spec$scenario) else character(0)
   if (!("scenario" %in% names(metric_spec))) {
@@ -1542,7 +1590,7 @@ ui <- function(data_list, metric_spec) {
           card_body(
             fluidRow(
               column(
-                width = 4,
+                width = 6,
                 selectInput(
                   "example_table_select",
                   "Browse Table",
@@ -1554,16 +1602,20 @@ ui <- function(data_list, metric_spec) {
                     "ee_data1 (Employee-Level)" = "ee_data1"
                   ),
                   selected = "time1"
-                ),
-                checkboxInput("example_table_use_period", "Limit to selected employee-period", value = TRUE),
-                downloadButton("download_example_viewer", "Download Viewed Table", class = "btn-sm")
+                )
               ),
               column(
-                width = 8,
-                div(style = "overflow-x: auto;",
-                    withSpinner(DTOutput("table_example_viewer"), type = 6, color = "#2c3e50")
-                )
+                width = 3,
+                checkboxInput("example_table_use_period", "Limit to selected employee-period", value = TRUE)
+              ),
+              column(
+                width = 3,
+                br(),
+                downloadButton("download_example_viewer", "Download Viewed Table", class = "btn-sm")
               )
+            ),
+            div(style = "overflow-x: auto; width: 100%;",
+                withSpinner(DTOutput("table_example_viewer"), type = 6, color = "#2c3e50")
             )
           )
         ),
@@ -3579,6 +3631,10 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
 
       HTML(paste0("
         <div style='line-height: 1.8;'>
+          <h4>Version Information</h4>
+          <ul>
+            <li><strong>Analysis Version:</strong> ", get_case_version_label(), "</li>
+          </ul>
           <h4>Data Processing</h4>
           <ul>
             <li><strong>Time Records:</strong> Each shift represents a distinct work period with In/Out punch times. Shifts are analyzed for hours worked, meal periods, and rest periods.</li>
@@ -3645,11 +3701,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     # ===========================================================================
 
     output$dashboard_version <- renderText({
-      if (exists("app_version")) {
-        gsub("^v", "", app_version)  # Remove 'v' prefix if present
-      } else {
-        "1.0.1"
-      }
+      gsub("^v", "", get_case_version_label())
     })
 
     output$last_updated <- renderText({

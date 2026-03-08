@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # PROPRIETARY AND CONFIDENTIAL
 # Anello Data Solutions LLC
 # 
@@ -2729,26 +2729,43 @@ generate_metadata <- function(data, file_name,
 # Requires: data.table, lubridate
 
 # --- DENOMINATORS ---
-
 denom_functions_time <- list(
-  shifts_all              = function(dt) dt[, uniqueN(ID_Shift, na.rm = TRUE)],
-  shifts_gt_3_5           = function(dt) dt[shift_hrs > 3.5, uniqueN(ID_Shift, na.rm = TRUE)],
-  shifts_gt_5             = function(dt) dt[shift_hrs > 5, uniqueN(ID_Shift, na.rm = TRUE)],
-  shifts_gt_6             = function(dt) dt[shift_hrs > 6, uniqueN(ID_Shift, na.rm = TRUE)],
-  shifts_gt_10            = function(dt) dt[shift_hrs > 10, uniqueN(ID_Shift, na.rm = TRUE)],
-  shifts_gt_12            = function(dt) dt[shift_hrs > 12, uniqueN(ID_Shift, na.rm = TRUE)],
-  pay_periods             = function(dt) dt[, uniqueN(ID_Period_End, na.rm = TRUE)],
-  weeks                   = function(dt) dt[, uniqueN(ID_Week_End, na.rm = TRUE)],
-  employees               = function(dt) dt[, uniqueN(ID, na.rm = TRUE)],
-  meal_periods            = function(dt) dt[, sum(shift_mps, na.rm = TRUE)],
-  auto_meal_periods       = function(dt) dt[, sum(!is.na(auto_mp))],
-  shifts_gt_5_late_meals  = function(dt) dt[, sum(LateMP1, na.rm = TRUE)],
-  shifts_gt_6_late_meals  = function(dt) dt[, sum(LateMP1_w, na.rm = TRUE)],
-  shifts_gt_5_short_meals = function(dt) dt[, sum(ShortMP1, na.rm = TRUE)],
-  shifts_gt_6_short_meals = function(dt) dt[, sum(ShortMP1_w, na.rm = TRUE)],
-  rest_periods            = function(dt) dt[, sum(shift_rps, na.rm = TRUE)],
-  analyzed_shifts_round   = function(dt) dt[, sum(shifts_analyzed == 1, na.rm = TRUE)],
-  r_analyzed_shifts_round = function(dt) dt[, sum(r_shifts_analyzed == 1, na.rm = TRUE)]
+  shifts_all               = function(dt) dt[, uniqueN(ID_Shift, na.rm = TRUE)],
+  shifts_gt_3_5            = function(dt) dt[shift_hrs > 3.5, uniqueN(ID_Shift, na.rm = TRUE)],
+  shifts_gt_5              = function(dt) dt[shift_hrs > 5, uniqueN(ID_Shift, na.rm = TRUE)],
+  shifts_gt_6              = function(dt) dt[shift_hrs > 6, uniqueN(ID_Shift, na.rm = TRUE)],
+  shifts_gt_6_h            = function(dt) dt[
+    shift_hrs > 6 & Waiver_Any == 1,
+    uniqueN(ID_Shift, na.rm = TRUE)
+  ],
+  shifts_gt_10             = function(dt) dt[shift_hrs > 10, uniqueN(ID_Shift, na.rm = TRUE)],
+  shifts_gt_12             = function(dt) dt[shift_hrs > 12, uniqueN(ID_Shift, na.rm = TRUE)],
+  shifts_gt_12_h           = function(dt) dt[
+    shift_hrs > 12 & Waiver_Any == 1,
+    uniqueN(ID_Shift, na.rm = TRUE)
+  ],
+  pay_periods              = function(dt) dt[, uniqueN(ID_Period_End, na.rm = TRUE)],
+  pay_periods_h            = function(dt) dt[
+    Waiver_Any == 1,
+    uniqueN(ID_Period_End, na.rm = TRUE)
+  ],
+  weeks                    = function(dt) dt[, uniqueN(ID_Week_End, na.rm = TRUE)],
+  employees                = function(dt) dt[, uniqueN(ID, na.rm = TRUE)],
+  employees_h              = function(dt) dt[
+    Waiver_Any == 1,
+    uniqueN(ID, na.rm = TRUE)
+  ],
+  meal_periods             = function(dt) dt[, sum(shift_mps, na.rm = TRUE)],
+  auto_meal_periods        = function(dt) dt[, sum(!is.na(auto_mp))],
+  shifts_gt_5_late_meals   = function(dt) dt[, sum(LateMP1, na.rm = TRUE)],
+  shifts_gt_6_late_meals   = function(dt) dt[, sum(LateMP1_w, na.rm = TRUE)],
+  shifts_gt_6_late_meals_h = function(dt) dt[, sum(LateMP1_h, na.rm = TRUE)],
+  shifts_gt_5_short_meals  = function(dt) dt[, sum(ShortMP1, na.rm = TRUE)],
+  shifts_gt_6_short_meals  = function(dt) dt[, sum(ShortMP1_w, na.rm = TRUE)],
+  shifts_gt_6_short_meals_h= function(dt) dt[, sum(ShortMP1_h, na.rm = TRUE)],
+  rest_periods             = function(dt) dt[, sum(shift_rps, na.rm = TRUE)],
+  analyzed_shifts_round    = function(dt) dt[, sum(shifts_analyzed == 1, na.rm = TRUE)],
+  r_analyzed_shifts_round  = function(dt) dt[, sum(r_shifts_analyzed == 1, na.rm = TRUE)]
 )
 
 denom_functions_pay <- list(
