@@ -38,21 +38,77 @@ generate_report <- function(
     include_appendix = FALSE,
     include_data_comparison = FALSE,
     include_assumptions = TRUE,
-    class_scenarios = c("no waivers", "waivers"),
-    paga_scenarios = c("no waivers", "waivers"),
+    class_scenarios = c("no waivers", "waivers", "hybrid"),
+    paga_scenarios = c("no waivers", "waivers", "hybrid"),
     # Granular subsection control: character vector of checkbox keys from the PDF
     # modal (e.g. c("time_summary", "meal_analysis", ...)). NULL means include all.
     selected_subsections = NULL,
     verbose = TRUE
 ) {
 
-  # Helper: returns TRUE if a specific subsection key is enabled.
+    # Helper: returns TRUE if a specific subsection key is enabled.
   # When selected_subsections is NULL every subsection is included.
   include_sub <- function(key) is.null(selected_subsections) || key %in% selected_subsections
 
+  normalize_scenario_value <- function(x) {
+    if (is.null(x)) return(character(0))
+
+    sx <- tolower(trimws(as.character(x)))
+    sx[sx == ""] <- NA_character_
+    sx <- gsub("_", " ", sx, fixed = TRUE)
+    sx <- gsub("\\s+", " ", sx)
+
+    out <- sx
+    is_hybrid <- !is.na(sx) & grepl("hybrid", sx)
+    is_no_waivers <- !is.na(sx) & grepl("no\\s*waiver", sx)
+    is_waivers <- !is.na(sx) & !is_no_waivers & grepl("\\bwaiver", sx)
+    is_all <- !is.na(sx) & sx == "all"
+
+    out[is_hybrid] <- "hybrid"
+    out[is_no_waivers] <- "no waivers"
+    out[is_waivers] <- "waivers"
+    out[is_all] <- "all"
+
+    out
+  }
+
+  is_truthy_flag <- function(x) {
+    if (is.null(x)) return(logical(0))
+    if (is.logical(x)) return(!is.na(x) & x)
+    if (is.numeric(x)) return(!is.na(x) & x != 0)
+    lx <- tolower(trimws(as.character(x)))
+    !is.na(lx) & lx %in% c("true", "t", "1", "yes", "y")
+  }
+
+  get_credit_row_mask <- function(dt, spec = NULL) {
+    if (is.null(dt) || nrow(dt) == 0) return(logical(0))
+
+    mask <- rep(FALSE, nrow(dt))
+
+    if ("other_credit" %in% names(dt)) {
+      mask <- mask | is_truthy_flag(dt$other_credit)
+    }
+
+    if (!is.null(spec) &&
+        all(c("metric_group", "metric_label", "other_credit") %in% names(spec)) &&
+        all(c("metric_group", "metric_label") %in% names(dt))) {
+      spec_dt <- as.data.table(spec)
+      spec_dt <- spec_dt[is_truthy_flag(other_credit), .(metric_group, metric_label)]
+
+      if (nrow(spec_dt) > 0) {
+        spec_keys <- unique(paste(spec_dt$metric_group, spec_dt$metric_label, sep = "\r"))
+        dt_keys <- paste(dt$metric_group, dt$metric_label, sep = "\r")
+        mask <- mask | (dt_keys %in% spec_keys)
+      }
+    }
+
+    mask
+  }
   local_sections <- sections
-  local_class_scenarios <- class_scenarios
-  local_paga_scenarios <- paga_scenarios
+  local_class_scenarios <- unique(normalize_scenario_value(class_scenarios))
+  local_class_scenarios <- local_class_scenarios[!is.na(local_class_scenarios) & nzchar(local_class_scenarios)]
+  local_paga_scenarios <- unique(normalize_scenario_value(paga_scenarios))
+  local_paga_scenarios <- local_paga_scenarios[!is.na(local_paga_scenarios) & nzchar(local_paga_scenarios)]
   
   # Count steps more accurately based on new section structure
   total_steps <- 5  # Base: loading data, spec, analysis tables, generating PDF, final
@@ -190,9 +246,9 @@ generate_report <- function(
   meal_analysis_no_punches <- metric_groups[grepl("^Meal Period Analysis - Meal Periods w/o Time Punches", metric_groups)]
   
   # Meal Period Violations
-  meal_violations_summary <- metric_groups[grepl("^Meal Period Violations$", metric_groups)]
-  meal_violations_late <- metric_groups[grepl("^Meal Period Violations - Late Detail", metric_groups)]
-  meal_violations_short <- metric_groups[grepl("^Meal Period Violations - Short Detail", metric_groups)]
+  meal_violations_summary <- metric_groups[grepl("^Meal Period Violations(_h)?$", metric_groups)]
+  meal_violations_late <- metric_groups[grepl("^Meal Period Violations(_h)? - Late Detail(_h)?$", metric_groups)]
+  meal_violations_short <- metric_groups[grepl("^Meal Period Violations(_h)? - Short Detail(_h)?$", metric_groups)]
   
   # Rest Period
   rest_analysis <- metric_groups[grepl("^Rest Period Analysis", metric_groups)]
@@ -306,26 +362,21 @@ generate_report <- function(
     dt <- results_table[metric_group %in% group_names]
     if (nrow(dt) == 0) return(data.table())
     
-    # Filter by scenario if specified
+        # Filter by scenario if specified.
     if (!is.null(scenario_filter) && "scenario" %in% names(dt)) {
-      if (scenario_filter == "no waivers") {
-        # Keep "no waivers" and "all" scenarios
-        dt <- dt[tolower(scenario) %in% c("no waivers", "all")]
-      } else if (scenario_filter == "waivers") {
-        # Keep "waivers" and "all" scenarios
-        dt <- dt[tolower(scenario) %in% c("waivers", "all")]
+      sf <- unique(normalize_scenario_value(scenario_filter))
+      sf <- sf[!is.na(sf) & nzchar(sf)]
+      sc <- normalize_scenario_value(dt$scenario)
+      if (length(sf) > 0) {
+        dt <- dt[sc %in% c(sf, "all") | is.na(dt$scenario) | is.na(sc)]
       }
     }
-    
+
     if (nrow(dt) == 0) return(data.table())
 
-    # Filter out other-credit rows when include_credits = FALSE.
-    # Only other_credit == TRUE rows are removed; meal_rest_prems_credit rows
-    # (less-premiums variants) are always retained.
+        # Hide all credit-adjusted rows when include_credits = FALSE.
     if (!include_credits) {
-      if ("other_credit" %in% names(dt)) {
-        dt <- dt[is.na(other_credit) | other_credit != TRUE]
-      }
+      dt <- dt[!get_credit_row_mask(dt, metric_spec)]
     }
     if (nrow(dt) == 0) return(data.table())
 
@@ -501,11 +552,17 @@ table.pay-code-table td:last-child { text-align: left; }
       html <- paste0(html, add_section(meal_violations_late, "Meal Period Violations - Late Detail (No Waivers)", "no waivers", compact = TRUE))
       html <- paste0(html, add_section(meal_violations_short, "Meal Period Violations - Short Detail (No Waivers)", "no waivers", compact = TRUE))
     }
-    # Waivers
+        # Waivers
     if (include_sub("meal_violations_waivers")) {
       html <- paste0(html, add_section(meal_violations_summary, "Meal Period Violations (Waivers)", "waivers"))
       html <- paste0(html, add_section(meal_violations_late, "Meal Period Violations - Late Detail (Waivers)", "waivers", compact = TRUE))
       html <- paste0(html, add_section(meal_violations_short, "Meal Period Violations - Short Detail (Waivers)", "waivers", compact = TRUE))
+    }
+    # Hybrid
+    if (include_sub("meal_violations_hybrid")) {
+      html <- paste0(html, add_section(meal_violations_summary, "Meal Period Violations (Hybrid)", "hybrid"))
+      html <- paste0(html, add_section(meal_violations_late, "Meal Period Violations - Late Detail (Hybrid)", "hybrid", compact = TRUE))
+      html <- paste0(html, add_section(meal_violations_short, "Meal Period Violations - Short Detail (Hybrid)", "hybrid", compact = TRUE))
     }
   }
 
@@ -576,9 +633,9 @@ table.pay-code-table td:last-child { text-align: left; }
     # For each unique detail group, check if it has scenario-specific rows (waivers/no waivers)
     # If so, render per-scenario; otherwise render once with no scenario filter
     for (detail_group in damages_detail_unique) {
-      group_scenarios <- unique(metric_spec$scenario[metric_spec$metric_group == detail_group])
+      group_scenarios <- unique(normalize_scenario_value(metric_spec$scenario[metric_spec$metric_group == detail_group]))
 
-      if (any(c("no waivers", "waivers") %in% group_scenarios)) {
+      if (any(c("no waivers", "waivers", "hybrid") %in% group_scenarios)) {
         # Has scenario-specific rows - render only selected scenarios
         for (scenario in local_class_scenarios) {
           if (scenario %in% group_scenarios) {
@@ -609,9 +666,9 @@ table.pay-code-table td:last-child { text-align: left; }
 
     # Dynamically render each PAGA detail group
     for (detail_group in paga_detail_unique) {
-      group_scenarios <- unique(metric_spec$scenario[metric_spec$metric_group == detail_group])
+      group_scenarios <- unique(normalize_scenario_value(metric_spec$scenario[metric_spec$metric_group == detail_group]))
 
-      if (any(c("no waivers", "waivers") %in% group_scenarios)) {
+      if (any(c("no waivers", "waivers", "hybrid") %in% group_scenarios)) {
         for (scenario in local_paga_scenarios) {
           if (scenario %in% group_scenarios) {
             safe_group <- tolower(gsub("[^a-z0-9]+", "_", sub("^PAGA - ", "", detail_group)))
@@ -773,29 +830,29 @@ table.pay-code-table td:last-child { text-align: left; }
 }
 
 # Shortcuts
-generate_full_report <- function(output_file = NULL, include_extrap = TRUE, include_appendix = TRUE, include_data_comparison = TRUE) {
-  generate_report(output_file = output_file, sections = c("time", "pay", "class", "paga", "analysis"), include_extrap = include_extrap, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
+generate_full_report <- function(output_file = NULL, include_extrap = TRUE, include_credits = TRUE, include_appendix = TRUE, include_data_comparison = TRUE) {
+  generate_report(output_file = output_file, sections = c("time", "pay", "class", "paga", "analysis"), include_extrap = include_extrap, include_credits = include_credits, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
 }
-generate_time_report <- function(output_file = NULL, include_extrap = FALSE, include_appendix = FALSE, include_data_comparison = FALSE) {
-  generate_report(output_file = output_file, sections = "time", include_extrap = include_extrap, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
+generate_time_report <- function(output_file = NULL, include_extrap = FALSE, include_credits = TRUE, include_appendix = FALSE, include_data_comparison = FALSE) {
+  generate_report(output_file = output_file, sections = "time", include_extrap = include_extrap, include_credits = include_credits, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
 }
-generate_pay_report <- function(output_file = NULL, include_extrap = FALSE, include_appendix = FALSE, include_data_comparison = FALSE) {
-  generate_report(output_file = output_file, sections = "pay", include_extrap = include_extrap, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
+generate_pay_report <- function(output_file = NULL, include_extrap = FALSE, include_credits = TRUE, include_appendix = FALSE, include_data_comparison = FALSE) {
+  generate_report(output_file = output_file, sections = "pay", include_extrap = include_extrap, include_credits = include_credits, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
 }
-generate_time_pay_report <- function(output_file = NULL, include_extrap = FALSE, include_appendix = FALSE, include_data_comparison = FALSE) {
-  generate_report(output_file = output_file, sections = c("time", "pay", "analysis"), include_extrap = include_extrap, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
+generate_time_pay_report <- function(output_file = NULL, include_extrap = FALSE, include_credits = TRUE, include_appendix = FALSE, include_data_comparison = FALSE) {
+  generate_report(output_file = output_file, sections = c("time", "pay", "analysis"), include_extrap = include_extrap, include_credits = include_credits, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
 }
-generate_class_report <- function(output_file = NULL, include_extrap = TRUE, include_appendix = TRUE, include_data_comparison = TRUE) {
-  generate_report(output_file = output_file, sections = c("time", "pay", "class", "analysis"), include_extrap = include_extrap, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
+generate_class_report <- function(output_file = NULL, include_extrap = TRUE, include_credits = TRUE, include_appendix = TRUE, include_data_comparison = TRUE) {
+  generate_report(output_file = output_file, sections = c("time", "pay", "class", "analysis"), include_extrap = include_extrap, include_credits = include_credits, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
 }
-generate_paga_report <- function(output_file = NULL, include_extrap = TRUE, include_appendix = TRUE, include_data_comparison = TRUE) {
-  generate_report(output_file = output_file, sections = c("time", "pay", "paga", "analysis"), include_extrap = include_extrap, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
+generate_paga_report <- function(output_file = NULL, include_extrap = TRUE, include_credits = TRUE, include_appendix = TRUE, include_data_comparison = TRUE) {
+  generate_report(output_file = output_file, sections = c("time", "pay", "paga", "analysis"), include_extrap = include_extrap, include_credits = include_credits, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
 }
-generate_damages_report <- function(output_file = NULL, include_extrap = FALSE, include_appendix = FALSE, include_data_comparison = FALSE) {
-  generate_report(output_file = output_file, sections = c("class", "paga"), include_extrap = include_extrap, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
+generate_damages_report <- function(output_file = NULL, include_extrap = FALSE, include_credits = TRUE, include_appendix = FALSE, include_data_comparison = FALSE) {
+  generate_report(output_file = output_file, sections = c("class", "paga"), include_extrap = include_extrap, include_credits = include_credits, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
 }
-generate_no_damages_report <- function(output_file = NULL, include_extrap = FALSE, include_appendix = FALSE, include_data_comparison = FALSE) {
-  generate_report(output_file = output_file, sections = c("time", "pay", "analysis"), include_extrap = include_extrap, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
+generate_no_damages_report <- function(output_file = NULL, include_extrap = FALSE, include_credits = TRUE, include_appendix = FALSE, include_data_comparison = FALSE) {
+  generate_report(output_file = output_file, sections = c("time", "pay", "analysis"), include_extrap = include_extrap, include_credits = include_credits, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
 }
 
 cat("\n==================================================\n")

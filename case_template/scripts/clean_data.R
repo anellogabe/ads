@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # PROPRIETARY AND CONFIDENTIAL
 # Anello Data Solutions LLC
 # 
@@ -955,6 +955,36 @@ employee_period_comparison(time1, pay1)
 all_ids <- all_time_pay_class_ids(time1, pay1, class1)
 
 
+# ----- ATTESTATION DATA:  Load & Clean -------------------------------
+
+# attestation1 <- read_excel("data/raw/Attestation Data.xlsx")
+# 
+# setDT(attestation1)
+# #Remove NA Date
+# nrow(attestation1) #776755
+# attestation1 <- attestation1[!is.na(Date)]
+# nrow(attestation1) #771412
+# 
+# cat("✓ Loaded", nrow(attestation1), "attestation records\n")
+# cat("\n=== Columns in Attestation Data ===\n")
+# for(col in names(attestation1)) {
+#   cat(col, "\n")
+# }
+
+
+# ----- MEAL WAIVER DATA:  Load & Clean -------------------------------
+
+# waiver1 <- read_excel("data/raw/Meal Waivers.xlsx")
+# 
+# setDT(waiver1)
+# 
+# cat("✓ Loaded", nrow(waiver1), "meal waiver records\n")
+# cat("\n=== Columns in Meal Waiver Data ===\n")
+# for(col in names(waiver1)) {
+#   cat(col, "\n")
+# }
+
+
 # ----- ALL DATA:   Save processed data -----------------------------------------
 
 write_csv_and_rds(
@@ -971,6 +1001,16 @@ write_csv_and_rds(
   class1,
   file.path(PROCESSED_DIR, "class_processed.csv")
 )
+
+# write_csv_and_rds(
+#   attestation1,
+#   file.path(PROCESSED_DIR, "attestations_processed.csv")
+# )
+# 
+# write_csv_and_rds(
+#   waiver1,
+#   file.path(PROCESSED_DIR, "waivers_processed.csv")
+# )
 
 
 # ----- ALL DATA:   Random sample generator (if needed) -----------------------------------------

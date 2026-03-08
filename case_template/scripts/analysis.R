@@ -3880,17 +3880,20 @@ build_paga_for_scenario <- function(sc) {
   
   # ---------------- HAS ANY PAGA (PAY PERIOD LEVEL) ----------------
   
-  paga_flag_cols <- c(
-    "PAGA_meal_flag",
-    "PAGA_rest_flag",
-    "PAGA_rrop_flag",
-    "PAGA_226_flag",
-    "PAGA_558_flag",
-    "PAGA_1197_1_flag",
-    "PAGA_2802_flag"
+  has_paga_col <- paste0("has_paga_penalties", suf)
+  
+  paga_flag_cols <- paste0(
+    c("PAGA_meal_flag",
+      "PAGA_rest_flag",
+      "PAGA_rrop_flag",
+      "PAGA_226_flag",
+      "PAGA_558_flag",
+      "PAGA_1197_1_flag",
+      "PAGA_2802_flag"),
+    suf
   )
   
-  pp_data1[, has_paga_penalties :=
+  pp_data1[, (has_paga_col) :=
              as.integer(
                in_PAGA_period == 1L &
                  rowSums(.SD, na.rm = TRUE) > 0
