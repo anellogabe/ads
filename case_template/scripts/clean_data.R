@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # PROPRIETARY AND CONFIDENTIAL
 # Anello Data Solutions LLC
 # 
@@ -32,7 +32,7 @@ library(purrr)
 CASE_DIR      <- "D:/Cases/..." # Add case directory here.
 CASE_DIR <- normalizePath(CASE_DIR, winslash = "/", mustWork = TRUE)
 
-SCRIPTS_DIR   <- file.path(CASE_DIR, "data", "scripts")
+SCRIPTS_DIR   <- file.path(CASE_DIR, "scripts")
 RAW_DIR       <- file.path(CASE_DIR, "data", "raw")
 PROCESSED_DIR <- file.path(CASE_DIR, "data", "processed")
 OUT_DIR       <- file.path(CASE_DIR, "output")
@@ -48,20 +48,31 @@ message("PROCESSED_DIR = ", PROCESSED_DIR)
 message("OUT_DIR       = ", OUT_DIR)
 message("SCRIPTS_DIR   = ", SCRIPTS_DIR)
 
-# Set ADS_Shared and load functions
-ADS_SHARED <- "D:/Shared/Master_Scripts"
+# Master script paths (single source of truth for this case run)
+MASTER_SCRIPTS_DIR <- "D:/Shared/Master_Scripts"
+ADS_SHARED <- MASTER_SCRIPTS_DIR
+FUNCTIONS_SCRIPT <- file.path(MASTER_SCRIPTS_DIR, "functions.R")
+PDF_SCRIPT <- file.path(MASTER_SCRIPTS_DIR, "generate_pdf.R")
+LOG_FILE <- file.path(OUT_DIR, "Case_Log.txt")
+
+message("MASTER_SCRIPTS_DIR = ", MASTER_SCRIPTS_DIR)
+message("FUNCTIONS_SCRIPT   = ", FUNCTIONS_SCRIPT)
+message("PDF_SCRIPT         = ", PDF_SCRIPT)
+message("LOG_FILE           = ", LOG_FILE)
 
 # Load ADS shared functions (read-only)
-source(file.path(ADS_SHARED, "functions.R"), local = FALSE, chdir = FALSE)
-cat("✓ ADS functions loaded successfully\n\n")
+source(FUNCTIONS_SCRIPT, local = FALSE, chdir = FALSE)
+cat("ADS functions loaded successfully\n\n")
 
-source(file.path(ADS_SHARED, "generate_pdf.R"), local = FALSE, chdir = FALSE)
-cat("✓ ADS generate PDF loaded successfully\n\n")
+source(PDF_SCRIPT, local = FALSE, chdir = FALSE)
+cat("ADS generate PDF loaded successfully\n\n")
 
 # Initialize logging (case-specific output)
 init_logging(
-  log_file_path = file.path(OUT_DIR, "analysis_log.txt"),
-  case_name = basename(CASE_DIR)
+  log_file_path = LOG_FILE,
+  case_name = basename(CASE_DIR),
+  append = FALSE,
+  phase = "clean_data"
 )
 
 
@@ -149,7 +160,7 @@ penalty_1174 <- 500                # $500 default
 
 time1 <- read_excel("")
 
-cat("✓ Loaded", nrow(time1), "pay records\n")
+cat(" Loaded", nrow(time1), "pay records\n")
 cat("\n=== Columns in Time Data ===\n")
 for(col in names(time1)) {
   cat(col, "\n")
@@ -225,9 +236,9 @@ cat("\n=== Data Quality Checks ===\n")
 if("ID" %in% names(time1)) {
   missing_ids <- time1[is.na(ID), .N]
   if(missing_ids > 0) {
-    cat("✗ Found", missing_ids, "rows with missing IDs\n")
+    cat(" Found", missing_ids, "rows with missing IDs\n")
   } else {
-    cat("✓ No missing time data IDs\n")
+    cat(" No missing time data IDs\n")
   }
 } else {
   cat("Note: ID column not found in time data\n")
@@ -237,9 +248,9 @@ if("ID" %in% names(time1)) {
 if("Date" %in% names(time1)) {
   missing_dates <- time1[is.na(Date), .N]
   if(missing_dates > 0) {
-    cat("✗ Found", missing_dates, "rows with missing Dates\n")
+    cat(" Found", missing_dates, "rows with missing Dates\n")
   } else {
-    cat("✓ No missing time data Dates\n")
+    cat(" No missing time data Dates\n")
   }
 } else {
   cat("Note: Date column not found in time data\n")
@@ -300,7 +311,7 @@ if(length(existing_cols) > 0) {
   time_duplicates <- time1[dup_count > 1]
   
   if(nrow(time_duplicates) > 0) {
-    cat("✗ Found", nrow(time_duplicates), "duplicate rows\n")
+    cat(" Found", nrow(time_duplicates), "duplicate rows\n")
     cat("  Unique duplicate groups:", uniqueN(time_duplicates[, ..existing_cols]), "\n")
     
     # Option to remove duplicates (keep first occurrence)
@@ -310,19 +321,19 @@ if(length(existing_cols) > 0) {
       before_rows <- nrow(time1)
       time1 <- unique(time1, by = existing_cols)
       after_rows <- nrow(time1)
-      cat("  ✓ Removed", before_rows - after_rows, "duplicate rows\n")
+      cat("   Removed", before_rows - after_rows, "duplicate rows\n")
     } else {
-      cat("  ⚠ Duplicates kept (set REMOVE_DUPLICATES = TRUE to remove)\n")
+      cat("   Duplicates kept (set REMOVE_DUPLICATES = TRUE to remove)\n")
     }
   } else {
-    cat("✓ No duplicate rows found\n")
+    cat(" No duplicate rows found\n")
   }
   
   # Clean up temp column
   time1[, dup_count := NULL]
   
 } else {
-  cat("⚠ Cannot check for duplicates - no specified columns exist\n")
+  cat(" Cannot check for duplicates - no specified columns exist\n")
 }
 
 
@@ -330,7 +341,7 @@ if(length(existing_cols) > 0) {
 
 pay1 <- read_excel("")
 
-cat("✓ Loaded", nrow(pay1), "pay records\n")
+cat(" Loaded", nrow(pay1), "pay records\n")
 cat("\n=== Columns in Pay Data ===\n")
 for(col in names(pay1)) {
   cat(col, "\n")
@@ -372,7 +383,7 @@ for(col in names(pay1)) {
 # message(
 #   sprintf("Total Transposed: %.2f | Total Original: %.2f | %s",
 #           total_transposed, total_original,
-#           ifelse(abs(total_transposed - total_original) < 1e-5, "MATCH ✅", "MISMATCH ❌"))
+#           ifelse(abs(total_transposed - total_original) < 1e-5, "MATCH ", "MISMATCH "))
 # )
 # 
 # # Return back to pay1
@@ -425,11 +436,11 @@ if (!"Pay_Date" %in% names(pay1)) {
   }]
   
   day_names <- c("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday")
-  cat("✓ Pay_Date added (", day_names[pay_date_day_of_week], " after Pay_Period_End)\n", sep="")
+  cat(" Pay_Date added (", day_names[pay_date_day_of_week], " after Pay_Period_End)\n", sep="")
   
 } else {
   
-  cat("✓ Pay_Date already exists in pay1 (no action needed)\n")
+  cat(" Pay_Date already exists in pay1 (no action needed)\n")
 }
 
 
@@ -461,9 +472,9 @@ cat("\n=== Data Quality Checks ===\n")
 if("Pay_ID" %in% names(pay1)) {
   missing_ids <- pay1[is.na(Pay_ID), .N]
   if(missing_ids > 0) {
-    cat("✗ Found", missing_ids, "rows with missing Pay_IDs\n")
+    cat(" Found", missing_ids, "rows with missing Pay_IDs\n")
   } else {
-    cat("✓ No missing pay data Pay_IDs\n")
+    cat(" No missing pay data Pay_IDs\n")
   }
 } else {
   cat("Note: Pay_ID column not found in data\n")
@@ -473,9 +484,9 @@ if("Pay_ID" %in% names(pay1)) {
 if("Pay_Period_End" %in% names(pay1)) {
   missing_period_ends <- pay1[is.na(Pay_Period_End), .N]
   if(missing_period_ends > 0) {
-    cat("✗ Found", missing_period_ends, "rows with missing Pay_Period_Ends\n")
+    cat(" Found", missing_period_ends, "rows with missing Pay_Period_Ends\n")
   } else {
-    cat("✓ No missing pay data Pay_Period_Ends\n")
+    cat(" No missing pay data Pay_Period_Ends\n")
   }
 } else {
   cat("Note: Pay_Period_End column not found in data\n")
@@ -541,7 +552,7 @@ if(length(existing_cols) > 0) {
   pay_duplicates <- pay1[dup_count > 1]
   
   if(nrow(pay_duplicates) > 0) {
-    cat("✗ Found", nrow(pay_duplicates), "duplicate rows\n")
+    cat(" Found", nrow(pay_duplicates), "duplicate rows\n")
     cat("  Unique duplicate groups:", uniqueN(pay_duplicates[, ..existing_cols]), "\n")
     
     # Option to remove duplicates (keep first occurrence)
@@ -551,19 +562,19 @@ if(length(existing_cols) > 0) {
       before_rows <- nrow(pay1)
       pay1 <- unique(pay1, by = existing_cols)
       after_rows <- nrow(pay1)
-      cat("  ✓ Removed", before_rows - after_rows, "duplicate rows\n")
+      cat("   Removed", before_rows - after_rows, "duplicate rows\n")
     } else {
-      cat("  ⚠ Duplicates kept (set REMOVE_DUPLICATES = TRUE to remove)\n")
+      cat("   Duplicates kept (set REMOVE_DUPLICATES = TRUE to remove)\n")
     }
   } else {
-    cat("✓ No duplicate rows found\n")
+    cat(" No duplicate rows found\n")
   }
   
   # Clean up temp column
   pay1[, dup_count := NULL]
   
 } else {
-  cat("⚠ Cannot check for duplicates - no specified columns exist\n")
+  cat(" Cannot check for duplicates - no specified columns exist\n")
 }
 
 
@@ -572,7 +583,7 @@ if(length(existing_cols) > 0) {
 # # Load raw class data
 # #class1 <- class_list
 # 
-# cat("✓ Loaded", nrow(class1), "class list records\n")
+# cat(" Loaded", nrow(class1), "class list records\n")
 # cat("\n=== Columns in Class List ===\n")
 # for(col in names(time1)) {
 #   cat(col, "\n")
@@ -655,9 +666,9 @@ cat("\n=== Data Quality Checks ===\n")
 if("Class_Name" %in% names(class1)) {
   missing_names <- class1[is.na(Class_Name), .N]
   if(missing_names > 0) {
-    cat("✗ Found", missing_names, "rows with missing Employee Names\n")
+    cat(" Found", missing_names, "rows with missing Employee Names\n")
   } else {
-    cat("✓ No missing Class List Names\n")
+    cat(" No missing Class List Names\n")
   }
 } else {
   cat("Note: Class_Name column not found in data\n")
@@ -667,9 +678,9 @@ if("Class_Name" %in% names(class1)) {
 if("Class_ID" %in% names(class1)) {
   missing_ids <- class1[is.na(Class_ID), .N]
   if(missing_ids > 0) {
-    cat("✗ Found", missing_ids, "rows with missing Class IDs\n")
+    cat(" Found", missing_ids, "rows with missing Class IDs\n")
   } else {
-    cat("✓ No missing Class List IDs\n")
+    cat(" No missing Class List IDs\n")
   }
 } else {
   cat("Note: Class_ID column not found in data\n")
@@ -728,7 +739,7 @@ if(length(existing_cols) > 0) {
   class_duplicates <- class1[dup_count > 1]
   
   if(nrow(class_duplicates) > 0) {
-    cat("✗ Found", nrow(class_duplicates), "duplicate rows\n")
+    cat(" Found", nrow(class_duplicates), "duplicate rows\n")
     cat("  Unique duplicate groups:", uniqueN(class_duplicates[, ..existing_cols]), "\n")
     
     # Option to remove duplicates (keep first occurrence)
@@ -738,19 +749,19 @@ if(length(existing_cols) > 0) {
       before_rows <- nrow(class1)
       class1 <- unique(class1, by = existing_cols)
       after_rows <- nrow(class1)
-      cat("  ✓ Removed", before_rows - after_rows, "duplicate rows\n")
+      cat("   Removed", before_rows - after_rows, "duplicate rows\n")
     } else {
-      cat("  ⚠ Duplicates kept (set REMOVE_DUPLICATES = TRUE to remove)\n")
+      cat("   Duplicates kept (set REMOVE_DUPLICATES = TRUE to remove)\n")
     }
   } else {
-    cat("✓ No duplicate rows found\n")
+    cat(" No duplicate rows found\n")
   }
   
   # Clean up temp column
   class1[, dup_count := NULL]
   
 } else {
-  cat("⚠ Cannot check for duplicates - no specified columns exist\n")
+  cat(" Cannot check for duplicates - no specified columns exist\n")
 }
 
 
@@ -992,11 +1003,11 @@ write_csv_and_rds(
 # ----- ALL DATA:   Anonymized sample production files (if needed) -----------------------------------------
 
 # # Notes:
-# # • If you define default_prod_fields_* vectors BEFORE calling the function,
+# #  If you define default_prod_fields_* vectors BEFORE calling the function,
 # #   those get used (unless you explicitly override via prod_fields_* args).
-# # • Time/Pay outputs are SAMPLE + DATE filtered.
-# # • Class list output is FULL class1 (never filtered), but can include Class_Anon_ID.
-# # • Excel headers are prettified:
+# #  Time/Pay outputs are SAMPLE + DATE filtered.
+# #  Class list output is FULL class1 (never filtered), but can include Class_Anon_ID.
+# #  Excel headers are prettified:
 # #     - underscores -> spaces
 # #     - Proper Case
 # #     - Pay_ removed from PAY output headers
@@ -1059,3 +1070,9 @@ log_msg("Next step: Run analysis.R to generate metrics and damages calculations"
 finalize_logging()
 end.time <- Sys.time()
 end.time - start.time  
+
+
+
+
+
+

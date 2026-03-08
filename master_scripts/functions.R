@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # PROPRIETARY AND CONFIDENTIAL
 # Anello Data Solutions LLC
 # 
@@ -14,9 +14,12 @@ source("D:/Shared/Master_Scripts/path_guard.R")
 .ads_log_env$messages <- list()
 .ads_log_env$log_file <- NULL
 .ads_log_env$start_time <- NULL
+.ads_log_env$output_sink_open <- FALSE
+.ads_log_env$message_sink_open <- FALSE
+.ads_log_env$message_con <- NULL
 
 # Initialize logging system
-init_logging <- function(log_file_path = NULL, case_name = "Analysis") {
+init_logging <- function(log_file_path = NULL, case_name = "Analysis", append = FALSE, phase = NULL) {
   .ads_log_env$messages <- list()
   .ads_log_env$start_time <- Sys.time()
   .ads_log_env$case_name <- case_name
@@ -28,15 +31,25 @@ init_logging <- function(log_file_path = NULL, case_name = "Analysis") {
     log_dir <- dirname(log_file_path)
     dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
     
-    # Start sink to capture ALL console output
-    sink(log_file_path, append = FALSE, split = TRUE)
+    # Start sinks to capture all output + message streams
+    sink(log_file_path, append = append, split = TRUE)
+    .ads_log_env$output_sink_open <- TRUE
+    .ads_log_env$message_con <- file(log_file_path, open = if (isTRUE(append)) "at" else "wt")
+    sink(.ads_log_env$message_con, type = "message")
+    .ads_log_env$message_sink_open <- TRUE
     
     cat("================================================================================\n")
-    cat("  ADS ANALYSIS LOG\n")
+    cat("  ADS ANALYSIS LOG", if (!is.null(phase) && nzchar(phase)) paste0(" - ", phase) else "", "\n", sep = "")
     cat("================================================================================\n")
     cat("Case:", case_name, "\n")
+    cat("Phase:", if (!is.null(phase) && nzchar(phase)) phase else "unspecified", "\n")
+    cat("Mode:", if (isTRUE(append)) "append" else "new", "\n")
     cat("Started:", format(.ads_log_env$start_time, "%Y-%m-%d %H:%M:%S"), "\n")
     cat("================================================================================\n\n")
+    
+    if (isTRUE(append)) {
+      cat(">>> TRANSITION: Continuing existing case log with new script phase.\n\n")
+    }
   }
   
   invisible(TRUE)
@@ -57,16 +70,16 @@ log_msg <- function(message, category = "INFO", data = NULL) {
   # Add to in-memory log
   .ads_log_env$messages[[length(.ads_log_env$messages) + 1]] <- entry
   
-  # Format for console/file output
+  # ASCII-only prefixes for stable cross-platform logging
   prefix <- switch(category,
-                   "INFO"         = "ℹ",
-                   "SUCCESS"      = "✓",
-                   "WARNING"      = "⚠",
-                   "ERROR"        = "❌",
-                   "DATA_SUMMARY" = "📊",
-                   "ASSUMPTION"   = "📝",
-                   "SETUP"        = "⚙",
-                   "•"  # default
+                   "INFO"         = "[INFO]",
+                   "SUCCESS"      = "[OK]",
+                   "WARNING"      = "[WARN]",
+                   "ERROR"        = "[ERROR]",
+                   "DATA_SUMMARY" = "[DATA]",
+                   "ASSUMPTION"   = "[NOTE]",
+                   "SETUP"        = "[SETUP]",
+                   "[LOG]"  # default
   )
   
   cat(sprintf("%s %s\n", prefix, message))
@@ -84,7 +97,6 @@ log_msg <- function(message, category = "INFO", data = NULL) {
   
   invisible(entry)
 }
-
 # Finalize logging and create summary
 finalize_logging <- function() {
   if (!is.null(.ads_log_env$start_time)) {
@@ -98,9 +110,20 @@ finalize_logging <- function() {
     cat("Duration:", sprintf("%.1f seconds (%.2f minutes)", as.numeric(duration), as.numeric(duration)/60), "\n")
     cat("================================================================================\n")
     
-    # Stop sink if active
+    # Stop sinks if active (message first, then output)
     if (!is.null(.ads_log_env$log_file)) {
-      sink()
+      if (isTRUE(.ads_log_env$message_sink_open)) {
+        sink(type = "message")
+        .ads_log_env$message_sink_open <- FALSE
+      }
+      if (!is.null(.ads_log_env$message_con) && isOpen(.ads_log_env$message_con)) {
+        close(.ads_log_env$message_con)
+      }
+      .ads_log_env$message_con <- NULL
+      if (isTRUE(.ads_log_env$output_sink_open)) {
+        sink()
+        .ads_log_env$output_sink_open <- FALSE
+      }
     }
     
     # Create structured summary RDS
@@ -123,7 +146,7 @@ finalize_logging <- function() {
       )
       
       saveRDS(summary, summary_file)
-      cat("\n✓ Log summary saved:", summary_file, "\n")
+      cat("\n Log summary saved:", summary_file, "\n")
     }
   }
   
@@ -150,18 +173,18 @@ write_csv_and_rds <- function(dt, out_path_csv) {
   
   csv_ok <- tryCatch(
     { fwrite(dt, out_path_csv); TRUE },
-    error = function(e) { warning("❌ FAILED CSV: ", out_path_csv, "\n   ", e$message); FALSE }
+    error = function(e) { warning(" FAILED CSV: ", out_path_csv, "\n   ", e$message); FALSE }
   )
   
   rds_ok <- tryCatch(
     { saveRDS(dt, out_path_rds); TRUE },
-    error = function(e) { warning("❌ FAILED RDS: ", out_path_rds, "\n   ", e$message); FALSE }
+    error = function(e) { warning(" FAILED RDS: ", out_path_rds, "\n   ", e$message); FALSE }
   )
   
   if (csv_ok || rds_ok) {
-    message("✔ Output status:")
-    if (csv_ok) message("  • CSV: ", out_path_csv)
-    if (rds_ok) message("  • RDS: ", out_path_rds)
+    message(" Output status:")
+    if (csv_ok) message("   CSV: ", out_path_csv)
+    if (rds_ok) message("   RDS: ", out_path_rds)
   }
   
   invisible(list(csv = out_path_csv, rds = out_path_rds, csv_ok = csv_ok, rds_ok = rds_ok))
@@ -213,12 +236,12 @@ run_test_sample_from_all_ids <- function(all_ids, pay1, time1,
   pay1_sub  <- pay1[get(id_col_pay)  %in% test_ids]
   
   if (verbose) {
-    message("⚠ DEV MODE: Random test subset (eligible = Time+Pay+Class present per all_ids)")
-    message("  • Seed: ", seed_val)
-    message("  • Eligible IDs: ", format(length(eligible), big.mark = ","))
-    message("  • Sample IDs kept: ", format(n_keep, big.mark = ","))
-    message("  • time1 rows:  ", format(nrow(time1_sub), big.mark = ","))
-    message("  • pay1 rows:   ", format(nrow(pay1_sub), big.mark = ","))
+    message(" DEV MODE: Random test subset (eligible = Time+Pay+Class present per all_ids)")
+    message("   Seed: ", seed_val)
+    message("   Eligible IDs: ", format(length(eligible), big.mark = ","))
+    message("   Sample IDs kept: ", format(n_keep, big.mark = ","))
+    message("   time1 rows:  ", format(nrow(time1_sub), big.mark = ","))
+    message("   pay1 rows:   ", format(nrow(pay1_sub), big.mark = ","))
   }
   
   invisible(list(
@@ -271,9 +294,9 @@ safe_left_join <- function(dt_left, dt_right, by, prefix = NULL) {
     # Remove overlapping columns from dt_right (not dt_left)
     if (length(overlapping_cols) > 0) {
       dt_right[, (overlapping_cols) := NULL]
-      message("✅ Columns already exist in target table and will be skipped: ", paste(overlapping_cols, collapse = ", "))
+      message(" Columns already exist in target table and will be skipped: ", paste(overlapping_cols, collapse = ", "))
     } else {
-      message("✅ No overlapping columns found. Proceeding with join.")
+      message(" No overlapping columns found. Proceeding with join.")
     }
     
     # Perform the safe left join
@@ -283,16 +306,16 @@ safe_left_join <- function(dt_left, dt_right, by, prefix = NULL) {
       result <- merge(dt_left, dt_right, by.x = by_left, by.y = by_right, all.x = TRUE)
     }
     
-    message("✅ Left join successfully completed using keys: ", 
+    message(" Left join successfully completed using keys: ", 
             if(is.null(names(by))) paste(by, collapse = ", ") 
             else paste(by_left, "=", by_right, collapse = ", "))
     if (!is.null(prefix)) {
-      message("✅ Prefix '", prefix, "_' added to new columns")
+      message(" Prefix '", prefix, "_' added to new columns")
     }
     invisible(result)  # suppress output in console
   },
   error = function(e) {
-    message("❌ Error during Safe_Left_Join: ", e$message)
+    message(" Error during Safe_Left_Join: ", e$message)
     return(NULL)
   })
 }
@@ -879,9 +902,9 @@ run_data_comparison <- function(
     } else {
       fwrite(comparison_dt, csv_path)
       saveRDS(comparison_dt, sub("\\.csv$", ".rds", csv_path))
-      message("✔ Output status:")
-      message("  • CSV: ", csv_path)
-      message("  • RDS: ", sub("\\.csv$", ".rds", csv_path))
+      message(" Output status:")
+      message("   CSV: ", csv_path)
+      message("   RDS: ", sub("\\.csv$", ".rds", csv_path))
     }
     
     message("Files saved to: ", output_dir)
@@ -953,7 +976,7 @@ employee_period_comparison <- function(
   }
   output_dir <- normalizePath(output_dir, winslash = "/", mustWork = FALSE)
   
-  # Copies (don’t modify originals)
+  # Copies (dont modify originals)
   time1 <- as.data.table(copy(time_data))
   pay1  <- as.data.table(copy(pay_data))
   
@@ -1061,9 +1084,9 @@ employee_period_comparison <- function(
       # fallback
       fwrite(output_df, out_csv)
       saveRDS(output_df, sub("\\.csv$", ".rds", out_csv))
-      message("✔ Output status:")
-      message("  • CSV: ", out_csv)
-      message("  • RDS: ", sub("\\.csv$", ".rds", out_csv))
+      message(" Output status:")
+      message("   CSV: ", out_csv)
+      message("   RDS: ", sub("\\.csv$", ".rds", out_csv))
     }
     
     message("Files saved to: ", output_dir)
@@ -1176,9 +1199,9 @@ all_time_pay_class_ids <- function(
     } else {
       fwrite(all_ids, out_csv)
       saveRDS(all_ids, sub("\\.csv$", ".rds", out_csv))
-      message("✔ Output status:")
-      message("  • CSV: ", out_csv)
-      message("  • RDS: ", sub("\\.csv$", ".rds", out_csv))
+      message(" Output status:")
+      message("   CSV: ", out_csv)
+      message("   RDS: ", sub("\\.csv$", ".rds", out_csv))
     }
     message("Files saved to: ", output_dir)
   }
@@ -1187,25 +1210,25 @@ all_time_pay_class_ids <- function(
   
   n_missing_pay <- all_ids[Time_Present == 1 & Pay_Present == 0, .N]
   if (n_missing_pay == 0) {
-    message("✅ No employees are present in time but missing from pay.")
+    message(" No employees are present in time but missing from pay.")
   } else {
-    message("⚠ ", n_missing_pay, 
+    message(" ", n_missing_pay, 
             " employees appear in time data but are missing from pay data.")
   }
   
   n_missing_time <- all_ids[Pay_Present == 1 & Time_Present == 0, .N]
   if (n_missing_time == 0) {
-    message("✅ No employees are present in pay but missing from time.")
+    message(" No employees are present in pay but missing from time.")
   } else {
-    message("⚠ ", n_missing_time, 
+    message(" ", n_missing_time, 
             " employees appear in pay data but are missing from time data.")
   }
   
   n_class_only <- all_ids[Class_Present == 1 & Time_Present == 0 & Pay_Present == 0, .N]
   if (n_class_only == 0) {
-    message("✅ No employees appear only in the class list.")
+    message(" No employees appear only in the class list.")
   } else {
-    message("⚠ ", n_class_only, 
+    message(" ", n_class_only, 
             " employees appear in the class list but in neither time nor pay.")
   }
   
@@ -2359,7 +2382,7 @@ generate_random_sample <- function(
   ))
 }
 
-# generate_random_sample() — USAGE NOTES (updated for absolute paths)
+# generate_random_sample()  USAGE NOTES (updated for absolute paths)
 #
 # Assumptions at this point in your script:
 #   - case_name is already defined (string)
@@ -2602,8 +2625,8 @@ generate_production_files <- function(time1,
     cat(sprintf("in pay data:   %s (%.1f%%)\n", pay_unique_count,  pay_unique_count/sample_count*100))
   }
   
-  if (time_unique_count < sample_count) cat(sprintf("⚠ missing from time:  %s\n", sample_count - time_unique_count))
-  if (pay_unique_count  < sample_count) cat(sprintf("⚠ missing from pay:   %s\n", sample_count - pay_unique_count))
+  if (time_unique_count < sample_count) cat(sprintf(" missing from time:  %s\n", sample_count - time_unique_count))
+  if (pay_unique_count  < sample_count) cat(sprintf(" missing from pay:   %s\n", sample_count - pay_unique_count))
   
   cat("\nFILES CREATED:\n")
   cat(" - ", time_file, "\n", sep="")
@@ -3111,3 +3134,8 @@ export_metrics <- function(wide_dt, base_name = "Metrics_Table", out_dir = NULL)
   write_csv_and_rds(wide_dt, out_csv)
   invisible(list(csv = out_csv, rds = sub("\\.csv$", ".rds", out_csv)))
 }
+
+
+
+
+

@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # PROPRIETARY AND CONFIDENTIAL
 # Anello Data Solutions LLC
 # 
@@ -42,7 +42,7 @@ chrome_paths <- c(
 for (path in chrome_paths) {
   if (nzchar(path) && file.exists(path)) {
     Sys.setenv(CHROME = path)
-    message("✓ Chrome found at: ", path)
+    message("âœ“ Chrome found at: ", path)
     break
   }
 }
@@ -54,9 +54,9 @@ if (!nzchar(Sys.getenv("CHROME", ""))) {
     chrome_found <- tryCatch(pagedown::find_chrome(), error = function(e) "")
     if (nzchar(chrome_found)) {
       Sys.setenv(CHROME = chrome_found)
-      message("✓ Chrome found via pagedown: ", chrome_found)
+      message("âœ“ Chrome found via pagedown: ", chrome_found)
     } else {
-      message("⚠ Chrome not found - PDF export may not work. Set CHROME env var manually.")
+      message("âš  Chrome not found - PDF export may not work. Set CHROME env var manually.")
     }
   }
 }
@@ -3264,7 +3264,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
 
           <h4>Regular Rate of Pay (RROP)</h4>
           <ul>
-            <li><strong>Calculation Method:</strong> RROP = (Total straight-time compensation including differential pay + non-discretionary bonuses) ÷ (Total straight-time hours). Overtime premiums, discretionary bonuses, and time off are excluded from the calculation.</li>
+            <li><strong>Calculation Method:</strong> RROP = (Total straight-time compensation including differential pay + non-discretionary bonuses) Ã· (Total straight-time hours). Overtime premiums, discretionary bonuses, and time off are excluded from the calculation.</li>
             <li><strong>De Minimis Buffer:</strong> Under/overpayments below ", rrop_buffer, " ($", sprintf("%.0f", rrop_buffer * 100), " cents) are ignored as acceptable rounding differences.</li>
           </ul>
 
@@ -3287,16 +3287,16 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
             <li><strong>PAGA Period:</strong> ", paga_start, " to ", paga_end, "</li>
             <li><strong>Wage Statement Period:</strong> ", wsv_start, " to ", wsv_end, "</li>
             <li><strong>Waiting Time Period:</strong> ", wt_start, " to ", wt_end, "</li>
-            <li><strong>Wage Statement Violations:</strong> $", wsv_initial_penalty, " initial pay period penalty + $", wsv_subsequent_penalty, " subsequent pay period penalties, capped at $", formatC(wsv_cap, format = "f", digits = 0, big.mark = ","), " per employee (Labor Code §226).</li>
-            <li><strong>Waiting Time Penalties:</strong> Up to ", wt_max_days, " days of wages for terminated employees who did not receive timely final payment, calculated using RROP or final base rate (Labor Code §203).</li>
+            <li><strong>Wage Statement Violations:</strong> $", wsv_initial_penalty, " initial pay period penalty + $", wsv_subsequent_penalty, " subsequent pay period penalties, capped at $", formatC(wsv_cap, format = "f", digits = 0, big.mark = ","), " per employee (Labor Code Â§226).</li>
+            <li><strong>Waiting Time Penalties:</strong> Up to ", wt_max_days, " days of wages for terminated employees who did not receive timely final payment, calculated using RROP or final base rate (Labor Code Â§203).</li>
           </ul>
 
           <h4>PAGA Penalties</h4>
           <ul>
-            <li><strong>Standard Penalties:</strong> $", initial_pp_penalty, " initial violation + $", subsequent_pp_penalty, " subsequent violations per employee per pay period (Labor Code §2699).</li>
-            <li><strong>Labor Code §226 (Wage Statements):</strong> $", initial_pp_penalty_226, " initial + $", subsequent_pp_penalty_226, " subsequent penalties for wage statement violations.</li>
-            <li><strong>Labor Code §558 (Meal/Rest):</strong> $", initial_pp_penalty_558, " initial + $", subsequent_pp_penalty_558, " subsequent penalties for meal and rest period violations.</li>
-            <li><strong>Labor Code §1174:</strong> $", penalty_1174, " penalty for itemized wage statement violations.</li>
+            <li><strong>Standard Penalties:</strong> $", initial_pp_penalty, " initial violation + $", subsequent_pp_penalty, " subsequent violations per employee per pay period (Labor Code Â§2699).</li>
+            <li><strong>Labor Code Â§226 (Wage Statements):</strong> $", initial_pp_penalty_226, " initial + $", subsequent_pp_penalty_226, " subsequent penalties for wage statement violations.</li>
+            <li><strong>Labor Code Â§558 (Meal/Rest):</strong> $", initial_pp_penalty_558, " initial + $", subsequent_pp_penalty_558, " subsequent penalties for meal and rest period violations.</li>
+            <li><strong>Labor Code Â§1174:</strong> $", penalty_1174, " penalty for itemized wage statement violations.</li>
           </ul>
 
           ", extrap_text, "
@@ -3369,7 +3369,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       
       # Combine all filter descriptions
       if (length(filter_parts) > 0) {
-        filter_text <- paste("⚠ ACTIVE FILTERS:", paste(filter_parts, collapse = " | "))
+        filter_text <- paste("âš  ACTIVE FILTERS:", paste(filter_parts, collapse = " | "))
         return(HTML(paste0(filter_text, " | <a href='#' onclick='Shiny.setInputValue(\"reset_filters\", Math.random()); return false;' style='color: white; text-decoration: underline;'>Reset All Filters</a>")))
       }
       
@@ -3669,19 +3669,19 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
           )))
         ),
         `In Time` = c(
-          "✓", "", if (venn$class_total > 0) "",
-          "✓", if (venn$class_total > 0) "✓", if (venn$class_total > 0) "",
-          if (venn$class_total > 0) "✓", "-"
+          "âœ“", "", if (venn$class_total > 0) "",
+          "âœ“", if (venn$class_total > 0) "âœ“", if (venn$class_total > 0) "",
+          if (venn$class_total > 0) "âœ“", "-"
         ),
         `In Pay` = c(
-          "", "✓", if (venn$class_total > 0) "",
-          "✓", if (venn$class_total > 0) "", if (venn$class_total > 0) "✓",
-          if (venn$class_total > 0) "✓", "-"
+          "", "âœ“", if (venn$class_total > 0) "",
+          "âœ“", if (venn$class_total > 0) "", if (venn$class_total > 0) "âœ“",
+          if (venn$class_total > 0) "âœ“", "-"
         ),
         `In Class` = if (venn$class_total > 0) c(
-          "", "", "✓",
-          "", "✓", "✓",
-          "✓", "-"
+          "", "", "âœ“",
+          "", "âœ“", "âœ“",
+          "âœ“", "-"
         ) else NULL
       )
       
@@ -3852,20 +3852,22 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       content = function(file) {
         message("PDF export starting via generate_pdf.R...")
         
-        # Source generate_pdf.R if not already loaded
+        # Source generate_pdf.R from configured master path
         if (!exists("generate_report")) {
-          # Try to find generate_pdf.R relative to this script
-          pdf_script <- file.path(dirname(sys.frame(1)$ofile), "generate_pdf.R")
-          if (!file.exists(pdf_script)) {
-            # Fallback: look in same directory as app.R
-            pdf_script <- file.path(getwd(), "scripts", "generate_pdf.R")
-          }
-          if (file.exists(pdf_script)) {
-            message("Loading generate_pdf.R from: ", pdf_script)
-            source(pdf_script, local = FALSE)
+          pdf_script <- if (exists("PDF_SCRIPT")) {
+            PDF_SCRIPT
+          } else if (exists("MASTER_SCRIPTS_DIR")) {
+            file.path(MASTER_SCRIPTS_DIR, "generate_pdf.R")
           } else {
-            stop("Cannot find generate_pdf.R")
+            "D:/Shared/Master_Scripts/generate_pdf.R"
           }
+
+          if (!file.exists(pdf_script)) {
+            stop("Cannot find generate_pdf.R at configured path: ", pdf_script)
+          }
+
+          message("Loading generate_pdf.R from: ", pdf_script)
+          source(pdf_script, local = FALSE)
         }
         
         

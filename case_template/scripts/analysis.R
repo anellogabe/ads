@@ -34,7 +34,7 @@ time1  <- readRDS(time_rds)
 pay1   <- readRDS(pay_rds)
 class1 <- readRDS(class_rds)
 
-message("✓ loaded processed data from: ", PROCESSED_DIR)
+message(" loaded processed data from: ", PROCESSED_DIR)
 
 # # Merge time1 with class1 (if needed in order to get key information from Class List)
 # time1 <- merge(
@@ -54,9 +54,10 @@ message("✓ loaded processed data from: ", PROCESSED_DIR)
 #   all.x = TRUE
 # )
 
-init_logging(log_file_path = file.path(OUT_DIR, "Logs", "Case_Log.txt"),
+init_logging(log_file_path = if (exists("LOG_FILE")) LOG_FILE else file.path(OUT_DIR, "Case_Log.txt"),
              case_name = "Analysis",
-             append = TRUE)
+             append = TRUE,
+             phase = "analysis")
 
 
 # ----- ALL DATA:                DEV only - test subset of data (if needed) --------------------------
@@ -88,7 +89,7 @@ if (isTRUE(TEST_SUBSET)) {
     pay1  <- pay1[Pay_ID %in% ids_to_keep]
     time1 <- time1[ID %in% ids_to_keep]
     
-    message(sprintf("⚠ DEV MODE: Filtered to %d specified ID(s): %s",
+    message(sprintf(" DEV MODE: Filtered to %d specified ID(s): %s",
                     length(ids_to_keep), paste(ids_to_keep, collapse = ", ")))
     
   } else {
@@ -906,7 +907,7 @@ nrow(time1) #_______
 #       setnames(dt,
 #                old = c(in_patterns[i], out_patterns[i]),
 #                new = c(paste0("In", pair_count), paste0("Out", pair_count)))
-#       cat("✓ Renamed", in_patterns[i], "/", out_patterns[i],
+#       cat(" Renamed", in_patterns[i], "/", out_patterns[i],
 #           "to In", pair_count, "/Out", pair_count, "\n")
 #       pair_count <- pair_count + 1
 #     }
@@ -958,7 +959,7 @@ nrow(time1) #_______
 #       
 #       if(nrow(temp) > 0) {
 #         stacked_list[[i]] <- temp
-#         cat("✓ Stacked In", i, "/Out", i, ": ", nrow(temp), " rows\n", sep="")
+#         cat(" Stacked In", i, "/Out", i, ": ", nrow(temp), " rows\n", sep="")
 #       }
 #     }
 #   }
@@ -973,7 +974,7 @@ nrow(time1) #_______
 #     # Recalculate hours
 #     result[, Hours_Calc := as.numeric(difftime(Out, In, units = "hours"))]
 #     
-#     cat("\n✓ Total stacked:", nrow(result), "rows from",
+#     cat("\n Total stacked:", nrow(result), "rows from",
 #         length(stacked_list), "punch pairs\n")
 #     
 #     return(result)
@@ -1001,7 +1002,7 @@ nrow(time1) #_______
 missing_punches <- time1[is.na(In) | is.na(Out), .N]
 
 if (missing_punches > 0) {
-  cat("\n⚠ Found", missing_punches, "rows with missing In or Out punches\n")
+  cat("\n Found", missing_punches, "rows with missing In or Out punches\n")
   cat("  Missing In:", time1[is.na(In), .N], "\n")
   cat("  Missing Out:", time1[is.na(Out), .N], "\n")
   
@@ -1010,14 +1011,14 @@ if (missing_punches > 0) {
   if (FILTER_MISSING_PUNCHES) {
     time1_missing_punches <- time1[is.na(In) | is.na(Out)]
     time1 <- time1[!is.na(In) & !is.na(Out)]
-    cat("✓ Filtered out", nrow(time1_missing_punches), "rows → saved to 'time1_missing_punches'\n")
+    cat(" Filtered out", nrow(time1_missing_punches), "rows  saved to 'time1_missing_punches'\n")
     cat("  Remaining rows:", nrow(time1), "\n")
   } else {
     cat("  Keeping rows with missing punches (FILTER_MISSING_PUNCHES = FALSE)\n")
     time1_missing_punches <- data.table()  # Empty placeholder
   }
 } else {
-  cat("✓ No missing In/Out punches\n")
+  cat(" No missing In/Out punches\n")
   time1_missing_punches <- data.table()  # Empty placeholder
 }
 
@@ -1034,7 +1035,7 @@ total_records <- time1[, .N]
 pct <- function(n, d) if (is.na(d) || d == 0) NA_real_ else round(100 * n / d, 2)
 
 if (has_real_dates) {
-  cat("✓ Found existing dates in In/Out columns (not 1899 placeholder)\n")
+  cat(" Found existing dates in In/Out columns (not 1899 placeholder)\n")
   
   # HYBRID NOTE:
   # Some datasets contain a mix of true datetimes (real dates) and time-only values (1899 placeholders).
@@ -1055,7 +1056,7 @@ if (has_real_dates) {
   cat("  Records without dates in the In/Out time punches (1899 placeholder): ",
       total_without_dates, " of ", total_records, " (", pct(total_without_dates, total_records), "%)\n", sep = "")
 } else {
-  cat("✓ All In/Out times have 1899 placeholder dates\n")
+  cat(" All In/Out times have 1899 placeholder dates\n")
   time1[, In_Date_Match := NA]
   
   cat("\nDate Validation Summary:\n")
@@ -1102,7 +1103,7 @@ time1[is.na(new_shift), new_shift := 1]
 time1[, shift_num := cumsum(new_shift), by = ID]
 time1[, Shift_ID := paste(ID, shift_num, sep = "-")]
 
-cat("✓ Created", uniqueN(time1$Shift_ID, na.rm = TRUE), "unique Shift IDs\n")
+cat(" Created", uniqueN(time1$Shift_ID, na.rm = TRUE), "unique Shift IDs\n")
 cat("  Avg records per shift:", round(nrow(time1) / uniqueN(time1$Shift_ID, na.rm = TRUE), 1), "\n")
 
 time1[, duplicate_flag := duplicated(.SD), .SDcols = c("Shift_ID", "In", "Out")]
@@ -1147,7 +1148,7 @@ if (NEEDS_MIDNIGHT_CHECK) {
     time1[!duplicate_flag & !is.na(In) & !is.na(Out) & Out < In,
           Out := Out + days(1)]
     
-    cat("✓ Adjusted times for midnight-crossing shifts\n")
+    cat(" Adjusted times for midnight-crossing shifts\n")
   }
   
   time1[, c("midnight_trigger", "midnight_row", "lag_Out_shift") := NULL]
@@ -1167,11 +1168,11 @@ cat("Overlaps (non-dup):", time1[overlap_flag == TRUE, .N], "\n")
 if (NEEDS_MIDNIGHT_CHECK) {
   time1[, c("hrs_since_last", "new_shift", "shift_num", "shift_days", "In_Date_Match",
             "In_time_str", "Out_time_str", "has_real_in", "has_real_out") := NULL]
-  cat("✓ Removed temporary columns (including midnight adjustment flags)\n")
+  cat(" Removed temporary columns (including midnight adjustment flags)\n")
 } else {
   time1[, c("hrs_since_last", "new_shift", "shift_num", "shift_days", "In_Date_Match",
             "In_time_str", "Out_time_str", "has_real_in", "has_real_out") := NULL]
-  cat("✓ Removed temporary columns\n")
+  cat(" Removed temporary columns\n")
   cat("  Info: 'shift_crosses_midnight' column was not created because:\n")
   cat("        - No midnight crossing adjustments were needed\n")
 }
@@ -1213,7 +1214,7 @@ time1 <- time1[!is.na(punch_time)]
 # Sort: ID, then punch_time, then "out" before "in" if same time
 setorder(time1, ID, punch_time, -punch_type)
 
-cat("✓ Created long format:", nrow(time1), "punch records from",
+cat(" Created long format:", nrow(time1), "punch records from",
     nrow(time1_in_punches), "original records\n")
 
 
@@ -1268,12 +1269,12 @@ time1[, mp_hrs := fifelse(mp == 1, hrs_from_prev, 0)]
 time1[, mp_one_min := fifelse(mp == 1 & mp_hrs > 0 & mp_hrs <= (2/60), 1L, 0L)]
 sum(time1$mp_one_min, na.rm = TRUE)
 
-time1[, mp_lt_twenty := fifelse(mp == 1 & mp_hrs > 0 & mp_hrs < (20/60), 1L, 0L)]
-time1[, mp_lt_thirty := fifelse(mp == 1 & mp_hrs > 0 & mp_hrs < 0.5, 1L, 0L)]
-time1[, mp_thirty     := fifelse(mp == 1 & abs(mp_hrs - 0.5) < 0.001, 1L, 0L)]
-time1[, mp_forty_five    := fifelse(mp == 1 & abs(mp_hrs - 0.75) < 0.001, 1L, 0L)]
-time1[, mp_gt_thirty := fifelse(mp == 1 & mp_hrs > 0.5, 1L, 0L)]
-time1[, mp_gt_two_hrs := fifelse(mp == 1 & mp_hrs > 2, 1L, 0L)]
+time1[, mp_lt_twenty   := fifelse(mp == 1 & mp_hrs > 0 & mp_hrs < (20/60), 1L, 0L)]
+time1[, mp_lt_thirty   := fifelse(mp == 1 & mp_hrs > 0 & mp_hrs < 0.5, 1L, 0L)]
+time1[, mp_thirty      := fifelse(mp == 1 & mp_hrs == 0.5, 1L, 0L)]
+time1[, mp_forty_five  := fifelse(mp == 1 & mp_hrs == 0.75, 1L, 0L)]
+time1[, mp_gt_thirty   := fifelse(mp == 1 & mp_hrs > 0.5, 1L, 0L)]
+time1[, mp_gt_two_hrs  := fifelse(mp == 1 & mp_hrs > 2, 1L, 0L)]
 time1[, mp_gt_four_hrs := fifelse(mp == 1 & mp_hrs > 4, 1L, 0L)]
 
 # Identify hours for meal period 1 and 2, per shift
@@ -1311,9 +1312,9 @@ meal_qtr_tbl <- meal_quarter_hour_tbl(time1)
 # 
 # invalids <- time1[adjustment_ok == FALSE, .N]
 # if (invalids > 0) {
-#   message("❌ Error: ", invalids, " rows have shift_hrs adjusted by more than auto_mp_hrs.")
+#   message(" Error: ", invalids, " rows have shift_hrs adjusted by more than auto_mp_hrs.")
 # } else {
-#   message("✅ shift_hrs_adj values are valid. Proceeding with update...")
+#   message(" shift_hrs_adj values are valid. Proceeding with update...")
 #   time1[, shift_hrs := shift_hrs_adj]
 # }
 # 
@@ -1321,12 +1322,12 @@ meal_qtr_tbl <- meal_quarter_hour_tbl(time1)
 # time1[, c("shift_hrs_adj", "adjustment_ok") := NULL]
 # 
 # # AUTO meal period length flags
-# time1[, auto_mp_lt_twenty := fifelse(auto_mp == 1 & auto_mp_hrs > 0 & auto_mp_hrs < (20/60), 1L, 0L)]
-# time1[, auto_mp_lt_thirty := fifelse(auto_mp == 1 & auto_mp_hrs > 0 & auto_mp_hrs < 0.5, 1L, 0L)]
-# time1[, auto_mp_thirty     := fifelse(auto_mp == 1 & auto_mp_hrs == 0.5, 1L, 0L)]
-# time1[, auto_mp_forty_five    := fifelse(auto_mp == 1 & auto_mp_hrs == 0.75, 1L, 0L)]
-# time1[, auto_mp_gt_thirty := fifelse(auto_mp == 1 & auto_mp_hrs > 0.5, 1L, 0L)]
-# time1[, auto_mp_gt_two_hrs := fifelse(auto_mp == 1 & auto_mp_hrs > 2, 1L, 0L)]
+# time1[, auto_mp_lt_twenty   := fifelse(auto_mp == 1 & auto_mp_hrs > 0 & auto_mp_hrs < (20/60), 1L, 0L)]
+# time1[, auto_mp_lt_thirty   := fifelse(auto_mp == 1 & auto_mp_hrs > 0 & auto_mp_hrs < 0.5, 1L, 0L)]
+# time1[, auto_mp_thirty      := fifelse(auto_mp == 1 & auto_mp_hrs == 0.5, 1L, 0L)]
+# time1[, auto_mp_forty_five  := fifelse(auto_mp == 1 & auto_mp_hrs == 0.75, 1L, 0L)]
+# time1[, auto_mp_gt_thirty   := fifelse(auto_mp == 1 & auto_mp_hrs > 0.5, 1L, 0L)]
+# time1[, auto_mp_gt_two_hrs  := fifelse(auto_mp == 1 & auto_mp_hrs > 2, 1L, 0L)]
 # time1[, auto_mp_gt_four_hrs := fifelse(auto_mp == 1 & auto_mp_hrs > 4, 1L, 0L)]
 
 # Calculate cumulative hours worked up to each meal period
@@ -1374,7 +1375,7 @@ time1[, mp2_mins_late := fifelse(hrs_to_mp2 > 10, round((hrs_to_mp2 - 10) * 60),
 # time1[, punch_diff := as.numeric(difftime(punch_time, r_punch_time, units = "hours"))]
 # 
 # # Check for any issues
-# cat("✓ Fixed r_punch_time dates and calculated punch_diff\n")
+# cat(" Fixed r_punch_time dates and calculated punch_diff\n")
 # cat("  Punch differences range:", 
 #     round(min(time1$punch_diff, na.rm = TRUE), 2), "to", 
 #     round(max(time1$punch_diff, na.rm = TRUE), 2), "hours\n")
@@ -1382,7 +1383,7 @@ time1[, mp2_mins_late := fifelse(hrs_to_mp2 > 10, round((hrs_to_mp2 - 10) * 60),
 # # Optional: Check if any large differences that might indicate issues
 # large_diffs <- time1[abs(punch_diff) > 24, .N]
 # if(large_diffs > 0) {
-#   cat("⚠ Warning:", large_diffs, "records have punch differences > 24 hours\n")
+#   cat(" Warning:", large_diffs, "records have punch differences > 24 hours\n")
 # }
 # 
 # # Pre, post and mid shift lost and gained hours
@@ -1429,12 +1430,12 @@ time1[, mp2_mins_late := fifelse(hrs_to_mp2 > 10, round((hrs_to_mp2 - 10) * 60),
 # time1[, r_mp_hrs := fifelse(mp == 1, r_hrs_from_prev, 0)]
 # 
 # # Meal period length flags
-# time1[, r_mp_lt_twenty := fifelse(mp == 1 & r_mp_hrs > 0 & r_mp_hrs < (20/60), 1L, 0L)]
-# time1[, r_mp_lt_thirty := fifelse(mp == 1 & r_mp_hrs > 0 & r_mp_hrs < 0.5, 1L, 0L)]
-# time1[, r_mp_thirty     := fifelse(mp == 1 & r_mp_hrs == 0.5, 1L, 0L)]
-# time1[, r_mp_forty_five    := fifelse(mp == 1 & r_mp_hrs == 0.75, 1L, 0L)]
-# time1[, r_mp_gt_thirty := fifelse(mp == 1 & r_mp_hrs > 0.5, 1L, 0L)]
-# time1[, r_mp_gt_two_hrs := fifelse(mp == 1 & r_mp_hrs > 2, 1L, 0L)]
+# time1[, r_mp_lt_twenty   := fifelse(mp == 1 & r_mp_hrs > 0 & r_mp_hrs < (20/60), 1L, 0L)]
+# time1[, r_mp_lt_thirty   := fifelse(mp == 1 & r_mp_hrs > 0 & r_mp_hrs < 0.5, 1L, 0L)]
+# time1[, r_mp_thirty      := fifelse(mp == 1 & r_mp_hrs == 0.5, 1L, 0L)]
+# time1[, r_mp_forty_five  := fifelse(mp == 1 & r_mp_hrs == 0.75, 1L, 0L)]
+# time1[, r_mp_gt_thirty   := fifelse(mp == 1 & r_mp_hrs > 0.5, 1L, 0L)]
+# time1[, r_mp_gt_two_hrs  := fifelse(mp == 1 & r_mp_hrs > 2, 1L, 0L)]
 # time1[, r_mp_gt_four_hrs := fifelse(mp == 1 & r_mp_hrs > 4, 1L, 0L)]
 # 
 # # Meal period 1 and 2 duration
@@ -1443,6 +1444,128 @@ time1[, mp2_mins_late := fifelse(hrs_to_mp2 > 10, round((hrs_to_mp2 - 10) * 60),
 #   r_mp2_hrs = fifelse(mp_ct == 2, r_mp_hrs, 0)
 # ), by = ID_Shift]
 
+# ----- TIME DATA:               Attestation Analysis --------------
+
+# setDT(time1)
+# setDT(attestation1)
+# 
+# attestation1[, ID_Date := paste(ID, Date, sep = "_")]
+# 
+# attestation_flags <- attestation1[
+#   ,
+#   .(
+#     Meal_Yes = as.integer(any(grepl("Meal-Yes", Attestation_Category, ignore.case=TRUE))),
+#     Meal_No  = as.integer(any(grepl("Meal-No",  Attestation_Category, ignore.case=TRUE))),
+#     Rest_Yes = as.integer(any(grepl("Rest-Yes", Attestation_Category, ignore.case=TRUE))),
+#     Rest_No  = as.integer(any(grepl("Rest-No",  Attestation_Category, ignore.case=TRUE)))
+#   ),
+#   by = ID_Date
+# ]
+# 
+# time1 <- attestation_flags[time1, on="ID_Date"]
+# 
+# attestation_summary <- data.table(
+#   Metric = c(
+#     "Total time records",
+#     "Records with attestation match",
+#     "Records without attestation match",
+#     "Meal Yes",
+#     "Meal No",
+#     "Meal Yes AND Meal No",
+#     "Meal NA",
+#     "Rest Yes",
+#     "Rest No",
+#     "Rest Yes AND Rest No",
+#     "Rest NA"
+#   ),
+#   Count = c(
+#     nrow(time1),
+#     
+#     sum(!is.na(time1$Meal_Yes) | !is.na(time1$Meal_No) |
+#           !is.na(time1$Rest_Yes) | !is.na(time1$Rest_No)),
+#     
+#     sum(is.na(time1$Meal_Yes) & is.na(time1$Meal_No) &
+#           is.na(time1$Rest_Yes) & is.na(time1$Rest_No)),
+#     
+#     sum(time1$Meal_Yes == 1, na.rm = TRUE),
+#     sum(time1$Meal_No  == 1, na.rm = TRUE),
+#     sum(time1$Meal_Yes == 1 & time1$Meal_No == 1, na.rm = TRUE),
+#     sum(is.na(time1$Meal_Yes) & is.na(time1$Meal_No)),
+#     
+#     sum(time1$Rest_Yes == 1, na.rm = TRUE),
+#     sum(time1$Rest_No  == 1, na.rm = TRUE),
+#     sum(time1$Rest_Yes == 1 & time1$Rest_No == 1, na.rm = TRUE),
+#     sum(is.na(time1$Rest_Yes) & is.na(time1$Rest_No))
+#   )
+# )
+# 
+# print(attestation_summary)
+
+
+# ----- TIME DATA:               Meal Waiver Forms Analysis --------------
+
+# # Split to one row per ID by waiver type, rename columns, then join both
+# waiver_6hr <- unique(
+#   waiver1[Waiver_Type == "1: 6 hrs",
+#           .(ID,
+#             Waiver_6hr_Type      = Waiver_Type,
+#             Waiver_6hr_Response  = Waiver_Response,
+#             Waiver_6hr_Sign_Date = Waiver_Sign_Date,
+#             Waiver_6hr_Rev       = Waiver_Rev,
+#             Waiver_6hr_Source    = Waiver_Source,
+#             Waiver_6hr_Bates     = Waiver_Bates,
+#             Waiver_6hr           = 1L)],
+#   by = "ID"
+# )
+# 
+# waiver_12hr <- unique(
+#   waiver1[Waiver_Type == "2: 12 hrs",
+#           .(ID,
+#             Waiver_12hr_Type      = Waiver_Type,
+#             Waiver_12hr_Response  = Waiver_Response,
+#             Waiver_12hr_Sign_Date = Waiver_Sign_Date,
+#             Waiver_12hr_Rev       = Waiver_Rev,
+#             Waiver_12hr_Source    = Waiver_Source,
+#             Waiver_12hr_Bates     = Waiver_Bates,
+#             Waiver_12hr           = 1L)],
+#   by = "ID"
+# )
+# 
+# time1 <- waiver_6hr[time1, on = "ID"]
+# time1 <- waiver_12hr[time1, on = "ID"]
+# 
+# time1[, Waiver_Any := fifelse(
+#   fcoalesce(Waiver_6hr, 0L) == 1L | fcoalesce(Waiver_12hr, 0L) == 1L,
+#   1L,
+#   NA_integer_
+# )]
+# 
+# # ID-level summary
+# waiver_sum_ids <- unique(time1[, .(ID, Waiver_6hr, Waiver_12hr, Waiver_Any)])
+# 
+# waiver_summary <- data.table(
+#   Metric = c(
+#     "Total unique IDs in time1",
+#     "Unique IDs matched to waiver1",
+#     "Unique IDs not matched to waiver1",
+#     "Matched IDs with 1: 6 hrs",
+#     "Matched IDs with 2: 12 hrs",
+#     "Matched IDs with either waiver type",
+#     "Matched IDs with both waiver types"
+#   ),
+#   Count = c(
+#     nrow(waiver_sum_ids),
+#     sum(!is.na(waiver_sum_ids$Waiver_Any)),
+#     sum(is.na(waiver_sum_ids$Waiver_Any)),
+#     sum(waiver_sum_ids$Waiver_6hr == 1, na.rm = TRUE),
+#     sum(waiver_sum_ids$Waiver_12hr == 1, na.rm = TRUE),
+#     sum(waiver_sum_ids$Waiver_Any == 1, na.rm = TRUE),
+#     sum(waiver_sum_ids$Waiver_6hr == 1 & waiver_sum_ids$Waiver_12hr == 1, na.rm = TRUE)
+#   )
+# )
+# 
+# print(waiver_summary)
+# 
 
 # ----- TIME DATA:               Weekly summary and Alternative Workweek Analysis --------------
 
@@ -1554,7 +1677,13 @@ names(time1)
 
 # Define fields globally
 first_fields_default <- c("Source", "Sheet", "Page", "Bates", "Key_Gps", "ID", "Name", "ID_Date", "Date", 
-                          "ID_Period_End", "Week_End", "ID_Week_End", "wk_time_off", "Period_Beg", "Period_End")
+                          "ID_Period_End", "Week_End", "ID_Week_End", "wk_time_off", "Period_Beg", "Period_End",
+                          
+                          # Have waiver forms? Add:
+                          # "Waiver_6hr_Type", "Waiver_6hr_Response", "Waiver_6hr_Sign_Date", "Waiver_6hr",
+                          # "Waiver_12hr_Type", "Waiver_12hr_Response", "Waiver_12hr_Sign_Date", "Waiver_12hr",
+                          # "waiver_Any"
+                          )
 
 #NOTE: Hours field is default "Sum" field but it could be a "Max" field depending on your time data format.
 sum_fields_default <- c("mp", "mp_lt_twenty", "mp_lt_thirty", "mp_thirty", "mp_gt_thirty", "mp_forty_five", 
@@ -1570,7 +1699,10 @@ sum_fields_default <- c("mp", "mp_lt_twenty", "mp_lt_thirty", "mp_thirty", "mp_g
                         # Rounded and actual punches analysis? Add:
                         #, "r_diff", "r_mp_lt_twenty", "r_mp_lt_thirty", "r_mp_thirty", "r_mp_gt_thirty", "r_mp_forty_five", 
                         # "r_mp_gt_two_hrs", "r_mp_gt_four_hrs", "r_Hours"
-)
+                       
+                        # Have attestation data? Add:
+                        #,"Meal_Yes","Meal_No","Rest_Yes","Rest_No"
+                        )
 
 max_fields_default <- c("shift_hrs", "mp1_hrs", "mp2_hrs", "shift_mps", "hrs_to_mp1", "hrs_to_mp2", 
                         "mp1_mins_short", "mp2_mins_short", "mp1_mins_late", "mp2_mins_late"
@@ -1655,6 +1787,53 @@ shift_data1[, `:=`(
   mp2_violation_w = as.integer((MissMP2_w + LateMP2_w + ShortMP2_w) > 0)
 )]
 
+# MP Analysis: With Waivers 
+# (HYBRID based on actual waivers, where available, excludes anyone without waiver forms as NA)
+
+# Employee-level waiver flag
+#shift_data1[, ee_has_waiver := as.integer(any(!is.na(Waiver_6hr_Sign_Date) | !is.na(Waiver_12hr_Sign_Date))), by = ID]
+
+# TEMP PLACEHOLDERS
+shift_data1[, ee_has_waiver := 1L] # TEMP PLACEHOLDER
+shift_data1[, Waiver_6hr_Sign_Date := class_dmgs_start_date] # TEMP PLACEHOLDER
+shift_data1[, Waiver_12hr_Sign_Date := class_dmgs_start_date] # TEMP PLACEHOLDER
+
+
+shift_data1[, `:=`(
+  MissMP1_h  = fifelse(ee_has_waiver == 0L | is.na(Waiver_6hr_Sign_Date), NA_integer_,
+                       fifelse(Date < as.Date(Waiver_6hr_Sign_Date), MissMP1, MissMP1_w)),
+  LateMP1_h  = fifelse(ee_has_waiver == 0L | is.na(Waiver_6hr_Sign_Date), NA_integer_,
+                       fifelse(Date < as.Date(Waiver_6hr_Sign_Date), LateMP1, LateMP1_w)),
+  ShortMP1_h = fifelse(ee_has_waiver == 0L | is.na(Waiver_6hr_Sign_Date), NA_integer_,
+                       fifelse(Date < as.Date(Waiver_6hr_Sign_Date), ShortMP1, ShortMP1_w)),
+  
+  MissMP2_h  = fifelse(ee_has_waiver == 0L | is.na(Waiver_12hr_Sign_Date), NA_integer_,
+                       fifelse(Date < as.Date(Waiver_12hr_Sign_Date), MissMP2, MissMP2_w)),
+  LateMP2_h  = fifelse(ee_has_waiver == 0L | is.na(Waiver_12hr_Sign_Date), NA_integer_,
+                       fifelse(Date < as.Date(Waiver_12hr_Sign_Date), LateMP2, LateMP2_w)),
+  ShortMP2_h = fifelse(ee_has_waiver == 0L | is.na(Waiver_12hr_Sign_Date), NA_integer_,
+                       fifelse(Date < as.Date(Waiver_12hr_Sign_Date), ShortMP2, ShortMP2_w))
+)]
+
+shift_data1[, `:=`(
+  mp1_violation_h = fifelse(
+    ee_has_waiver == 0L | is.na(Waiver_6hr_Sign_Date),
+    NA_integer_,
+    fifelse(Date < as.Date(Waiver_6hr_Sign_Date), mp1_violation, mp1_violation_w)
+  ),
+  mp2_violation_h = fifelse(
+    ee_has_waiver == 0L | is.na(Waiver_12hr_Sign_Date),
+    NA_integer_,
+    fifelse(Date < as.Date(Waiver_12hr_Sign_Date), mp2_violation, mp2_violation_w)
+  )
+)]
+
+shift_data1[, mpv_shift_h := fifelse(
+  is.na(mp1_violation_h) & is.na(mp2_violation_h),
+  NA_integer_,
+  as.integer(fcoalesce(mp1_violation_h, 0L) == 1L | fcoalesce(mp2_violation_h, 0L) == 1L)
+)]
+
 # # AUTO MP Analysis: No Waivers
 # shift_data1[, `:=`(
 #   auto_MissMP1  = as.integer(MissMP1 == 1 & auto_mp_hrs == 0),
@@ -1694,12 +1873,32 @@ shift_data1[, `:=`(
 #       auto_MissMP2_w + auto_LateMP2_w + auto_ShortMP2_w > 0
 #   )
 # )]
+#
+# # AUTO MP Analysis: HYBRID
+# shift_data1[, `:=`(
+#   auto_MissMP1_h  = as.integer(MissMP1_h == 1 & auto_mp_hrs == 0),
+#   auto_LateMP1_h  = LateMP1_h,
+#   auto_ShortMP1_h = as.integer(
+#     (ShortMP1_h == 1) |
+#       (ShortMP1_h == 0 & auto_mp_hrs > 0 & auto_mp_hrs < 0.49)
+#   ),
+#   auto_MissMP2_h  = as.integer(MissMP2_h == 1 & auto_mp_hrs < 0.99),
+#   auto_LateMP2_h  = LateMP2_h,
+#   auto_ShortMP2_h = ShortMP2_h
+# )]
+#   
+# shift_data1[, `:=`(
+#   auto_mpv_shift_h = as.integer(
+#     auto_MissMP1_h + auto_LateMP1_h + auto_ShortMP1_h +
+#       auto_MissMP2_h + auto_LateMP2_h + auto_ShortMP2_h > 0
+#   )
+# )]
 
 # RP Analysis (no rest period punches)
-#shift_data1[, rpv_shift := fifelse(shift_hrs > 3.5, 1L, 0L)]
+shift_data1[, rpv_shift := fifelse(shift_hrs > 3.5, 1L, 0L)]
 
 # RP Analysis (match to mpv_shift -> meal period violations)
-shift_data1[, rpv_shift := mpv_shift]
+#shift_data1[, rpv_shift := mpv_shift]
 
 # shift_data1[, `:=`(
 #   MissRP1  = as.integer(shift_rps == 0 & shift_hrs > 3.51),
@@ -1727,7 +1926,7 @@ shift_data1[, `:=` (
 
 shift_data1[, `:=`(
   week = fifelse(shift(ID_Week_End, type = "lead") == ID_Week_End, 0, 1)
-), by = ID]
+)]
 
 
 # ----- SHIFT (TIME) DATA:       Pay period aggregations -----------------------------------------
@@ -1742,6 +1941,7 @@ shift_data1[is.na(pp), pp := 1L]
 shift_data1[, `:=`(
   mpv_per_pp = sum(mpv_shift, na.rm = TRUE),
   mpv_per_pp_w = sum(mpv_shift_w, na.rm = TRUE),
+  mpv_per_pp_h = sum(mpv_shift_h, na.rm = TRUE),
   # # Auto-deducted meals
   # auto_mpv_per_pp = sum(auto_mpv_shift, na.rm = TRUE),
   # auto_mpv_per_pp_w = sum(auto_mpv_shift_w, na.rm = TRUE),
@@ -2010,6 +2210,29 @@ if ("Meal_Prem_Hrs" %in% names(shift_data1) & "mpv_shift" %in% names(shift_data1
     )]
   }
   
+  # HYBRID
+  if ("mpv_shift_h" %in% names(shift_data1)) {
+    # Create cumulative for waived version
+    shift_data1[, cum_mpv_h := cumsum(mpv_shift_h), by = ID_Period_End]
+    
+    # Create lagged version
+    shift_data1[, prev_cum_mpv_h := shift(cum_mpv_h, fill = 0, type = "lag"), by = ID_Period_End]
+    
+    # Allocate premiums - handle NA values
+    shift_data1[, `:=`(
+      meal_premium_allocated_h = fifelse(
+        is.na(Meal_Prem_Hrs), 
+        0, 
+        pmin(mpv_shift_h, pmax(0, Meal_Prem_Hrs - prev_cum_mpv_h))
+      ),
+      mpv_shift_less_prems_h = fifelse(
+        is.na(Meal_Prem_Hrs), 
+        mpv_shift_h, 
+        mpv_shift_h - pmin(mpv_shift_h, pmax(0, Meal_Prem_Hrs - prev_cum_mpv_h))
+      )
+    )]
+  }
+  
   # Clean up intermediate columns (uncomment when ready)
   # shift_data1[, c("cum_mpv", "prev_cum_mpv", "cum_mpv_w", "prev_cum_mpv_w") := NULL]
 }
@@ -2162,13 +2385,15 @@ if ("Rest_Prem_Hrs" %in% names(shift_data1)) {
 if ("Meal_Prem_Hrs" %in% names(shift_data1)) {
   shift_data1[, `:=`(
     mpv_per_pp_less_prems = fifelse(is.na(Meal_Prem_Hrs), mpv_per_pp, pmax(0, mpv_per_pp - Meal_Prem_Hrs)),
-    mpv_per_pp_less_prems_w = fifelse(is.na(Meal_Prem_Hrs), mpv_per_pp_w, pmax(0, mpv_per_pp_w - Meal_Prem_Hrs))
+    mpv_per_pp_less_prems_w = fifelse(is.na(Meal_Prem_Hrs), mpv_per_pp_w, pmax(0, mpv_per_pp_w - Meal_Prem_Hrs)),
+    mpv_per_pp_less_prems_h = fifelse(is.na(Meal_Prem_Hrs), mpv_per_pp_h, pmax(0, mpv_per_pp_h - Meal_Prem_Hrs))
   )]
 } else {
   message("⚠️ 'Meal_Prem_Hrs' not found, setting mpv_per_pp_less_prems = mpv_per_pp (no adjustment)")
   shift_data1[, `:=`(
     mpv_per_pp_less_prems = mpv_per_pp,
-    mpv_per_pp_less_prems_w = mpv_per_pp_w
+    mpv_per_pp_less_prems_w = mpv_per_pp_w,
+    mpv_per_pp_less_prems_h = mpv_per_pp_h
   )]
 }
 
@@ -2187,6 +2412,7 @@ if ("Rest_Prem_Hrs" %in% names(shift_data1)) {
 viol_ee <- shift_data1[, .(
   mpv_ee   = sum(mpv_shift,   na.rm = TRUE),
   mpv_ee_w = sum(mpv_shift_w, na.rm = TRUE),
+  mpv_ee_h = sum(mpv_shift_h, na.rm = TRUE),
   rpv_ee   = sum(rpv_shift,   na.rm = TRUE),
   
   meal_prem_hrs_ee = sum(Meal_Prem_Hrs, na.rm = TRUE),
@@ -2205,6 +2431,7 @@ viol_ee[is.na(rest_prem_amt_ee), rest_prem_amt_ee := 0]
 viol_ee[, `:=`(
   mpv_ee_less_prems   = pmax(0, mpv_ee   - meal_prem_hrs_ee),
   mpv_ee_less_prems_w = pmax(0, mpv_ee_w - meal_prem_hrs_ee),
+  mpv_ee_less_prems_h = pmax(0, mpv_ee_h - meal_prem_hrs_ee),
   rpv_ee_less_prems   = pmax(0, rpv_ee   - rest_prem_hrs_ee)
 )]
 
@@ -2212,6 +2439,7 @@ viol_ee[, `:=`(
 shift_data1[viol_ee, `:=`(
   mpv_ee             = i.mpv_ee,
   mpv_ee_w           = i.mpv_ee_w,
+  mpv_ee_h           = i.mpv_ee_h,
   rpv_ee             = i.rpv_ee,
   
   meal_prem_hrs_ee   = i.meal_prem_hrs_ee,
@@ -2221,6 +2449,7 @@ shift_data1[viol_ee, `:=`(
   
   mpv_ee_less_prems   = i.mpv_ee_less_prems,
   mpv_ee_less_prems_w = i.mpv_ee_less_prems_w,
+  mpv_ee_less_prems_h = i.mpv_ee_less_prems_h,
   rpv_ee_less_prems   = i.rpv_ee_less_prems
 ), on = "ID"]
 
@@ -2311,18 +2540,20 @@ shift_data1[, `:=`(
   
   mpv_per_pp_per_ee    = sum(fifelse(pp == 1, fcoalesce(as.numeric(mpv_per_pp), 0.0), 0.0)),
   mpv_per_pp_per_ee_w  = sum(fifelse(pp == 1, fcoalesce(as.numeric(mpv_per_pp_w), 0.0), 0.0)),
+  mpv_per_pp_per_ee_h  = sum(fifelse(pp == 1, fcoalesce(as.numeric(mpv_per_pp_h), 0.0), 0.0)),
   rpv_per_pp_per_ee    = sum(fifelse(pp == 1, fcoalesce(as.numeric(rpv_per_pp), 0.0), 0.0)),
   
   mpv_per_pp_less_prems_per_ee   = sum(fifelse(pp == 1, fcoalesce(as.numeric(mpv_per_pp_less_prems), 0.0), 0.0)),
   mpv_per_pp_less_prems_per_ee_w = sum(fifelse(pp == 1, fcoalesce(as.numeric(mpv_per_pp_less_prems_w), 0.0), 0.0)),
+  mpv_per_pp_less_prems_per_ee_h = sum(fifelse(pp == 1, fcoalesce(as.numeric(mpv_per_pp_less_prems_h), 0.0), 0.0)),
   rpv_per_pp_less_prems_per_ee   = sum(fifelse(pp == 1, fcoalesce(as.numeric(rpv_per_pp_less_prems), 0.0), 0.0)),
   
   # employee-level constants: pass through once per employee
   mpv_ee_less_prems_per_ee   = fifelse(all(is.na(mpv_ee_less_prems)),   NA_real_, max(as.numeric(mpv_ee_less_prems),   na.rm = TRUE)),
   mpv_ee_less_prems_per_ee_w = fifelse(all(is.na(mpv_ee_less_prems_w)), NA_real_, max(as.numeric(mpv_ee_less_prems_w), na.rm = TRUE)),
+  mpv_ee_less_prems_per_ee_h = fifelse(all(is.na(mpv_ee_less_prems_h)), NA_real_, max(as.numeric(mpv_ee_less_prems_h), na.rm = TRUE)),
   rpv_ee_less_prems_per_ee   = fifelse(all(is.na(rpv_ee_less_prems)),   NA_real_, max(as.numeric(rpv_ee_less_prems),   na.rm = TRUE))
 ), by = ID]
-
 
 # Employee-level rates (avoid double counting per_pp fields by only counting rows where pp == 1)
 
@@ -2331,8 +2562,8 @@ shift_data1[, c(
   "perc_shifts_e_8", "perc_shifts_gt_8", "perc_shifts_gt_10", "perc_shifts_gt_10_lte_12",
   "perc_shifts_gt_12", "perc_shifts_gt_14",
   "perc_mp", "perc_mp_lt_thirty", "perc_mp_thirty", "perc_mp_gt_thirty",
-  "mpv_rate", "mpv_rate_w", "mpv_rate_less_prems", "mpv_rate_less_prems_w",
-  "mpv_ee_rate_less_prems", "mpv_ee_rate_less_prems_w",
+  "mpv_rate", "mpv_rate_w", "mpv_rate_h", "mpv_rate_less_prems", "mpv_rate_less_prems_w", "mpv_rate_less_prems_h",
+  "mpv_ee_rate_less_prems", "mpv_ee_rate_less_prems_w", "mpv_ee_rate_less_prems_h",
   "rpv_rate", "rpv_rate_less_prems", "rpv_ee_rate_less_prems"
 ) := {
   n_shifts <- .N
@@ -2353,6 +2584,7 @@ shift_data1[, c(
   # ee_less_prems are employee-level constants repeated on every row
   mpv_ee_lp   <- if (all(is.na(mpv_ee_less_prems)))   NA_real_ else max(mpv_ee_less_prems,   na.rm = TRUE)
   mpv_ee_lp_w <- if (all(is.na(mpv_ee_less_prems_w))) NA_real_ else max(mpv_ee_less_prems_w, na.rm = TRUE)
+  mpv_ee_lp_h <- if (all(is.na(mpv_ee_less_prems_h))) NA_real_ else max(mpv_ee_less_prems_h, na.rm = TRUE)
   rpv_ee_lp   <- if (all(is.na(rpv_ee_less_prems)))   NA_real_ else max(rpv_ee_less_prems,   na.rm = TRUE)
   
   list(
@@ -2374,6 +2606,7 @@ shift_data1[, c(
     
     round(fifelse(n_gt5 > 0, sum(mpv_shift,   na.rm = TRUE) / n_gt5, NA_real_), 6),
     round(fifelse(n_gt6 > 0, sum(mpv_shift_w, na.rm = TRUE) / n_gt6, NA_real_), 6),
+    round(fifelse(n_gt6 > 0, sum(mpv_shift_h, na.rm = TRUE) / n_gt6, NA_real_), 6),
     
     # per_pp fields: only count once per pay period (pp == 1)
     round(fifelse(n_gt5_pp > 0, sum(fifelse(pp_rows, fcoalesce(mpv_per_pp_less_prems, 0), 0), na.rm = TRUE) / n_gt5_pp, NA_real_), 6),
@@ -2382,6 +2615,7 @@ shift_data1[, c(
     # ee_less_prems: employee-level constant; use once
     round(fifelse(n_gt5 > 0, mpv_ee_lp   / n_gt5, NA_real_), 6),
     round(fifelse(n_gt6 > 0, mpv_ee_lp_w / n_gt6, NA_real_), 6),
+    round(fifelse(n_gt6 > 0, mpv_ee_lp_h / n_gt6, NA_real_), 6),
     
     round(fifelse(n_gt3_5 > 0, sum(rpv_shift, na.rm = TRUE) / n_gt3_5, NA_real_), 6),
     
@@ -2455,7 +2689,11 @@ setnames(pp_pay1, "Pay_ID_Period_End", "ID_Period_End", skip_absent = TRUE)
 setDT(shift_data1)
 
 # Fields
-first_fields_default <- c("Source", "Sheet", "Key_Gps", "ID", "Name", "ID_Date", "Period_Beg", "Period_End")
+first_fields_default <- c("Source", "Sheet", "Key_Gps", "ID", "Name", "ID_Date", "Period_Beg", "Period_End",
+                          
+                          "Waiver_6hr_Type", "Waiver_6hr_Response", "Waiver_6hr_Sign_Date", "Waiver_6hr",
+                          "Waiver_12hr_Type", "Waiver_12hr_Response", "Waiver_12hr_Sign_Date", "Waiver_12hr",
+                          "waiver_Any")
 
 sum_fields_default <- c(
   "shift", "shift_hrs", "Hours", "mp",
@@ -2465,25 +2703,22 @@ sum_fields_default <- c(
   "mp_gt_two_hrs", "mp_gt_four_hrs",
   
   # Rounded and actual punches analysis? Add:
-  # "r_diff", "r_mp_lt_twenty", "r_mp_lt_thirty", "r_mp_thirty", "r_mp_gt_thirty", "r_mp_forty_five",
-  # "r_mp_gt_two_hrs", "r_mp_gt_four_hrs", "r_Hours", "r_shift_hrs", 
-  # "pre_shift_hrs_lost", "pre_shift_hrs_gained", "mid_shift_out_hrs_lost",
-  # "mid_shift_out_hrs_gained", "mid_shift_in_hrs_lost", "mid_shift_in_hrs_gained", "post_shift_hrs_lost", "post_shift_hrs_gained",
+  "r_diff", "r_mp_lt_twenty", "r_mp_lt_thirty", "r_mp_thirty", "r_mp_gt_thirty", "r_mp_forty_five",
+  "r_mp_gt_two_hrs", "r_mp_gt_four_hrs", "r_Hours", "r_shift_hrs", 
+  "pre_shift_hrs_lost", "pre_shift_hrs_gained", "mid_shift_out_hrs_lost",
+  "mid_shift_out_hrs_gained", "mid_shift_in_hrs_lost", "mid_shift_in_hrs_gained", "post_shift_hrs_lost", "post_shift_hrs_gained",
   
   "MissMP1", "LateMP1", "ShortMP1", "MissMP2", "LateMP2", "ShortMP2",
   "mp1_violation", "mp2_violation",
   
   "MissMP1_w", "LateMP1_w", "ShortMP1_w", "MissMP2_w", "LateMP2_w", "ShortMP2_w",
-  "mp1_violation_w", "mp2_violation_w"
+  "mp1_violation_w", "mp2_violation_w",
   
-  # Auto-deducted meal periods? Add:
-  # , "auto_mp", "auto_mp_lt_twenty", "auto_mp_lt_thirty", "auto_mp_thirty", "auto_mp_gt_thirty", "auto_mp_forty_five",           
-  # "auto_mp_gt_two_hrs", "auto_mp_gt_four_hrs", 
-  # 
-  # "auto_MissMP1", "auto_LateMP1", "auto_ShortMP1", "auto_MissMP2", "auto_LateMP2", "auto_ShortMP2", "auto_mpv_shift", 
-  # "auto_MissMP1_w", "auto_LateMP1_w", "auto_ShortMP1_w", "auto_MissMP2_w", "auto_LateMP2_w",  "auto_ShortMP2_w", "auto_mpv_shift_w", 
-  # 
-  # "auto_mpv_shift_less_prems", "auto_mpv_shift_less_prems_w"
+  "MissMP1_h", "LateMP1_h", "ShortMP1_h", "MissMP2_h", "LateMP2_h", "ShortMP2_h",
+  "mp1_violation_h", "mp2_violation_h",
+  
+  # Attestation information
+  "Meal_Yes","Meal_No","Rest_Yes","Rest_No"
 )
 
 max_fields_default <- c(
@@ -2492,12 +2727,12 @@ max_fields_default <- c(
   
   "pp_ot", "pp_dt", "pp_ca_ot_hrs", "pp_ca_dt_hrs", "pp_flsa_ot", "pp_ot_wks",
   
-  "mpv_per_pp", "mpv_per_pp_w", "rpv_per_pp",
-  "mpv_shift_less_prems", "mpv_shift_less_prems_w", "rpv_shift_less_prems",
-  "mpv_per_pp_less_prems", "mpv_per_pp_less_prems_w", "rpv_per_pp_less_prems",
+  "mpv_per_pp", "mpv_per_pp_w", "mpv_per_pp_h", "rpv_per_pp",
+  "mpv_shift_less_prems", "mpv_shift_less_prems_w", "mpv_shift_less_prems_h", "rpv_shift_less_prems",
+  "mpv_per_pp_less_prems", "mpv_per_pp_less_prems_w", "mpv_per_pp_less_prems_h", "rpv_per_pp_less_prems",
   
-  "mpv_ee", "mpv_ee_w", "rpv_ee",
-  "mpv_ee_less_prems", "mpv_ee_less_prems_w",
+  "mpv_ee", "mpv_ee_w", "mpv_ee_h", "rpv_ee",
+  "mpv_ee_less_prems", "mpv_ee_less_prems_w", "mpv_ee_less_prems_h",
   "rpv_ee_less_prems",
   
   "Shifts", "Shifts_per_workweek", "Avg_Shift_Length", "Median_Shift_Length",
@@ -2510,8 +2745,8 @@ max_fields_default <- c(
   "perc_shifts_gt_12", "perc_shifts_gt_14",
   "perc_mp", "perc_mp_lt_thirty", "perc_mp_thirty", "perc_mp_gt_thirty",
   
-  "mpv_rate", "mpv_rate_w", "mpv_rate_less_prems", "mpv_rate_less_prems_w",
-  "mpv_ee_rate_less_prems", "mpv_ee_rate_less_prems_w",
+  "mpv_rate", "mpv_rate_w", "mpv_rate_h", "mpv_rate_less_prems", "mpv_rate_less_prems_w", "mpv_rate_less_prems_h",
+  "mpv_ee_rate_less_prems", "mpv_ee_rate_less_prems_w", "mpv_ee_rate_less_prems_h",
   "rpv_rate", "rpv_rate_less_prems",
   "rpv_ee_rate_less_prems"
 )
@@ -2532,102 +2767,46 @@ pp_shift_data1 <- remove_suffixes(
 setDT(pp_shift_data1)
 setDT(pp_pay1)
 
-# Add row markers before join
-pp_shift_data1[, shift_row_id := .I]
-pp_pay1[, pay_row_id := .I]
-n_shift0 <- nrow(pp_shift_data1)
+# Safety checks
+stopifnot("ID_Period_End" %in% names(pp_shift_data1))
+stopifnot("ID_Period_End" %in% names(pp_pay1))
 
-setnames(pp_pay1, "Pay_ID_Period_End", "ID_Period_End", skip_absent = TRUE)
-setkey(pp_shift_data1, ID_Period_End)
-setkey(pp_pay1, ID_Period_End)
+# Confirm one row per key on both sides
+dup_pay   <- pp_pay1[, .N, by = ID_Period_End][N > 1]
+dup_shift <- pp_shift_data1[, .N, by = ID_Period_End][N > 1]
 
-left_joined <- pp_pay1[pp_shift_data1]
-right_only  <- pp_pay1[!pp_shift_data1, on = "ID_Period_End"]
+if (nrow(dup_pay)) {
+  stop("pp_pay1 has duplicate ID_Period_End values. Fix aggregation first.")
+}
+if (nrow(dup_shift)) {
+  stop("pp_shift_data1 has duplicate ID_Period_End values. Fix aggregation first.")
+}
 
-pp_data1 <- rbindlist(list(left_joined, right_only), use.names = TRUE, fill = TRUE)
+# Row markers
+pp_shift_data1[, has_shift := 1L]
+pp_pay1[, has_pay := 1L]
 
-pp_data1[, has_shift := as.integer(!is.na(shift_row_id))]
-pp_data1[, has_pay   := as.integer(!is.na(pay_row_id))]
+# Full outer join
+pp_data1 <- merge(
+  pp_shift_data1,
+  pp_pay1,
+  by = "ID_Period_End",
+  all = TRUE,
+  suffixes = c("", "_pay")
+)
 
-stopifnot(pp_data1[has_shift == 1, .N] == n_shift0)
-stopifnot(nrow(pp_data1) >= n_shift0)
+# Replace missing flags with 0
+pp_data1[is.na(has_shift), has_shift := 0L]
+pp_data1[is.na(has_pay),   has_pay   := 0L]
 
-# alignment_failsafe <- function(pp_data,
-#                                overlap_warn_pct = 0.80,
-#                                overlap_stop_pct = 0.50,   # STOP if overlap < 50% on either side
-#                                action = c("keep_all", "keep_overlap_only", "drop_one_sided"),
-#                                drop = c("pay_only", "shift_only")) {
-#   
-#   stopifnot(is.data.table(pp_data))
-#   action <- match.arg(action)
-#   
-#   n_total <- nrow(pp_data)
-#   n_both  <- pp_data[has_shift == 1 & has_pay == 1, .N]
-#   n_shift <- pp_data[has_shift == 1, .N]
-#   n_pay   <- pp_data[has_pay   == 1, .N]
-#   n_shift_only <- pp_data[has_shift == 1 & has_pay == 0, .N]
-#   n_pay_only   <- pp_data[has_shift == 0 & has_pay == 1, .N]
-#   n_neither    <- pp_data[has_shift == 0 & has_pay == 0, .N]
-#   
-#   shift_overlap_pct <- if (n_shift > 0) n_both / n_shift else NA_real_
-#   pay_overlap_pct   <- if (n_pay   > 0) n_both / n_pay   else NA_real_
-#   
-#   cat("\n",
-#       "====================== PP DATA ALIGNMENT CHECK ======================\n",
-#       "Total rows:            ", format(n_total, big.mark=","), "\n",
-#       "Rows w/ BOTH:          ", format(n_both, big.mark=","), " (", sprintf("%.1f%%", 100*n_both/max(n_total,1)), ")\n",
-#       "Shift rows (has_shift):", format(n_shift, big.mark=","), "\n",
-#       "Pay rows (has_pay):    ", format(n_pay, big.mark=","), "\n",
-#       "Shift-only:            ", format(n_shift_only, big.mark=","), "\n",
-#       "Pay-only:              ", format(n_pay_only, big.mark=","), "\n",
-#       "Neither (unexpected):  ", format(n_neither, big.mark=","), "\n",
-#       "Overlap within shift:  ", ifelse(is.na(shift_overlap_pct), "NA", sprintf("%.1f%%", 100*shift_overlap_pct)), "\n",
-#       "Overlap within pay:    ", ifelse(is.na(pay_overlap_pct),   "NA", sprintf("%.1f%%", 100*pay_overlap_pct)), "\n",
-#       "=====================================================================\n",
-#       sep=""
-#   )
-#   
-#   # Warn if overlap is low-ish
-#   if ((!is.na(shift_overlap_pct) && shift_overlap_pct < overlap_warn_pct) ||
-#       (!is.na(pay_overlap_pct)   && pay_overlap_pct   < overlap_warn_pct)) {
-#     warning(sprintf(
-#       "Possible misalignment: overlap below warning threshold. shift_overlap=%.1f%%, pay_overlap=%.1f%%",
-#       100*shift_overlap_pct, 100*pay_overlap_pct
-#     ))
-#   }
-#   
-#   # STOP if >50% mismatch on either side (i.e., overlap < 50%)
-#   if ((!is.na(shift_overlap_pct) && shift_overlap_pct < overlap_stop_pct) ||
-#       (!is.na(pay_overlap_pct)   && pay_overlap_pct   < overlap_stop_pct)) {
-#     
-#     stop(sprintf(
-#       paste0(
-#         "DATA NOT ALIGNED: overlap below stop threshold (%.0f%%).\n",
-#         "Shift overlap: %.1f%% (%.1f%% shift rows do NOT match pay)\n",
-#         "Pay overlap:   %.1f%% (%.1f%% pay rows do NOT match shift)\n",
-#         "Action: review join keys / aggregation level before proceeding."
-#       ),
-#       100*overlap_stop_pct,
-#       100*shift_overlap_pct, 100*(1 - shift_overlap_pct),
-#       100*pay_overlap_pct,   100*(1 - pay_overlap_pct)
-#     ))
-#   }
-#   
-#   # Actions (3 alternatives)
-#   if (action == "keep_all") return(pp_data[])
-#   
-#   if (action == "keep_overlap_only") {
-#     return(pp_data[has_shift == 1 & has_pay == 1])
-#   }
-#   
-#   drop <- match.arg(drop, several.ok = TRUE)
-#   out <- pp_data[]
-#   if ("pay_only" %in% drop)   out <- out[!(has_shift == 0 & has_pay == 1)]
-#   if ("shift_only" %in% drop) out <- out[!(has_shift == 1 & has_pay == 0)]
-#   out
-# }
-# 
-# pp_data1 <- alignment_failsafe(pp_data1, action = "keep_all", overlap_warn_pct = 0.8, overlap_stop_pct = 0.5)
+# Quick audit
+pp_data1[, .(
+  rows_total      = .N,
+  rows_shift_data = sum(has_shift == 1L),
+  rows_pay_data   = sum(has_pay == 1L),
+  rows_shift_only = sum(has_shift == 1L & has_pay == 0L),
+  rows_pay_only   = sum(has_shift == 0L & has_pay == 1L)
+)]
 
 # Coalesce matching columns (prefer non-NA), then drop redundant Pay_ versions
 pp_data1[, `:=`(
@@ -2654,7 +2833,14 @@ fill_cols <- c(
   "double_CA_min_wage",
   "CA_min_wage",
   "Name",
-  "Pay_Name"
+  "Pay_Name",
+  "Waiver_6hr_Response",
+  "Waiver_6hr_Sign_Date",
+  "Waiver_6hr",
+  "Waiver_12hr_Type",
+  "Waiver_12hr_Response",
+  "Waiver_12hr_Sign_Date",
+  "Waiver_12hr" 
 )
 fill_cols <- intersect(fill_cols, names(pp_data1))
 
@@ -2749,6 +2935,7 @@ fix_rate_with_ca_min(pp_data1, "RROP")
 # Ensure RROP always as much or more than Base_Rate
 pp_data1[, RROP := pmax(RROP, Base_Rate, na.rm = TRUE)]
 
+
 # --- Pay period level hours analysis (pay period level rounding analysis) ----
 pp_data1[, pp_hrs_wkd_less_pp_shift_hrs :=
            fifelse(is.na(pp_Hrs_Wkd) | is.na(pp_shift_hrs) | pp_Hrs_Wkd == 0 | pp_shift_hrs == 0,
@@ -2824,7 +3011,7 @@ rp_dmgs_switch             <- TRUE
 rrop_dmgs_switch           <- TRUE
 otc_hrs_per_shift          <- 0 #e.g., (20/60) for 20 mins per shift
 unreimb_exp_per_pp         <- 0
-clock_rounding_dmgs_switch <- FALSE
+clock_rounding_dmgs_switch <- TRUE
 unpaid_ot_dmgs_switch      <- FALSE
 min_wage_dmgs_switch       <- FALSE
 
@@ -2840,8 +3027,10 @@ pp_data1[, `:=`(
   # Meal 
   mp_dmgs                 = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp)   | is.na(RROP), NA_real_, mpv_per_pp   * RROP),
   mp_dmgs_w               = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp_w) | is.na(RROP), NA_real_, mpv_per_pp_w * RROP),
+  mp_dmgs_h               = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp_h) | is.na(RROP), NA_real_, mpv_per_pp_h * RROP),
   mp_dmgs_less_prems      = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp_less_prems)   | is.na(RROP), NA_real_, mpv_per_pp_less_prems   * RROP),
   mp_dmgs_less_prems_w    = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp_less_prems_w) | is.na(RROP), NA_real_, mpv_per_pp_less_prems_w * RROP),
+  mp_dmgs_less_prems_h    = fifelse(mp_dmgs_switch == FALSE | is.na(mpv_per_pp_less_prems_h) | is.na(RROP), NA_real_, mpv_per_pp_less_prems_h * RROP),
   # Rest 
   rp_dmgs                 = fifelse(rp_dmgs_switch == FALSE | is.na(rpv_per_pp) | is.na(RROP), NA_real_, rpv_per_pp * RROP),
   rp_dmgs_less_prems      = fifelse(rp_dmgs_switch == FALSE | is.na(rpv_per_pp_less_prems) | is.na(RROP), NA_real_, rpv_per_pp_less_prems * RROP),
@@ -2853,7 +3042,8 @@ pp_data1[, `:=`(
   # Unreimbursed expenses
   unreimb_exp_dmgs        = unreimb_exp_per_pp,
   # Clock rounding
-  clock_rounding_dmgs     = fifelse(!clock_rounding_dmgs_switch | is.na(RROP), 0, 0 * RROP),                                              # MUST BE UPDATED
+  clock_rounding_dmgs     = fifelse(!clock_rounding_dmgs_switch | is.na(RROP), 0, 
+                                    fifelse(pp_OT_Hrs > 0, (-1 * pp_lvl_hrs_lost * RROP), (-1 * pp_lvl_hrs_lost * CA_min_wage))), # Based on pay period level rounding
   # Unpaid wages (min wage)
   min_wage_dmgs           = fifelse(min_wage_dmgs_switch == FALSE | is.na(RROP), 0, 0)
   # e.g., (short_break_reg_hrs * CA_min_wage) + (short_break_ot_hrs * RROP))                                                     
@@ -2885,6 +3075,7 @@ pp_data1[, unpaid_ot_dmgs := fifelse(
 pp_data1[, `:=`(
   mp_ee_dmgs_less_prems   = fifelse(is.na(mpv_ee_less_prems)   | is.na(RROP_ee), NA_real_, mpv_ee_less_prems   * RROP_ee),
   mp_ee_dmgs_less_prems_w = fifelse(is.na(mpv_ee_less_prems_w) | is.na(RROP_ee), NA_real_, mpv_ee_less_prems_w * RROP_ee),
+  mp_ee_dmgs_less_prems_h = fifelse(is.na(mpv_ee_less_prems_h) | is.na(RROP_ee), NA_real_, mpv_ee_less_prems_h * RROP_ee),
   rp_ee_dmgs_less_prems   = fifelse(is.na(rpv_ee_less_prems)   | is.na(RROP_ee), NA_real_, rpv_ee_less_prems   * RROP_ee)
 ), by = ID]
 
@@ -2936,12 +3127,36 @@ pp_data1[, tot_principal_dmgs_less_prems_w :=
            fcoalesce(min_wage_dmgs, 0)
 ]
 
+# Total principal damages (HYBRID)
+pp_data1[, tot_principal_dmgs_h :=
+           fcoalesce(mp_dmgs_h, 0) +
+           fcoalesce(rp_dmgs, 0) +
+           fcoalesce(Net_rrop_dmgs, 0) +
+           fcoalesce(otc_dmgs, 0) +
+           fcoalesce(unreimb_exp_dmgs, 0) +
+           fcoalesce(clock_rounding_dmgs, 0) +
+           fcoalesce(unpaid_ot_dmgs, 0) +
+           fcoalesce(min_wage_dmgs, 0)
+]
+
+# Total principal damages (less premiums & HYBRID)
+pp_data1[, tot_principal_dmgs_less_prems_h :=
+           fcoalesce(mp_dmgs_less_prems_h, 0) +
+           fcoalesce(rp_dmgs_less_prems, 0) +
+           fcoalesce(Net_rrop_dmgs, 0) +
+           fcoalesce(otc_dmgs, 0) +
+           fcoalesce(unreimb_exp_dmgs, 0) +
+           fcoalesce(clock_rounding_dmgs, 0) +
+           fcoalesce(unpaid_ot_dmgs, 0) +
+           fcoalesce(min_wage_dmgs, 0)
+]
+
 
 # ----- ALL DATA (BY PP):        Credit to total principal damages (if any credits apply)
 
 # Credit amount - SET TO TOTAL GUARANTEED WAGES IN GIVEN PAY PERIOD
 pay1_credits <- pay1[
-  grepl("guar", Pay_Code, ignore.case = TRUE),
+  grepl("NO_CREDITS_IN_THIS_ANALYSIS", Pay_Code, ignore.case = TRUE),
   .(Credit_Amount = sum(Pay_Amount, na.rm = TRUE)),
   by = .(Pay_ID_Period_End)
 ]
@@ -2974,6 +3189,16 @@ pp_data1[, tot_principal_dmgs_less_prems_and_credits_w :=
            pmax(0, tot_principal_dmgs_less_prems_w - Credit_Amount)
 ]
 
+# Total principal damages, less credits (HYBRID)
+pp_data1[, tot_principal_dmgs_less_credits_h :=
+           pmax(0, tot_principal_dmgs_h - Credit_Amount)
+]
+
+# Total principal damages, less credits (less premiums, HYBRID)
+pp_data1[, tot_principal_dmgs_less_prems_and_credits_h :=
+           pmax(0, tot_principal_dmgs_less_prems_h - Credit_Amount)
+]
+
 
 # ----- ALL DATA (BY PP):        Interest ------------------------------------------------------------
 
@@ -2998,6 +3223,12 @@ pp_data1[, `:=`(
   interest_less_prems_w =
     pmax(0, fcoalesce(tot_principal_dmgs_less_prems_w, 0)) * interest_months * monthly_interest_rate,
   
+  interest_h =
+    pmax(0, fcoalesce(tot_principal_dmgs_h, 0)) * interest_months * monthly_interest_rate,
+  
+  interest_less_prems_h =
+    pmax(0, fcoalesce(tot_principal_dmgs_less_prems_h, 0)) * interest_months * monthly_interest_rate,
+  
   interest_less_credits =
     pmax(0, fcoalesce(tot_principal_dmgs_less_credits, 0)) * interest_months * monthly_interest_rate,
   
@@ -3008,7 +3239,13 @@ pp_data1[, `:=`(
     pmax(0, fcoalesce(tot_principal_dmgs_less_credits_w, 0)) * interest_months * monthly_interest_rate,
   
   interest_less_prems_and_credits_w =
-    pmax(0, fcoalesce(tot_principal_dmgs_less_prems_and_credits_w, 0)) * interest_months * monthly_interest_rate
+    pmax(0, fcoalesce(tot_principal_dmgs_less_prems_and_credits_w, 0)) * interest_months * monthly_interest_rate,
+  
+  interest_less_credits_h =
+    pmax(0, fcoalesce(tot_principal_dmgs_less_credits_h, 0)) * interest_months * monthly_interest_rate,
+  
+  interest_less_prems_and_credits_h =
+    pmax(0, fcoalesce(tot_principal_dmgs_less_prems_and_credits_h, 0)) * interest_months * monthly_interest_rate
 )]
 
 # TOTAL DAMAGES (principal + interest)
@@ -3026,6 +3263,12 @@ pp_data1[, `:=`(
   tot_dmgs_less_prems_w =
     pmax(0, fcoalesce(tot_principal_dmgs_less_prems_w, 0)) + fcoalesce(interest_less_prems_w, 0),
   
+  tot_dmgs_h =
+    pmax(0, fcoalesce(tot_principal_dmgs_h, 0)) + fcoalesce(interest_h, 0),
+  
+  tot_dmgs_less_prems_h =
+    pmax(0, fcoalesce(tot_principal_dmgs_less_prems_h, 0)) + fcoalesce(interest_less_prems_h, 0),
+  
   tot_dmgs_less_credits =
     pmax(0, fcoalesce(tot_principal_dmgs_less_credits, 0)) + fcoalesce(interest_less_credits, 0),
   
@@ -3036,7 +3279,13 @@ pp_data1[, `:=`(
     pmax(0, fcoalesce(tot_principal_dmgs_less_credits_w, 0)) + fcoalesce(interest_less_credits_w, 0),
   
   tot_dmgs_less_prems_and_credits_w =
-    pmax(0, fcoalesce(tot_principal_dmgs_less_prems_and_credits_w, 0)) + fcoalesce(interest_less_prems_and_credits_w, 0)
+    pmax(0, fcoalesce(tot_principal_dmgs_less_prems_and_credits_w, 0)) + fcoalesce(interest_less_prems_and_credits_w, 0),
+  
+  tot_dmgs_less_credits_h =
+    pmax(0, fcoalesce(tot_principal_dmgs_less_credits_h, 0)) + fcoalesce(interest_less_credits_h, 0),
+  
+  tot_dmgs_less_prems_and_credits_h =
+    pmax(0, fcoalesce(tot_principal_dmgs_less_prems_and_credits_h, 0)) + fcoalesce(interest_less_prems_and_credits_h, 0)
 )]
 
 
@@ -3047,10 +3296,14 @@ flag_map <- list(
   has_dmgs_less_prems               = "tot_principal_dmgs_less_prems",
   has_dmgs_w                        = "tot_principal_dmgs_w",
   has_dmgs_less_prems_w             = "tot_principal_dmgs_less_prems_w",
+  has_dmgs_h                        = "tot_principal_dmgs_h",
+  has_dmgs_less_prems_h             = "tot_principal_dmgs_less_prems_h",
   has_dmgs_less_credits             = "tot_principal_dmgs_less_credits",
   has_dmgs_less_prems_and_credits   = "tot_principal_dmgs_less_prems_and_credits",
   has_dmgs_less_credits_w           = "tot_principal_dmgs_less_credits_w",
-  has_dmgs_less_prems_and_credits_w = "tot_principal_dmgs_less_prems_and_credits_w"
+  has_dmgs_less_prems_and_credits_w = "tot_principal_dmgs_less_prems_and_credits_w",
+  has_dmgs_less_credits_h           = "tot_principal_dmgs_less_credits_h",
+  has_dmgs_less_prems_and_credits_h = "tot_principal_dmgs_less_prems_and_credits_h"
 )
 
 # Create all flags (no filtering)
@@ -3076,14 +3329,18 @@ pp_data1[, wsv_pp_count := cumsum(Period_End > wsv_start_date), by = ID]
 
 # Map scenarios to your has_* flags
 wsv_scenarios <- list(
-  base                    = "has_dmgs",
-  less_prems              = "has_dmgs_less_prems",
-  w                       = "has_dmgs_w",
-  less_prems_w            = "has_dmgs_less_prems_w",
-  less_credits            = "has_dmgs_less_credits",
-  less_prems_and_credits  = "has_dmgs_less_prems_and_credits",
-  less_credits_w          = "has_dmgs_less_credits_w",
-  less_prems_and_credits_w= "has_dmgs_less_prems_and_credits_w"
+  base                     = "has_dmgs",
+  less_prems               = "has_dmgs_less_prems",
+  w                        = "has_dmgs_w",
+  less_prems_w             = "has_dmgs_less_prems_w",
+  h                        = "has_dmgs_h",
+  less_prems_h             = "has_dmgs_less_prems_h",
+  less_credits             = "has_dmgs_less_credits",
+  less_prems_and_credits   = "has_dmgs_less_prems_and_credits",
+  less_credits_w           = "has_dmgs_less_credits_w",
+  less_prems_and_credits_w = "has_dmgs_less_prems_and_credits_w",
+  less_credits_h           = "has_dmgs_less_credits_h",
+  less_prems_and_credits_h = "has_dmgs_less_prems_and_credits_h"
 )
 
 # Helper: compute WSV flags/counts/penalty for one scenario
@@ -3174,10 +3431,14 @@ wt_scenarios <- list(
   less_prems              = "has_dmgs_less_prems",
   w                       = "has_dmgs_w",
   less_prems_w            = "has_dmgs_less_prems_w",
+  h                       = "has_dmgs_h",
+  less_prems_h            = "has_dmgs_less_prems_h",
   less_credits            = "has_dmgs_less_credits",
   less_prems_and_credits  = "has_dmgs_less_prems_and_credits",
   less_credits_w          = "has_dmgs_less_credits_w",
-  less_prems_and_credits_w= "has_dmgs_less_prems_and_credits_w"
+  less_prems_and_credits_w= "has_dmgs_less_prems_and_credits_w",
+  less_credits_h          = "has_dmgs_less_credits_h",
+  less_prems_and_credits_h= "has_dmgs_less_prems_and_credits_h"
 )
 
 # Helper: compute WT penalty for one scenario
@@ -3231,6 +3492,16 @@ pp_data1[, `:=`(
     fifelse(ee_flag == 1L, fcoalesce(wsv_penalty_less_prems_w, 0), 0) +
     fifelse(ee_flag == 1L, fcoalesce(wt_penalty_less_prems_w, 0), 0),
   
+  tot_dmgs_w_penalties_h =
+    fcoalesce(tot_dmgs_h, 0) +
+    fifelse(ee_flag == 1L, fcoalesce(wsv_penalty_h, 0), 0) +
+    fifelse(ee_flag == 1L, fcoalesce(wt_penalty_h, 0), 0),
+  
+  tot_dmgs_w_penalties_less_prems_h =
+    fcoalesce(tot_dmgs_less_prems_h, 0) +
+    fifelse(ee_flag == 1L, fcoalesce(wsv_penalty_less_prems_h, 0), 0) +
+    fifelse(ee_flag == 1L, fcoalesce(wt_penalty_less_prems_h, 0), 0),
+  
   tot_dmgs_w_penalties_less_credits =
     fcoalesce(tot_dmgs_less_credits, 0) +
     fifelse(ee_flag == 1L, fcoalesce(wsv_penalty_less_credits, 0), 0) +
@@ -3249,7 +3520,17 @@ pp_data1[, `:=`(
   tot_dmgs_w_penalties_less_prems_and_credits_w =
     fcoalesce(tot_dmgs_less_prems_and_credits_w, 0) +
     fifelse(ee_flag == 1L, fcoalesce(wsv_penalty_less_prems_and_credits_w, 0), 0) +
-    fifelse(ee_flag == 1L, fcoalesce(wt_penalty_less_prems_and_credits_w, 0), 0)
+    fifelse(ee_flag == 1L, fcoalesce(wt_penalty_less_prems_and_credits_w, 0), 0),
+  
+  tot_dmgs_w_penalties_less_credits_h =
+    fcoalesce(tot_dmgs_less_credits_h, 0) +
+    fifelse(ee_flag == 1L, fcoalesce(wsv_penalty_less_credits_h, 0), 0) +
+    fifelse(ee_flag == 1L, fcoalesce(wt_penalty_less_credits_h, 0), 0),
+  
+  tot_dmgs_w_penalties_less_prems_and_credits_h =
+    fcoalesce(tot_dmgs_less_prems_and_credits_h, 0) +
+    fifelse(ee_flag == 1L, fcoalesce(wsv_penalty_less_prems_and_credits_h, 0), 0) +
+    fifelse(ee_flag == 1L, fcoalesce(wt_penalty_less_prems_and_credits_h, 0), 0)
 )]
 
 
@@ -3280,7 +3561,7 @@ calc_paga_penalty <- function(flag_count, initial, subsequent) {
 
 paga_scenarios <- list(
   
-  # 1) Base
+  # Base
   base = list(
     suf = "",
     has = "has_dmgs",
@@ -3289,16 +3570,7 @@ paga_scenarios <- list(
     is_credits = FALSE
   ),
   
-  # 2) Waivers
-  w = list(
-    suf = "_w",
-    has = "has_dmgs_w",
-    mp  = "mp_dmgs_w",
-    rp  = "rp_dmgs",
-    is_credits = FALSE
-  ),
-  
-  # 3) Less premiums
+  # Less premiums
   less_prems = list(
     suf = "_less_prems",
     has = "has_dmgs_less_prems",
@@ -3307,7 +3579,16 @@ paga_scenarios <- list(
     is_credits = FALSE
   ),
   
-  # 4) Less premiums + waivers
+  # Waivers
+  w = list(
+    suf = "_w",
+    has = "has_dmgs_w",
+    mp  = "mp_dmgs_w",
+    rp  = "rp_dmgs",
+    is_credits = FALSE
+  ),
+  
+  # Less premiums + waivers
   less_prems_w = list(
     suf = "_less_prems_w",
     has = "has_dmgs_less_prems_w",
@@ -3316,7 +3597,25 @@ paga_scenarios <- list(
     is_credits = FALSE
   ),
   
-  # 5) Less credits
+  # HYBRID
+  h = list(
+    suf = "_h",
+    has = "has_dmgs_h",
+    mp  = "mp_dmgs_h",
+    rp  = "rp_dmgs",
+    is_credits = FALSE
+  ),
+  
+  # Less premiums + HYBRID
+  less_prems_h = list(
+    suf = "_less_prems_h",
+    has = "has_dmgs_less_prems_h",
+    mp  = "mp_dmgs_less_prems_h",
+    rp  = "rp_dmgs_less_prems",
+    is_credits = FALSE
+  ),
+  
+  # Less credits
   less_credits = list(
     suf = "_less_credits",
     has = "has_dmgs_less_credits",
@@ -3325,7 +3624,7 @@ paga_scenarios <- list(
     is_credits = TRUE
   ),
   
-  # 6) Less premiums + credits
+  # Less premiums + credits
   less_prems_and_credits = list(
     suf = "_less_prems_and_credits",
     has = "has_dmgs_less_prems_and_credits",
@@ -3334,7 +3633,7 @@ paga_scenarios <- list(
     is_credits = TRUE
   ),
   
-  # 7) Less credits + waivers
+  # Less credits + waivers
   less_credits_w = list(
     suf = "_less_credits_w",
     has = "has_dmgs_less_credits_w",
@@ -3343,11 +3642,29 @@ paga_scenarios <- list(
     is_credits = TRUE
   ),
   
-  # 8) Less premiums + credits + waivers
+  # Less premiums + credits + waivers
   less_prems_and_credits_w = list(
     suf = "_less_prems_and_credits_w",
     has = "has_dmgs_less_prems_and_credits_w",
     mp  = "mp_dmgs_less_prems_w",
+    rp  = "rp_dmgs_less_prems",
+    is_credits = TRUE
+  ),
+  
+  # Less credits + HYBRID
+  less_credits_h = list(
+    suf = "_less_credits_h",
+    has = "has_dmgs_less_credits_h",
+    mp  = "mp_dmgs_h",
+    rp  = "rp_dmgs",
+    is_credits = TRUE
+  ),
+  
+  # Less premiums + credits + HYBRID
+  less_prems_and_credits_h = list(
+    suf = "_less_prems_and_credits_h",
+    has = "has_dmgs_less_prems_and_credits_h",
+    mp  = "mp_dmgs_less_prems_h",
     rp  = "rp_dmgs_less_prems",
     is_credits = TRUE
   )
@@ -3564,18 +3881,16 @@ build_paga_for_scenario <- function(sc) {
   # ---------------- HAS ANY PAGA (PAY PERIOD LEVEL) ----------------
   
   paga_flag_cols <- c(
-    paste0("PAGA_meal_flag", suf),
-    paste0("PAGA_rest_flag", suf),
-    paste0("PAGA_rrop_flag", suf),
-    paste0("PAGA_226_flag", suf),
-    paste0("PAGA_558_flag", suf),
-    paste0("PAGA_1197_1_flag", suf),
-    paste0("PAGA_2802_flag", suf)
+    "PAGA_meal_flag",
+    "PAGA_rest_flag",
+    "PAGA_rrop_flag",
+    "PAGA_226_flag",
+    "PAGA_558_flag",
+    "PAGA_1197_1_flag",
+    "PAGA_2802_flag"
   )
-  # Only use columns that actually exist in pp_data1
-  paga_flag_cols <- intersect(paga_flag_cols, names(pp_data1))
-
-  pp_data1[, (paste0("has_paga_penalties", suf)) :=
+  
+  pp_data1[, has_paga_penalties :=
              as.integer(
                in_PAGA_period == 1L &
                  rowSums(.SD, na.rm = TRUE) > 0
@@ -3603,7 +3918,7 @@ build_paga_for_scenario <- function(sc) {
 }
 
 
-# --- BUILD FOR ALL 8 PAGA SCENARIOS ---
+# --- BUILD FOR ALL PAGA SCENARIOS ---
 for (nm in names(paga_scenarios)) {
   build_paga_for_scenario(paga_scenarios[[nm]])
 }
@@ -3626,7 +3941,7 @@ add_ee_has_flag <- function(dt, src_col, out_col) {
   invisible(NULL)
 }
 
-# 1) PRINCIPAL FLAGS (trigger ONLY on principal scenario totals / has_dmgs*)
+# PRINCIPAL FLAGS (trigger ONLY on principal scenario totals / has_dmgs*)
 #    - Row-level:    has_dmgs* already exist (built off tot_principal_dmgs* above)
 #    - EE-level:     ee_has_dmgs* derived from row-level has_dmgs* flags
 principal_map <- list(
@@ -3634,10 +3949,14 @@ principal_map <- list(
   less_prems               = "has_dmgs_less_prems",
   w                        = "has_dmgs_w",
   less_prems_w             = "has_dmgs_less_prems_w",
+  h                        = "has_dmgs_h",
+  less_prems_h             = "has_dmgs_less_prems_h",
   less_credits             = "has_dmgs_less_credits",
   less_prems_and_credits   = "has_dmgs_less_prems_and_credits",
   less_credits_w           = "has_dmgs_less_credits_w",
-  less_prems_and_credits_w = "has_dmgs_less_prems_and_credits_w"
+  less_prems_and_credits_w = "has_dmgs_less_prems_and_credits_w",
+  less_credits_h           = "has_dmgs_less_credits_h",
+  less_prems_and_credits_h = "has_dmgs_less_prems_and_credits_h"
 )
 
 principal_map <- principal_map[vapply(principal_map, \(x) x %in% names(pp_data1), logical(1))]
@@ -3648,7 +3967,7 @@ for (nm in names(principal_map)) {
   add_ee_has_flag(pp_data1, src, paste0("ee_has_dmgs", suf))
 }
 
-# 2) CLASS PENALTIES FLAGS (trigger on penalty $ columns)
+# CLASS PENALTIES FLAGS (trigger on penalty $ columns)
 #    - WSV + WT only (PAGA is separate and comes next)
 
 # --- WSV (wage statement penalties) ---
@@ -3657,10 +3976,14 @@ wsv_pen_map <- list(
   less_prems               = "wsv_penalty_less_prems",
   w                        = "wsv_penalty_w",
   less_prems_w             = "wsv_penalty_less_prems_w",
+  h                        = "wsv_penalty_h",
+  less_prems_h             = "wsv_penalty_less_prems_h",
   less_credits             = "wsv_penalty_less_credits",
   less_prems_and_credits   = "wsv_penalty_less_prems_and_credits",
   less_credits_w           = "wsv_penalty_less_credits_w",
-  less_prems_and_credits_w = "wsv_penalty_less_prems_and_credits_w"
+  less_prems_and_credits_w = "wsv_penalty_less_prems_and_credits_w",
+  less_credits_h           = "wsv_penalty_less_credits_h",
+  less_prems_and_credits_h = "wsv_penalty_less_prems_and_credits_h"
 )
 
 wsv_pen_map <- wsv_pen_map[vapply(wsv_pen_map, \(x) x %in% names(pp_data1), logical(1))]
@@ -3679,10 +4002,14 @@ wt_pen_map <- list(
   less_prems               = "wt_penalty_less_prems",
   w                        = "wt_penalty_w",
   less_prems_w             = "wt_penalty_less_prems_w",
+  h                        = "wt_penalty_h",
+  less_prems_h             = "wt_penalty_less_prems_h",
   less_credits             = "wt_penalty_less_credits",
   less_prems_and_credits   = "wt_penalty_less_prems_and_credits",
   less_credits_w           = "wt_penalty_less_credits_w",
-  less_prems_and_credits_w = "wt_penalty_less_prems_and_credits_w"
+  less_prems_and_credits_w = "wt_penalty_less_prems_and_credits_w",
+  less_credits_h           = "wt_penalty_less_credits_h",
+  less_prems_and_credits_h = "wt_penalty_less_prems_and_credits_h"
 )
 
 wt_pen_map <- wt_pen_map[vapply(wt_pen_map, \(x) x %in% names(pp_data1), logical(1))]
@@ -3761,21 +4088,23 @@ sum_fields_default <- c(
   "MissMP1", "LateMP1", "ShortMP1", "MissMP2", "LateMP2", "ShortMP2",
   "mp1_violation", "mp2_violation",
   "MissMP1_w", "LateMP1_w", "ShortMP1_w", "MissMP2_w", "LateMP2_w", "ShortMP2_w",
-  "mp1_violation_w", "mp2_violation_w",
+  "mp1_violation_h", "mp2_violation_h",
+  "MissMP1_h", "LateMP1_h", "ShortMP1_h", "MissMP2_h", "LateMP2_h", "ShortMP2_h",
+  "mp1_violation_h", "mp2_violation_h",
   
   # --- Meal/rest violations per pp ---
-  "mpv_per_pp", "mpv_per_pp_w", "rpv_per_pp",
-  "mpv_shift_less_prems", "mpv_shift_less_prems_w", "rpv_shift_less_prems",
-  "mpv_per_pp_less_prems", "mpv_per_pp_less_prems_w", "rpv_per_pp_less_prems",
+  "mpv_per_pp", "mpv_per_pp_w", "mpv_per_pp_h", "rpv_per_pp",
+  "mpv_shift_less_prems", "mpv_shift_less_prems_w", "mpv_shift_less_prems_h", "rpv_shift_less_prems",
+  "mpv_per_pp_less_prems", "mpv_per_pp_less_prems_w",  "mpv_per_pp_less_prems_h", "rpv_per_pp_less_prems",
   
   # --- Rounded and actual punches analysis? Add: ---
-  # "r_diff", "r_mp_lt_twenty", "r_mp_lt_thirty", "r_mp_thirty", "r_mp_gt_thirty", "r_mp_forty_five",
-  # "r_mp_gt_two_hrs", "r_mp_gt_four_hrs", "r_Hours", "r_shift_hrs", 
-  # "pre_shift_hrs_lost", "pre_shift_hrs_gained", "mid_shift_out_hrs_lost",
-  # "mid_shift_out_hrs_gained", "mid_shift_in_hrs_lost", "mid_shift_in_hrs_gained", "post_shift_hrs_lost", "post_shift_hrs_gained",
+  "r_diff", "r_mp_lt_twenty", "r_mp_lt_thirty", "r_mp_thirty", "r_mp_gt_thirty", "r_mp_forty_five",
+  "r_mp_gt_two_hrs", "r_mp_gt_four_hrs", "r_Hours", "r_shift_hrs", 
+  "pre_shift_hrs_lost", "pre_shift_hrs_gained", "mid_shift_out_hrs_lost",
+  "mid_shift_out_hrs_gained", "mid_shift_in_hrs_lost", "mid_shift_in_hrs_gained", "post_shift_hrs_lost", "post_shift_hrs_gained",
   
   # --- Meal damages (pp-level) ---
-  "mp_dmgs", "mp_dmgs_w", "mp_dmgs_less_prems", "mp_dmgs_less_prems_w",
+  "mp_dmgs", "mp_dmgs_w",  "mp_dmgs_h", "mp_dmgs_less_prems", "mp_dmgs_less_prems_w", "mp_dmgs_less_prems_h",
   
   # --- Rest damages (pp-level) ---
   "rp_dmgs", "rp_dmgs_less_prems",
@@ -3790,7 +4119,7 @@ sum_fields_default <- c(
   # --- Pay period level hours analysis and rounding ---
   "pp_lvl_diff", "pp_lvl_hrs_lost", "pp_lvl_hrs_gained", "pp_lvl_hrs_match", 
   "pp_hrs_wkd_less_pp_shift_hrs", "pp_hrs_wkd_less_pp_Hours",
-
+  
   # --- Other damages ---
   "otc_dmgs", 
   "unreimb_exp_dmgs",
@@ -3803,42 +4132,58 @@ sum_fields_default <- c(
   "tot_principal_dmgs_less_prems",
   "tot_principal_dmgs_w",
   "tot_principal_dmgs_less_prems_w",
+  "tot_principal_dmgs_h",
+  "tot_principal_dmgs_less_prems_h",
   
   "Credit_Amount",
   "tot_principal_dmgs_less_credits",
   "tot_principal_dmgs_less_prems_and_credits",
   "tot_principal_dmgs_less_credits_w",
   "tot_principal_dmgs_less_prems_and_credits_w",
+  "tot_principal_dmgs_less_credits_h",
+  "tot_principal_dmgs_less_prems_and_credits_h",
   
   # --- Damage flags (pp-level, typically 0/1 per PP row) ---
   "has_dmgs",
   "has_dmgs_less_prems",
   "has_dmgs_w",
   "has_dmgs_less_prems_w",
+  "has_dmgs_h",
+  "has_dmgs_less_prems_h",
   "has_dmgs_less_credits",
   "has_dmgs_less_prems_and_credits",
   "has_dmgs_less_credits_w",
   "has_dmgs_less_prems_and_credits_w",
+  "has_dmgs_less_credits_h",
+  "has_dmgs_less_prems_and_credits_h",
   
   # --- WSV flags (pp-level) ---
   "has_wsv_penalties",
   "has_wsv_penalties_less_prems",
   "has_wsv_penalties_w",
   "has_wsv_penalties_less_prems_w",
+  "has_wsv_penalties_h",
+  "has_wsv_penalties_less_prems_h",
   "has_wsv_penalties_less_credits",
   "has_wsv_penalties_less_prems_and_credits",
   "has_wsv_penalties_less_credits_w",
   "has_wsv_penalties_less_prems_and_credits_w",
+  "has_wsv_penalties_less_credits_h",
+  "has_wsv_penalties_less_prems_and_credits_h",
   
   # --- WT flags (pp-level) ---
   "has_wt_penalties",
   "has_wt_penalties_less_prems",
   "has_wt_penalties_w",
   "has_wt_penalties_less_prems_w",
+  "has_wt_penalties_h",
+  "has_wt_penalties_less_prems_h",
   "has_wt_penalties_less_credits",
   "has_wt_penalties_less_prems_and_credits",
   "has_wt_penalties_less_credits_w",
   "has_wt_penalties_less_prems_and_credits_w",
+  "has_wt_penalties_less_credits_h",
+  "has_wt_penalties_less_prems_and_credits_h",
   
   # --- PAGA pp-level flags (per PP row; these get summed to count flagged PP rows) ---
   # Base
@@ -3850,21 +4195,31 @@ sum_fields_default <- c(
   "PAGA_1197_1_flag",
   "PAGA_2802_flag",
   
-  # Waivers
-  "PAGA_meal_flag_w",
-  "PAGA_226_flag_w",
-  "PAGA_558_flag_w",
-  
   # Less premiums
   "PAGA_meal_flag_less_prems",
   "PAGA_rest_flag_less_prems",
   "PAGA_226_flag_less_prems",
   "PAGA_558_flag_less_prems",
   
+  # Waivers
+  "PAGA_meal_flag_w",
+  "PAGA_226_flag_w",
+  "PAGA_558_flag_w",
+  
   # Less premiums + waivers
   "PAGA_meal_flag_less_prems_w",
   "PAGA_226_flag_less_prems_w",
   "PAGA_558_flag_less_prems_w",
+  
+  # HYBRID
+  "PAGA_meal_flag_h",
+  "PAGA_226_flag_h",
+  "PAGA_558_flag_h",
+  
+  # Less premiums + HYBRID
+  "PAGA_meal_flag_less_prems_h",
+  "PAGA_226_flag_less_prems_h",
+  "PAGA_558_flag_less_prems_h",
   
   # Less credits
   "PAGA_meal_flag_less_credits",
@@ -3902,35 +4257,65 @@ sum_fields_default <- c(
   "PAGA_1197_1_flag_less_prems_and_credits_w",
   "PAGA_2802_flag_less_prems_and_credits_w",
   
+  # Less credits + HYBRID
+  "PAGA_meal_flag_less_credits_h",
+  "PAGA_rest_flag_less_credits_h",
+  "PAGA_rrop_flag_less_credits_h",
+  "PAGA_226_flag_less_credits_h",
+  "PAGA_558_flag_less_credits_h",
+  "PAGA_1197_1_flag_less_credits_h",
+  "PAGA_2802_flag_less_credits_h",
+  
+  # Less premiums + credits + HYBRID
+  "PAGA_meal_flag_less_prems_and_credits_h",
+  "PAGA_rest_flag_less_prems_and_credits_h",
+  "PAGA_rrop_flag_less_prems_and_credits_h",
+  "PAGA_226_flag_less_prems_and_credits_h",
+  "PAGA_558_flag_less_prems_and_credits_h",
+  "PAGA_1197_1_flag_less_prems_and_credits_h",
+  "PAGA_2802_flag_less_prems_and_credits_h",
+  
   # --- Scenario total interest (PP-level) ---
   "interest",
   "interest_less_prems",
   "interest_w",
   "interest_less_prems_w",
+  "interest_h",
+  "interest_less_prems_h",
   "interest_less_credits",
   "interest_less_prems_and_credits",
   "interest_less_credits_w",
   "interest_less_prems_and_credits_w",
+  "interest_less_credits_h",
+  "interest_less_prems_and_credits_h",
   
   # --- Total damages = principal + interest (PP-level) ---
   "tot_dmgs",
   "tot_dmgs_less_prems",
   "tot_dmgs_w",
   "tot_dmgs_less_prems_w",
+  "tot_dmgs_h",
+  "tot_dmgs_less_prems_h",
   "tot_dmgs_less_credits",
   "tot_dmgs_less_prems_and_credits",
   "tot_dmgs_less_credits_w",
   "tot_dmgs_less_prems_and_credits_w",
+  "tot_dmgs_less_credits_h",
+  "tot_dmgs_less_prems_and_credits_h",
   
   # --- Total damages INCLUDING class penalties (WSV + WT, no PAGA) ---
   "tot_dmgs_w_penalties",
   "tot_dmgs_w_penalties_less_prems",
   "tot_dmgs_w_penalties_w",
   "tot_dmgs_w_penalties_less_prems_w",
+  "tot_dmgs_w_penalties_h",
+  "tot_dmgs_w_penalties_less_prems_h",
   "tot_dmgs_w_penalties_less_credits",
   "tot_dmgs_w_penalties_less_prems_and_credits",
   "tot_dmgs_w_penalties_less_credits_w",
-  "tot_dmgs_w_penalties_less_prems_and_credits_w"
+  "tot_dmgs_w_penalties_less_prems_and_credits_w",
+  "tot_dmgs_w_penalties_less_credits_h",
+  "tot_dmgs_w_penalties_less_prems_and_credits_h"
 )
 
 # MIN fields
@@ -3948,15 +4333,15 @@ max_fields_default <- c(
   "perc_mp", "perc_mp_lt_thirty", "perc_mp_thirty", "perc_mp_gt_thirty",
   
   # --- Violation rates ---
-  "mpv_rate", "mpv_rate_w", "mpv_rate_less_prems", "mpv_rate_less_prems_w",
-  "mpv_ee_rate_less_prems", "mpv_ee_rate_less_prems_w",
+  "mpv_rate", "mpv_rate_w", "mpv_rate_h", "mpv_rate_less_prems", "mpv_rate_less_prems_w", "mpv_rate_less_prems_h",
+  "mpv_ee_rate_less_prems", "mpv_ee_rate_less_prems_w", "mpv_ee_rate_less_prems_h",
   "rpv_rate", "rpv_rate_less_prems", "rpv_ee_rate_less_prems",
   
   # --- Employee-level violations ---
   "mpv_ee_less_prems", "mpv_ee_less_prems_w", "rpv_ee_less_prems",
   
   # --- Employee-level damages ---
-  "mp_ee_dmgs_less_prems", "mp_ee_dmgs_less_prems_w",
+  "mp_ee_dmgs_less_prems", , "mpv_ee_rate_less_prems_w", "mpv_ee_rate_less_prems_h",
   "rp_ee_dmgs_less_prems", 
   
   # --- Final rates ---
@@ -3967,11 +4352,14 @@ max_fields_default <- c(
   "wsv_penalty",
   "wsv_flag_count_w",
   "wsv_penalty_w",
+  "wsv_flag_count_h",
+  "wsv_penalty_h",
   
   # --- WT penalties (EE-level constants) ---
   "has_wt_period",
   "wt_penalty",
   "wt_penalty_w",
+  "wt_penalty_h",
   
   # --- PAGA: EE-level flag counts ---
   
@@ -3986,11 +4374,6 @@ max_fields_default <- c(
   "PAGA_1197_1_flag_count",
   "PAGA_2802_flag_count",
   
-  # Waivers
-  "PAGA_meal_flag_count_w",
-  "PAGA_226_flag_count_w",
-  "PAGA_558_flag_count_w",
-  
   # Less premiums
   "PAGA_meal_flag_count_less_prems",
   "PAGA_rest_flag_count_less_prems",
@@ -4000,10 +4383,41 @@ max_fields_default <- c(
   "PAGA_1197_1_flag_count_less_prems",
   "PAGA_2802_flag_count_less_prems",
   
+  # Waivers
+  "PAGA_meal_flag_count_w",
+  "PAGA_rest_flag_count_w",
+  "PAGA_rrop_flag_count_w",
+  "PAGA_226_flag_count_w",
+  "PAGA_558_flag_count_w",
+  "PAGA_1197_1_flag_count_w",
+  "PAGA_2802_flag_count_w",
+  
   # Less premiums + waivers
   "PAGA_meal_flag_count_less_prems_w",
+  "PAGA_rest_flag_count_less_prems_w",
+  "PAGA_rrop_flag_count_less_prems_w",
   "PAGA_226_flag_count_less_prems_w",
   "PAGA_558_flag_count_less_prems_w",
+  "PAGA_1197_1_flag_count_less_prems_w",
+  "PAGA_2802_flag_count_less_prems_w",
+  
+  # HYBRID
+  "PAGA_meal_flag_count_h",
+  "PAGA_rest_flag_count_h",
+  "PAGA_rrop_flag_count_h",
+  "PAGA_226_flag_count_h",
+  "PAGA_558_flag_count_h",
+  "PAGA_1197_1_flag_count_h",
+  "PAGA_2802_flag_count_h",
+  
+  # Less premiums + HYBRID
+  "PAGA_meal_flag_count_less_prems_h",
+  "PAGA_rest_flag_count_less_prems_h",
+  "PAGA_rrop_flag_count_less_prems_h",
+  "PAGA_226_flag_count_less_prems_h",
+  "PAGA_558_flag_count_less_prems_h",
+  "PAGA_1197_1_flag_count_less_prems_h",
+  "PAGA_2802_flag_count_less_prems_h",
   
   # Less credits
   "PAGA_meal_flag_count_less_credits",
@@ -4041,6 +4455,24 @@ max_fields_default <- c(
   "PAGA_1197_1_flag_count_less_prems_and_credits_w",
   "PAGA_2802_flag_count_less_prems_and_credits_w",
   
+  # Less credits + HYBRID
+  "PAGA_meal_flag_count_less_credits_h",
+  "PAGA_rest_flag_count_less_credits_h",
+  "PAGA_rrop_flag_count_less_credits_h",
+  "PAGA_226_flag_count_less_credits_h",
+  "PAGA_558_flag_count_less_credits_h",
+  "PAGA_1197_1_flag_count_less_credits_h",
+  "PAGA_2802_flag_count_less_credits_h",
+  
+  # Less premiums + credits + HYBRID
+  "PAGA_meal_flag_count_less_prems_and_credits_h",
+  "PAGA_rest_flag_count_less_prems_and_credits_h",
+  "PAGA_rrop_flag_count_less_prems_and_credits_h",
+  "PAGA_226_flag_count_less_prems_and_credits_h",
+  "PAGA_558_flag_count_less_prems_and_credits_h",
+  "PAGA_1197_1_flag_count_less_prems_and_credits_h",
+  "PAGA_2802_flag_count_less_prems_and_credits_h",
+  
   # --- PAGA: EE-level penalties (THIS IS THE IMPORTANT "TOTAL PENALTIES IN MAX") ---
   # Base
   "PAGA_meal_penalties",
@@ -4053,11 +4485,6 @@ max_fields_default <- c(
   "PAGA_2802_penalties",
   "PAGA_203_penalties",
   
-  # Waivers
-  "PAGA_meal_penalties_w",
-  "PAGA_226_penalties_w",
-  "PAGA_558_penalties_w",
-  
   # Less premiums
   "PAGA_meal_penalties_less_prems",
   "PAGA_rest_penalties_less_prems",
@@ -4069,10 +4496,49 @@ max_fields_default <- c(
   "PAGA_2802_penalties_less_prems",
   "PAGA_203_penalties_less_prems",
   
+  # Waivers
+  "PAGA_meal_penalties_w",
+  "PAGA_rest_penalties_w",
+  "PAGA_rrop_penalties_w",
+  "PAGA_226_penalties_w",
+  "PAGA_558_penalties_w",
+  "PAGA_1197_1_penalties_w",
+  "PAGA_1174_penalties_w",
+  "PAGA_2802_penalties_w",
+  "PAGA_203_penalties_w",
+  
   # Less premiums + waivers
   "PAGA_meal_penalties_less_prems_w",
+  "PAGA_rest_penalties_less_prems_w",
+  "PAGA_rrop_penalties_less_prems_w",
   "PAGA_226_penalties_less_prems_w",
   "PAGA_558_penalties_less_prems_w",
+  "PAGA_1197_1_penalties_less_prems_w",
+  "PAGA_1174_penalties_less_prems_w",
+  "PAGA_2802_penalties_less_prems_w",
+  "PAGA_203_penalties_less_prems_w",
+  
+  # HYBRID
+  "PAGA_meal_penalties_h",
+  "PAGA_rest_penalties_h",
+  "PAGA_rrop_penalties_h",
+  "PAGA_226_penalties_h",
+  "PAGA_558_penalties_h",
+  "PAGA_1197_1_penalties_h",
+  "PAGA_1174_penalties_h",
+  "PAGA_2802_penalties_h",
+  "PAGA_203_penalties_h",
+  
+  # Less premiums + HYBRID
+  "PAGA_meal_penalties_less_prems_h",
+  "PAGA_rest_penalties_less_prems_h",
+  "PAGA_rrop_penalties_less_prems_h",
+  "PAGA_226_penalties_less_prems_h",
+  "PAGA_558_penalties_less_prems_h",
+  "PAGA_1197_1_penalties_less_prems_h",
+  "PAGA_1174_penalties_less_prems_h",
+  "PAGA_2802_penalties_less_prems_h",
+  "PAGA_203_penalties_less_prems_h",
   
   # Less credits
   "PAGA_meal_penalties_less_credits",
@@ -4118,26 +4584,55 @@ max_fields_default <- c(
   "PAGA_2802_penalties_less_prems_and_credits_w",
   "PAGA_203_penalties_less_prems_and_credits_w",
   
+  # Less credits + HYBRID
+  "PAGA_meal_penalties_less_credits_h",
+  "PAGA_rest_penalties_less_credits_h",
+  "PAGA_rrop_penalties_less_credits_h",
+  "PAGA_226_penalties_less_credits_h",
+  "PAGA_558_penalties_less_credits_h",
+  "PAGA_1197_1_penalties_less_credits_h",
+  "PAGA_1174_penalties_less_credits_h",
+  "PAGA_2802_penalties_less_credits_h",
+  "PAGA_203_penalties_less_credits_h",
+  
+  # Less premiums + credits + HYBRID
+  "PAGA_meal_penalties_less_prems_and_credits_h",
+  "PAGA_rest_penalties_less_prems_and_credits_h",
+  "PAGA_rrop_penalties_less_prems_and_credits_h",
+  "PAGA_226_penalties_less_prems_and_credits_h",
+  "PAGA_558_penalties_less_prems_and_credits_h",
+  "PAGA_1197_1_penalties_less_prems_and_credits_h",
+  "PAGA_1174_penalties_less_prems_and_credits_h",
+  "PAGA_2802_penalties_less_prems_and_credits_h",
+  "PAGA_203_penalties_less_prems_and_credits_h",
   
   # --- PAGA totals ---
   "PAGA_tot", 
-  "PAGA_tot_w",                                     
   "PAGA_tot_less_prems",                            
+  "PAGA_tot_w",                                     
   "PAGA_tot_less_prems_w",                          
+  "PAGA_tot_h",                                     
+  "PAGA_tot_less_prems_h", 
   "PAGA_tot_less_credits",                          
   "PAGA_tot_less_prems_and_credits",                
   "PAGA_tot_less_credits_w",                        
   "PAGA_tot_less_prems_and_credits_w",  
+  "PAGA_tot_less_credits_h",                        
+  "PAGA_tot_less_prems_and_credits_h",  
   
   # --- PAGA: scenario-level overall indicator columns (EE-level, repeating) ---
   "has_PAGA_penalties",
-  "has_PAGA_penalties_w",
   "has_PAGA_penalties_less_prems",
+  "has_PAGA_penalties_w",
   "has_PAGA_penalties_less_prems_w",
+  "has_PAGA_penalties_h",
+  "has_PAGA_penalties_less_prems_h",
   "has_PAGA_penalties_less_credits",
   "has_PAGA_penalties_less_prems_and_credits",
   "has_PAGA_penalties_less_credits_w",
-  "has_PAGA_penalties_less_prems_and_credits_w"
+  "has_PAGA_penalties_less_prems_and_credits_w",
+  "has_PAGA_penalties_less_credits_h",
+  "has_PAGA_penalties_less_prems_and_credits_h"
 )
 
 # MEAN / MEDIAN
@@ -4444,3 +4939,10 @@ generate_report(
 # generate_paga_report(include_extrap = TRUE,
 #                 include_appendix = TRUE,
 #                 include_data_comparison = TRUE)
+
+
+
+
+
+
+
