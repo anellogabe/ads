@@ -130,19 +130,33 @@ finalize_logging <- function() {
     if (!is.null(.ads_log_env$log_file)) {
       summary_file <- sub("\\.txt$", "_summary.rds", .ads_log_env$log_file)
       
+      msg_categories <- if (length(.ads_log_env$messages) > 0) {
+        vapply(
+          .ads_log_env$messages,
+          function(m) {
+            if (is.list(m) && !is.null(m$category) && length(m$category) > 0) {
+              as.character(m$category[[1]])
+            } else {
+              NA_character_
+            }
+          },
+          character(1)
+        )
+      } else {
+        character(0)
+      }
+      
       summary <- list(
         case_name = .ads_log_env$case_name,
         start_time = .ads_log_env$start_time,
         end_time = end_time,
         duration_seconds = as.numeric(duration),
         messages = .ads_log_env$messages,
-        
-        # Summary statistics
         n_messages = length(.ads_log_env$messages),
-        n_errors = sum(sapply(.ads_log_env$messages, function(m) m$category == "ERROR")),
-        n_warnings = sum(sapply(.ads_log_env$messages, function(m) m$category == "WARNING")),
-        n_data_summaries = sum(sapply(.ads_log_env$messages, function(m) m$category == "DATA_SUMMARY")),
-        n_assumptions = sum(sapply(.ads_log_env$messages, function(m) m$category == "ASSUMPTION"))
+        n_errors = sum(msg_categories == "ERROR", na.rm = TRUE),
+        n_warnings = sum(msg_categories == "WARNING", na.rm = TRUE),
+        n_data_summaries = sum(msg_categories == "DATA_SUMMARY", na.rm = TRUE),
+        n_assumptions = sum(msg_categories == "ASSUMPTION", na.rm = TRUE)
       )
       
       saveRDS(summary, summary_file)
@@ -156,6 +170,93 @@ finalize_logging <- function() {
 # Get current log messages (for dashboard access)
 get_log_messages <- function() {
   .ads_log_env$messages
+}
+
+# Combine clean_data + analysis text logs into one final case log
+combine_case_logs <- function(
+    clean_log_file,
+    analysis_log_file,
+    combined_log_file,
+    transition_note = ">>> TRANSITION: clean_data complete; analysis begins"
+) {
+  read_lines_safe <- function(path) {
+    if (!is.null(path) && file.exists(path)) {
+      readLines(path, warn = FALSE, encoding = "UTF-8")
+    } else {
+      character(0)
+    }
+  }
+  
+  clean_lines <- read_lines_safe(clean_log_file)
+  analysis_lines <- read_lines_safe(analysis_log_file)
+  
+  dir.create(dirname(combined_log_file), recursive = TRUE, showWarnings = FALSE)
+  
+  divider <- c(
+    "",
+    "================================================================================",
+    transition_note,
+    paste("Combined:", format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
+    "================================================================================",
+    ""
+  )
+  
+  combined_lines <- c(clean_lines, divider, analysis_lines)
+  writeLines(combined_lines, combined_log_file, useBytes = TRUE)
+  
+  invisible(combined_log_file)
+}
+
+# Combine clean_data + analysis summary RDS files into one final summary
+combine_log_summaries <- function(
+    clean_summary_file,
+    analysis_summary_file,
+    combined_summary_file,
+    case_name = NULL
+) {
+  read_rds_safe <- function(path) {
+    if (!is.null(path) && file.exists(path)) readRDS(path) else NULL
+  }
+  
+  clean_sum <- read_rds_safe(clean_summary_file)
+  analysis_sum <- read_rds_safe(analysis_summary_file)
+  
+  clean_msgs <- if (!is.null(clean_sum) && !is.null(clean_sum$messages)) clean_sum$messages else list()
+  analysis_msgs <- if (!is.null(analysis_sum) && !is.null(analysis_sum$messages)) analysis_sum$messages else list()
+  all_msgs <- c(clean_msgs, analysis_msgs)
+  
+  inferred_case_name <- case_name
+  if (is.null(inferred_case_name) || !nzchar(inferred_case_name)) {
+    inferred_case_name <- if (!is.null(clean_sum$case_name)) clean_sum$case_name else NULL
+  }
+  if (is.null(inferred_case_name) || !nzchar(inferred_case_name)) {
+    inferred_case_name <- if (!is.null(analysis_sum$case_name)) analysis_sum$case_name else "Analysis"
+  }
+  
+  start_time <- if (!is.null(clean_sum$start_time)) clean_sum$start_time else Sys.time()
+  end_time <- if (!is.null(analysis_sum$end_time)) analysis_sum$end_time else Sys.time()
+  
+  count_cat <- function(cat_name) {
+    sum(vapply(all_msgs, function(m) identical(m$category, cat_name), logical(1)), na.rm = TRUE)
+  }
+  
+  combined <- list(
+    case_name = inferred_case_name,
+    start_time = start_time,
+    end_time = end_time,
+    duration_seconds = as.numeric(difftime(end_time, start_time, units = "secs")),
+    messages = all_msgs,
+    n_messages = length(all_msgs),
+    n_errors = count_cat("ERROR"),
+    n_warnings = count_cat("WARNING"),
+    n_data_summaries = count_cat("DATA_SUMMARY"),
+    n_assumptions = count_cat("ASSUMPTION")
+  )
+  
+  dir.create(dirname(combined_summary_file), recursive = TRUE, showWarnings = FALSE)
+  saveRDS(combined, combined_summary_file)
+  
+  invisible(combined_summary_file)
 }
 
 
@@ -188,6 +289,22 @@ write_csv_and_rds <- function(dt, out_path_csv) {
   }
   
   invisible(list(csv = out_path_csv, rds = out_path_rds, csv_ok = csv_ok, rds_ok = rds_ok))
+}
+
+# SAFE CSV HELPER ------------------------------------------------------------------------------
+
+# Convert POSIX columns to text for CSV only
+prep_for_csv <- function(dt, datetime_format = "%Y-%m-%d %H:%M:%S") {
+  dt_out <- data.table::copy(dt)
+  
+  posix_cols <- names(dt_out)[vapply(dt_out, function(x) inherits(x, "POSIXt"), logical(1))]
+  
+  if (length(posix_cols) > 0) {
+    dt_out[, (posix_cols) := lapply(.SD, function(x) format(x, format = datetime_format, usetz = FALSE)),
+           .SDcols = posix_cols]
+  }
+  
+  dt_out
 }
 
 
@@ -2756,6 +2873,7 @@ denom_functions_time <- list(
     uniqueN(ID, na.rm = TRUE)
   ],
   meal_periods             = function(dt) dt[, sum(shift_mps, na.rm = TRUE)],
+  meal_periods_gt_5        = function(dt) dt[, sum(shift_mps[shift_hrs > 5], na.rm = TRUE)],
   auto_meal_periods        = function(dt) dt[, sum(!is.na(auto_mp))],
   shifts_gt_5_late_meals   = function(dt) dt[, sum(LateMP1, na.rm = TRUE)],
   shifts_gt_6_late_meals   = function(dt) dt[, sum(LateMP1_w, na.rm = TRUE)],
@@ -2780,6 +2898,7 @@ denom_functions_pp <- list(
   pp_with_both            = function(dt) dt[has_shift == 1 & has_pay == 1, .N],
   pp_employees            = function(dt) dt[, uniqueN(ID, na.rm = TRUE)],
   pp_pay_periods          = function(dt) dt[, uniqueN(ID_Period_End, na.rm = TRUE)],
+  pp_shifts               = function(dt) dt[, uniqueN(ID_Shift, na.rm = TRUE)],
   pp_wsv_employees        = function(dt) uniqueN(dt[Period_End > wsv_start_date, ID], na.rm = TRUE),
   pp_wsv_pay_periods      = function(dt) uniqueN(dt[Period_End > wsv_start_date, ID_Period_End], na.rm = TRUE),
   pp_wt_employees         = function(dt) uniqueN(dt[Period_End > wt_start_date & active != 1, ID], na.rm = TRUE),
