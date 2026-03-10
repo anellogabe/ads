@@ -54,10 +54,12 @@ message(" loaded processed data from: ", PROCESSED_DIR)
 #   all.x = TRUE
 # )
 
-init_logging(log_file_path = if (exists("LOG_FILE")) LOG_FILE else file.path(OUT_DIR, "Case_Log.txt"),
-             case_name = "Analysis",
-             append = TRUE,
-             phase = "analysis")
+init_logging(
+  log_file_path = LOG_ANALYSIS_FILE,
+  case_name = if (exists("case_name")) case_name else "Analysis",
+  append = FALSE,
+  phase = "analysis"
+)
 
 
 # ----- ALL DATA:                DEV only - test subset of data (if needed) --------------------------
@@ -4816,13 +4818,13 @@ saveRDS(pp_data1,    file.path(OUT_DIR, "Pay Period Level Data.rds"))
 saveRDS(ee_data1,    file.path(OUT_DIR, "Employee Level Data.rds"))
 
 # --- CSVs (may be filtered depending on toggles) ---
-fwrite(filter_for_csv(time1,       write_key_gps_time),  file.path(OUT_DIR, "Time Punch Data.csv"), bom = TRUE)
-fwrite(filter_for_csv(shift_data1, write_key_gps_shift), file.path(OUT_DIR, "Time Shift Data.csv"), bom = TRUE)
-fwrite(filter_for_csv(pay1,        write_key_gps_pay),   file.path(OUT_DIR, "Pay Data.csv"), bom = TRUE)
+fwrite(prep_for_csv(filter_for_csv(time1,       write_key_gps_time)),  file.path(OUT_DIR, "Time Punch Data.csv"),       bom = TRUE)
+fwrite(prep_for_csv(filter_for_csv(shift_data1, write_key_gps_shift)), file.path(OUT_DIR, "Time Shift Data.csv"),       bom = TRUE)
+fwrite(prep_for_csv(filter_for_csv(pay1,        write_key_gps_pay)),   file.path(OUT_DIR, "Pay Data.csv"),              bom = TRUE)
 
 # Always full for these (no filtering)
-fwrite(pp_data1, file.path(OUT_DIR, "Pay Period Level Data.csv"), bom = TRUE)
-fwrite(ee_data1, file.path(OUT_DIR, "Employee Level Data.csv"), bom = TRUE)
+fwrite(prep_for_csv(pp_data1), file.path(OUT_DIR, "Pay Period Level Data.csv"), bom = TRUE)
+fwrite(prep_for_csv(ee_data1), file.path(OUT_DIR, "Employee Level Data.csv"),   bom = TRUE)
 
 
 # ----- ALL DATA:                Final Analysis Table-------------------------------------------------------------
@@ -4922,10 +4924,29 @@ export_metrics(final_table, base_name = "Analysis")
 
 # ----- ALL DATA:                END Log -----------------------------------------
 
-# Finalize logging and create summary
+# Finalize analysis phase log
+finalize_logging()
+
+# Combine phase logs into final case log + combined summary
+combine_case_logs(
+  clean_log_file = LOG_CLEAN_FILE,
+  analysis_log_file = LOG_ANALYSIS_FILE,
+  combined_log_file = LOG_FILE,
+  transition_note = ">>> TRANSITION: clean_data complete; analysis begins"
+)
+
+combine_log_summaries(
+  clean_summary_file = LOG_CLEAN_SUMMARY_FILE,
+  analysis_summary_file = LOG_ANALYSIS_SUMMARY_FILE,
+  combined_summary_file = LOG_SUMMARY_FILE,
+  case_name = if (exists("case_name")) case_name else "Analysis"
+)
+
+cat("[OK] Combined case log written to: ", LOG_FILE, "\n", sep = "")
+cat("[OK] Combined log summary written to: ", LOG_SUMMARY_FILE, "\n", sep = "")
+
 end.time <- Sys.time()
 duration <- difftime(end.time, start.time, units = "secs")
-finalize_logging()
 
 
 # ----- ALL DATA:                Generate PDF report -------------------------------------------------------------

@@ -29,7 +29,12 @@ library(stringr)
 library(purrr)
 
 # Set case directory
-CASE_DIR      <- "D:/Cases/..." # Add case directory here.
+# Default: use the current working directory for this case (MAKE SURE YOU HAVE NEW SESSION IN PROPER CASE FOLDER FIRST)
+CASE_DIR <- getwd()
+
+# Optional manual override:
+# CASE_DIR <- "C:/Users/Amnon/OneDrive - Employment Research Corporation/Cases/34000s/34203 Brown v Cedars/Analysis/34203_R"
+
 CASE_DIR <- normalizePath(CASE_DIR, winslash = "/", mustWork = TRUE)
 
 SCRIPTS_DIR   <- file.path(CASE_DIR, "scripts")
@@ -67,9 +72,22 @@ cat("ADS functions loaded successfully\n\n")
 source(PDF_SCRIPT, local = FALSE, chdir = FALSE)
 cat("ADS generate PDF loaded successfully\n\n")
 
-# Initialize logging (case-specific output)
+# Case log files (phase logs + final combined log)
+LOG_CLEAN_FILE <- file.path(OUT_DIR, "Case_Log_clean_data.txt")
+LOG_ANALYSIS_FILE <- file.path(OUT_DIR, "Case_Log_analysis.txt")
+LOG_FILE <- file.path(OUT_DIR, "Case_Log.txt")
+
+LOG_CLEAN_SUMMARY_FILE <- sub("\\.txt$", "_summary.rds", LOG_CLEAN_FILE)
+LOG_ANALYSIS_SUMMARY_FILE <- sub("\\.txt$", "_summary.rds", LOG_ANALYSIS_FILE)
+LOG_SUMMARY_FILE <- file.path(OUT_DIR, "Case_Log_summary.rds")
+
+message("LOG_CLEAN_FILE        = ", LOG_CLEAN_FILE)
+message("LOG_ANALYSIS_FILE     = ", LOG_ANALYSIS_FILE)
+message("LOG_FILE (combined)   = ", LOG_FILE)
+message("LOG_SUMMARY_FILE      = ", LOG_SUMMARY_FILE)
+
 init_logging(
-  log_file_path = LOG_FILE,
+  log_file_path = LOG_CLEAN_FILE,
   case_name = basename(CASE_DIR),
   append = FALSE,
   phase = "clean_data"
@@ -956,34 +974,61 @@ employee_period_comparison(time1, pay1)
 all_ids <- all_time_pay_class_ids(time1, pay1, class1)
 
 
-# ----- ATTESTATION DATA:  Load & Clean -------------------------------
-
-# attestation1 <- read_excel("data/raw/Attestation Data.xlsx")
-# 
-# setDT(attestation1)
-# #Remove NA Date
-# nrow(attestation1) #776755
-# attestation1 <- attestation1[!is.na(Date)]
-# nrow(attestation1) #771412
-# 
-# cat("✓ Loaded", nrow(attestation1), "attestation records\n")
-# cat("\n=== Columns in Attestation Data ===\n")
-# for(col in names(attestation1)) {
-#   cat(col, "\n")
-# }
-
-
 # ----- MEAL WAIVER DATA:  Load & Clean -------------------------------
 
 # waiver1 <- read_excel("data/raw/Meal Waivers.xlsx")
 # 
 # setDT(waiver1)
 # 
-# cat("✓ Loaded", nrow(waiver1), "meal waiver records\n")
+# cat("[OK] Loaded", nrow(waiver1), "meal waiver records\n")
 # cat("\n=== Columns in Meal Waiver Data ===\n")
 # for(col in names(waiver1)) {
 #   cat(col, "\n")
 # }
+
+
+# ----- ATTESTATION DATA:  Load & Clean -------------------------------
+
+# attestation1 <- read_excel("data/raw/_____")
+# 
+# setDT(attestation1)
+# #Remove NA Date
+# nrow(attestation1) #PASTE ROWS HERE
+# attestation1 <- attestation1[!is.na(Date)]
+# nrow(attestation1) #PASTE ROWS HERE
+# 
+# cat("[OK] Loaded", nrow(attestation1), "attestation records\n")
+# cat("\n=== Columns in Attestation Data ===\n")
+# for(col in names(attestation1)) {
+#   cat(col, "\n")
+# }
+# 
+# # OPTIONAL: Filter data to only include employees and pay periods with accompanying attestation data
+# setDT(attestation1)
+# setDT(time1)
+# setDT(pay1)
+# 
+# attestation1[, ID_Date := paste(ID, Date, sep = "_")]
+# time1[, ID_Date := paste(ID, Date, sep = "_")]
+# 
+# # Unique attestation keys
+# attestation_id_dates <- unique(attestation1[!is.na(ID_Date) & ID_Date != "", .(ID_Date)])
+# attestation_ids      <- unique(attestation1[!is.na(ID) & ID != "", .(ID)])
+# 
+# # Filter time1 to matching ID_Date
+# time1_attestation <- time1[attestation_id_dates, on = "ID_Date", nomatch = 0]
+# 
+# # Filter pay1 to employees appearing in attestation1
+# pay1_attestation <- pay1[attestation_ids, on = .(Pay_ID = ID), nomatch = 0]
+# 
+# # Attestation date window
+# attest_min_date <- min(attestation1$Date, na.rm = TRUE)
+# attest_max_date <- max(attestation1$Date, na.rm = TRUE)
+# 
+# # Filter to within attestation date range
+# pay1_attestation <- pay1_attestation[
+#   Pay_Period_End >= attest_min_date & Pay_Period_End <= attest_max_date
+# ]
 
 
 # ----- ALL DATA:   Save processed data -----------------------------------------
@@ -1111,9 +1156,4 @@ log_msg("Next step: Run analysis.R to generate metrics and damages calculations"
 finalize_logging()
 end.time <- Sys.time()
 end.time - start.time  
-
-
-
-
-
 
