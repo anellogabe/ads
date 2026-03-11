@@ -3059,28 +3059,46 @@ create_filtered_data <- function(time_dt, pay_dt, pp_dt = NULL, ee_dt = NULL,
   )
 }
 
-build_filter_configs <- function(time_dt, pay_dt, pp_dt = NULL, ee_dt = NULL, custom_filters = list()) {
+build_filter_configs <- function(time_dt, pay_dt, pp_dt = NULL, ee_dt = NULL,
+                                 custom_filters = list(),
+                                 base_time_filter = NULL, base_pay_filter = NULL,
+                                 base_pp_filter = NULL, base_ee_filter = NULL) {
+  and_filters <- function(f1, f2) {
+    if (is.null(f1)) return(f2)
+    if (is.null(f2)) return(f1)
+    bquote((.(f1)) & (.(f2)))
+  }
+
   configs <- list()
-  configs[["All Data"]] <- list(time_filter = NULL, pay_filter = NULL, pp_filter = NULL, ee_filter = NULL)
-  
+  configs[["All Data"]] <- list(
+    time_filter = base_time_filter,
+    pay_filter  = base_pay_filter,
+    pp_filter   = base_pp_filter,
+    ee_filter   = base_ee_filter
+  )
+
   time_years <- if (!is.null(time_dt) && "Period_End" %in% names(time_dt))
     sort(unique(lubridate::year(time_dt$Period_End))) else integer(0)
   pay_years  <- if (!is.null(pay_dt) && "Pay_Period_End" %in% names(pay_dt))
     sort(unique(lubridate::year(pay_dt$Pay_Period_End))) else integer(0)
   pp_years   <- if (!is.null(pp_dt) && "Period_End" %in% names(pp_dt))
     sort(unique(lubridate::year(pp_dt$Period_End))) else integer(0)
-  
+
   all_years <- sort(unique(c(time_years, pay_years, pp_years)))
-  
+
   for (yr in all_years) {
+    year_time_filter <- bquote(lubridate::year(Period_End) == .(yr))
+    year_pay_filter  <- bquote(lubridate::year(Pay_Period_End) == .(yr))
+    year_pp_filter   <- bquote(lubridate::year(Period_End) == .(yr))
+
     configs[[as.character(yr)]] <- list(
-      time_filter = bquote(lubridate::year(Period_End) == .(yr)),
-      pay_filter  = bquote(lubridate::year(Pay_Period_End) == .(yr)),
-      pp_filter   = bquote(lubridate::year(Period_End) == .(yr)),
-      ee_filter   = NULL
+      time_filter = and_filters(base_time_filter, year_time_filter),
+      pay_filter  = and_filters(base_pay_filter, year_pay_filter),
+      pp_filter   = and_filters(base_pp_filter, year_pp_filter),
+      ee_filter   = base_ee_filter
     )
   }
-  
+
   for (nm in names(custom_filters)) configs[[nm]] <- custom_filters[[nm]]
   configs
 }
@@ -3123,7 +3141,42 @@ run_metrics_pipeline <- function(time_dt, pay_dt, spec,
     spec_year_ok <- spec[!is_no_year(metric_group)]
   }
   
-  filter_configs_all <- build_filter_configs(time_dt, pay_dt, pp_dt, ee_dt, custom_filters)
+  separate_key_flag <- isTRUE(get0("separate_key_gps", envir = globals_env, inherits = TRUE, ifnotfound = FALSE))
+
+  pick_everyone_else <- function(dt, col_name) {
+    if (is.null(dt) || !col_name %in% names(dt)) return(NA_character_)
+    vals <- unique(as.character(dt[[col_name]]))
+    vals <- vals[!is.na(vals)]
+    idx <- which(tolower(trimws(vals)) == "everyone else")
+    if (length(idx) == 0) return(NA_character_)
+    vals[idx[1]]
+  }
+
+  base_time_filter <- NULL
+  base_pay_filter  <- NULL
+  base_pp_filter   <- NULL
+  base_ee_filter   <- NULL
+
+  if (separate_key_flag) {
+    ee_time <- pick_everyone_else(time_dt, "Key_Gps")
+    ee_pay  <- pick_everyone_else(pay_dt,  "Pay_Key_Gps")
+    ee_pp   <- pick_everyone_else(pp_dt,   "Key_Gps")
+    ee_ee   <- pick_everyone_else(ee_dt,   "Key_Gps")
+
+    if (!is.na(ee_time)) base_time_filter <- bquote(Key_Gps == .(ee_time))
+    if (!is.na(ee_pay))  base_pay_filter  <- bquote(Pay_Key_Gps == .(ee_pay))
+    if (!is.na(ee_pp))   base_pp_filter   <- bquote(Key_Gps == .(ee_pp))
+    if (!is.na(ee_ee))   base_ee_filter   <- bquote(Key_Gps == .(ee_ee))
+  }
+
+  filter_configs_all <- build_filter_configs(
+    time_dt, pay_dt, pp_dt, ee_dt,
+    custom_filters = custom_filters,
+    base_time_filter = base_time_filter,
+    base_pay_filter  = base_pay_filter,
+    base_pp_filter   = base_pp_filter,
+    base_ee_filter   = base_ee_filter
+  )
   
   keep_nm <- names(filter_configs_all)
   is_year_nm <- grepl("^\\d{4}$", keep_nm)

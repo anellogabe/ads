@@ -2852,7 +2852,8 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       data <- filtered_data()
 
       # Check cache first
-      cache_key <- digest(list(current_filters(), extrap_environment()), algo = "xxhash64")
+      separate_key_flag <- isTRUE(get0("separate_key_gps", ifnotfound = FALSE, inherits = TRUE))
+      cache_key <- digest(list(current_filters(), extrap_environment(), separate_key_flag), algo = "xxhash64")
       if (!is.null(cache$pipeline_results_key) && cache$pipeline_results_key == cache_key) {
         return(cache$pipeline_results_value)
       }
