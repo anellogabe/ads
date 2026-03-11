@@ -35,6 +35,10 @@ generate_report <- function(
     sections = c("time", "pay", "class", "paga", "analysis"),
     include_extrap = FALSE,
     include_credits = TRUE,
+    include_less_prems = TRUE,
+    include_no_waivers = TRUE,
+    include_waivers = TRUE,
+    include_hybrid = TRUE,
     include_appendix = FALSE,
     include_data_comparison = FALSE,
     include_assumptions = TRUE,
@@ -104,11 +108,49 @@ generate_report <- function(
 
     mask
   }
+  get_less_prems_row_mask <- function(dt, spec = NULL) {
+    if (is.null(dt) || nrow(dt) == 0) return(logical(0))
+
+    mask <- rep(FALSE, nrow(dt))
+
+    if ("meal_rest_prems_credit" %in% names(dt)) {
+      mask <- mask | is_truthy_flag(dt$meal_rest_prems_credit)
+    }
+
+    if (!is.null(spec) &&
+        all(c("metric_group", "metric_label", "meal_rest_prems_credit") %in% names(spec)) &&
+        all(c("metric_group", "metric_label") %in% names(dt))) {
+      spec_dt <- as.data.table(spec)
+      spec_dt <- spec_dt[is_truthy_flag(meal_rest_prems_credit), .(metric_group, metric_label)]
+
+      if (nrow(spec_dt) > 0) {
+        spec_keys <- unique(paste(spec_dt$metric_group, spec_dt$metric_label, sep = "\r"))
+        dt_keys <- paste(dt$metric_group, dt$metric_label, sep = "\r")
+        mask <- mask | (dt_keys %in% spec_keys)
+      }
+    }
+
+    mask
+  }
   local_sections <- sections
   local_class_scenarios <- unique(normalize_scenario_value(class_scenarios))
   local_class_scenarios <- local_class_scenarios[!is.na(local_class_scenarios) & nzchar(local_class_scenarios)]
   local_paga_scenarios <- unique(normalize_scenario_value(paga_scenarios))
   local_paga_scenarios <- local_paga_scenarios[!is.na(local_paga_scenarios) & nzchar(local_paga_scenarios)]
+
+  local_enabled_scenarios <- character(0)
+  if (isTRUE(include_no_waivers)) local_enabled_scenarios <- c(local_enabled_scenarios, "no waivers")
+  if (isTRUE(include_waivers)) local_enabled_scenarios <- c(local_enabled_scenarios, "waivers")
+  if (isTRUE(include_hybrid)) local_enabled_scenarios <- c(local_enabled_scenarios, "hybrid")
+  local_enabled_scenarios <- unique(local_enabled_scenarios)
+
+  if (length(local_enabled_scenarios) > 0) {
+    local_class_scenarios <- intersect(local_class_scenarios, local_enabled_scenarios)
+    local_paga_scenarios <- intersect(local_paga_scenarios, local_enabled_scenarios)
+  } else {
+    local_class_scenarios <- character(0)
+    local_paga_scenarios <- character(0)
+  }
   
   # Count steps more accurately based on new section structure
   total_steps <- 5  # Base: loading data, spec, analysis tables, generating PDF, final
@@ -142,6 +184,10 @@ generate_report <- function(
   cat("Sections:", paste(local_sections, collapse = ", "), "\n")
   cat("Include Extrapolation:", include_extrap, "\n")
   cat("Include Credits:", include_credits, "\n")
+  cat("Include Less Premiums:", include_less_prems, "\n")
+  cat("Include No-Waivers Scenario:", include_no_waivers, "\n")
+  cat("Include Waivers Scenario:", include_waivers, "\n")
+  cat("Include Hybrid Scenario:", include_hybrid, "\n")
   cat("Include Appendix:", include_appendix, "\n")
   cat("Include Data Comparison:", include_data_comparison, "\n")
   cat("==================================================\n\n")
@@ -239,11 +285,8 @@ generate_report <- function(
   time_summary <- metric_groups[grepl("^Summary - Time Data$", metric_groups)]
   pay_summary <- metric_groups[grepl("^Summary - Pay Data$", metric_groups)]
   
-  # Meal Period Analysis
-  meal_analysis <- metric_groups[grepl("^Meal Period Analysis$", metric_groups)]
-  meal_analysis_punches <- metric_groups[grepl("^Meal Period Analysis - Meal Periods with Time Punches$", metric_groups)]
-  meal_analysis_punches_rounded <- metric_groups[grepl("^Meal Period Analysis - Meal Periods with Time Punches \\(rounded", metric_groups)]
-  meal_analysis_no_punches <- metric_groups[grepl("^Meal Period Analysis - Meal Periods w/o Time Punches", metric_groups)]
+  # Meal Period Analysis (all variants, e.g., with/w/o punches, rounded, >5 hrs)
+  meal_analysis <- metric_groups[grepl("^Meal Period Analysis", metric_groups)]
   
   # Meal Period Violations
   meal_violations_summary <- metric_groups[grepl("^Meal Period Violations(_h)?$", metric_groups)]
@@ -372,12 +415,27 @@ generate_report <- function(
       }
     }
 
+    if ("scenario" %in% names(dt)) {
+      sc <- normalize_scenario_value(dt$scenario)
+      if (length(local_enabled_scenarios) > 0) {
+        dt <- dt[sc %in% c(local_enabled_scenarios, "all") | is.na(dt$scenario) | is.na(sc)]
+      } else {
+        dt <- dt[is.na(dt$scenario) | is.na(sc) | sc == "all"]
+      }
+    }
+
     if (nrow(dt) == 0) return(data.table())
 
-        # Hide all credit-adjusted rows when include_credits = FALSE.
+        # Hide credit-adjusted rows when include_credits = FALSE.
     if (!include_credits) {
       dt <- dt[!get_credit_row_mask(dt, metric_spec)]
     }
+
+        # Hide less-premiums-adjusted rows when include_less_prems = FALSE.
+    if (!include_less_prems) {
+      dt <- dt[!get_less_prems_row_mask(dt, metric_spec)]
+    }
+
     if (nrow(dt) == 0) return(data.table())
 
     # Remove metadata columns: metric_group, scenario, credit flags
@@ -578,7 +636,7 @@ table.pay-code-table td:last-child { text-align: left; }
 
   # ----- MEAL PERIOD ANALYSIS (merged into one page) -----
   if ("time" %in% local_sections && include_sub("meal_analysis")) {
-    all_meal_analysis <- c(meal_analysis, meal_analysis_punches, meal_analysis_punches_rounded, meal_analysis_no_punches)
+    all_meal_analysis <- meal_analysis
     if (length(all_meal_analysis) > 0) {
       meal_data <- get_group_data(all_meal_analysis)
       if (nrow(meal_data) > 0) {
@@ -591,19 +649,19 @@ table.pay-code-table td:last-child { text-align: left; }
   # ----- MEAL PERIOD VIOLATIONS (split by waiver scenario) -----
   if ("time" %in% local_sections) {
     # No Waivers
-    if (include_sub("meal_violations_no_waivers")) {
+    if ("no waivers" %in% local_enabled_scenarios && include_sub("meal_violations_no_waivers")) {
       html <- paste0(html, add_section(meal_violations_summary, "Meal Period Violations (No Waivers)", "no waivers"))
       html <- paste0(html, add_section(meal_violations_late, "Meal Period Violations - Late Detail (No Waivers)", "no waivers", compact = TRUE))
       html <- paste0(html, add_section(meal_violations_short, "Meal Period Violations - Short Detail (No Waivers)", "no waivers", compact = TRUE))
     }
         # Waivers
-    if (include_sub("meal_violations_waivers")) {
+    if ("waivers" %in% local_enabled_scenarios && include_sub("meal_violations_waivers")) {
       html <- paste0(html, add_section(meal_violations_summary, "Meal Period Violations (Waivers)", "waivers"))
       html <- paste0(html, add_section(meal_violations_late, "Meal Period Violations - Late Detail (Waivers)", "waivers", compact = TRUE))
       html <- paste0(html, add_section(meal_violations_short, "Meal Period Violations - Short Detail (Waivers)", "waivers", compact = TRUE))
     }
     # Hybrid
-    if (include_sub("meal_violations_hybrid")) {
+    if ("hybrid" %in% local_enabled_scenarios && include_sub("meal_violations_hybrid")) {
       html <- paste0(html, add_section(meal_violations_summary, "Meal Period Violations (Hybrid)", "hybrid"))
       html <- paste0(html, add_section(meal_violations_late, "Meal Period Violations - Late Detail (Hybrid)", "hybrid", compact = TRUE))
       html <- paste0(html, add_section(meal_violations_short, "Meal Period Violations - Short Detail (Hybrid)", "hybrid", compact = TRUE))
@@ -875,29 +933,29 @@ table.pay-code-table td:last-child { text-align: left; }
 }
 
 # Shortcuts
-generate_full_report <- function(output_file = NULL, include_extrap = TRUE, include_credits = TRUE, include_appendix = TRUE, include_data_comparison = TRUE) {
-  generate_report(output_file = output_file, sections = c("time", "pay", "class", "paga", "analysis"), include_extrap = include_extrap, include_credits = include_credits, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
+generate_full_report <- function(output_file = NULL, include_extrap = TRUE, include_credits = TRUE, include_less_prems = TRUE, include_no_waivers = TRUE, include_waivers = TRUE, include_hybrid = TRUE, include_appendix = TRUE, include_data_comparison = TRUE) {
+  generate_report(output_file = output_file, sections = c("time", "pay", "class", "paga", "analysis"), include_extrap = include_extrap, include_credits = include_credits, include_less_prems = include_less_prems, include_no_waivers = include_no_waivers, include_waivers = include_waivers, include_hybrid = include_hybrid, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
 }
-generate_time_report <- function(output_file = NULL, include_extrap = FALSE, include_credits = TRUE, include_appendix = FALSE, include_data_comparison = FALSE) {
-  generate_report(output_file = output_file, sections = "time", include_extrap = include_extrap, include_credits = include_credits, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
+generate_time_report <- function(output_file = NULL, include_extrap = FALSE, include_credits = TRUE, include_less_prems = TRUE, include_no_waivers = TRUE, include_waivers = TRUE, include_hybrid = TRUE, include_appendix = FALSE, include_data_comparison = FALSE) {
+  generate_report(output_file = output_file, sections = "time", include_extrap = include_extrap, include_credits = include_credits, include_less_prems = include_less_prems, include_no_waivers = include_no_waivers, include_waivers = include_waivers, include_hybrid = include_hybrid, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
 }
-generate_pay_report <- function(output_file = NULL, include_extrap = FALSE, include_credits = TRUE, include_appendix = FALSE, include_data_comparison = FALSE) {
-  generate_report(output_file = output_file, sections = "pay", include_extrap = include_extrap, include_credits = include_credits, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
+generate_pay_report <- function(output_file = NULL, include_extrap = FALSE, include_credits = TRUE, include_less_prems = TRUE, include_no_waivers = TRUE, include_waivers = TRUE, include_hybrid = TRUE, include_appendix = FALSE, include_data_comparison = FALSE) {
+  generate_report(output_file = output_file, sections = "pay", include_extrap = include_extrap, include_credits = include_credits, include_less_prems = include_less_prems, include_no_waivers = include_no_waivers, include_waivers = include_waivers, include_hybrid = include_hybrid, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
 }
-generate_time_pay_report <- function(output_file = NULL, include_extrap = FALSE, include_credits = TRUE, include_appendix = FALSE, include_data_comparison = FALSE) {
-  generate_report(output_file = output_file, sections = c("time", "pay", "analysis"), include_extrap = include_extrap, include_credits = include_credits, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
+generate_time_pay_report <- function(output_file = NULL, include_extrap = FALSE, include_credits = TRUE, include_less_prems = TRUE, include_no_waivers = TRUE, include_waivers = TRUE, include_hybrid = TRUE, include_appendix = FALSE, include_data_comparison = FALSE) {
+  generate_report(output_file = output_file, sections = c("time", "pay", "analysis"), include_extrap = include_extrap, include_credits = include_credits, include_less_prems = include_less_prems, include_no_waivers = include_no_waivers, include_waivers = include_waivers, include_hybrid = include_hybrid, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
 }
-generate_class_report <- function(output_file = NULL, include_extrap = TRUE, include_credits = TRUE, include_appendix = TRUE, include_data_comparison = TRUE) {
-  generate_report(output_file = output_file, sections = c("time", "pay", "class", "analysis"), include_extrap = include_extrap, include_credits = include_credits, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
+generate_class_report <- function(output_file = NULL, include_extrap = TRUE, include_credits = TRUE, include_less_prems = TRUE, include_no_waivers = TRUE, include_waivers = TRUE, include_hybrid = TRUE, include_appendix = TRUE, include_data_comparison = TRUE) {
+  generate_report(output_file = output_file, sections = c("time", "pay", "class", "analysis"), include_extrap = include_extrap, include_credits = include_credits, include_less_prems = include_less_prems, include_no_waivers = include_no_waivers, include_waivers = include_waivers, include_hybrid = include_hybrid, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
 }
-generate_paga_report <- function(output_file = NULL, include_extrap = TRUE, include_credits = TRUE, include_appendix = TRUE, include_data_comparison = TRUE) {
-  generate_report(output_file = output_file, sections = c("time", "pay", "paga", "analysis"), include_extrap = include_extrap, include_credits = include_credits, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
+generate_paga_report <- function(output_file = NULL, include_extrap = TRUE, include_credits = TRUE, include_less_prems = TRUE, include_no_waivers = TRUE, include_waivers = TRUE, include_hybrid = TRUE, include_appendix = TRUE, include_data_comparison = TRUE) {
+  generate_report(output_file = output_file, sections = c("time", "pay", "paga", "analysis"), include_extrap = include_extrap, include_credits = include_credits, include_less_prems = include_less_prems, include_no_waivers = include_no_waivers, include_waivers = include_waivers, include_hybrid = include_hybrid, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
 }
-generate_damages_report <- function(output_file = NULL, include_extrap = FALSE, include_credits = TRUE, include_appendix = FALSE, include_data_comparison = FALSE) {
-  generate_report(output_file = output_file, sections = c("class", "paga"), include_extrap = include_extrap, include_credits = include_credits, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
+generate_damages_report <- function(output_file = NULL, include_extrap = FALSE, include_credits = TRUE, include_less_prems = TRUE, include_no_waivers = TRUE, include_waivers = TRUE, include_hybrid = TRUE, include_appendix = FALSE, include_data_comparison = FALSE) {
+  generate_report(output_file = output_file, sections = c("class", "paga"), include_extrap = include_extrap, include_credits = include_credits, include_less_prems = include_less_prems, include_no_waivers = include_no_waivers, include_waivers = include_waivers, include_hybrid = include_hybrid, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
 }
-generate_no_damages_report <- function(output_file = NULL, include_extrap = FALSE, include_credits = TRUE, include_appendix = FALSE, include_data_comparison = FALSE) {
-  generate_report(output_file = output_file, sections = c("time", "pay", "analysis"), include_extrap = include_extrap, include_credits = include_credits, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
+generate_no_damages_report <- function(output_file = NULL, include_extrap = FALSE, include_credits = TRUE, include_less_prems = TRUE, include_no_waivers = TRUE, include_waivers = TRUE, include_hybrid = TRUE, include_appendix = FALSE, include_data_comparison = FALSE) {
+  generate_report(output_file = output_file, sections = c("time", "pay", "analysis"), include_extrap = include_extrap, include_credits = include_credits, include_less_prems = include_less_prems, include_no_waivers = include_no_waivers, include_waivers = include_waivers, include_hybrid = include_hybrid, include_appendix = include_appendix, include_data_comparison = include_data_comparison)
 }
 
 cat("\n==================================================\n")
@@ -919,3 +977,4 @@ cat("  generate_pay_report()        # Pay section only\n")
 cat("  generate_time_pay_report()   # Time + Pay + Analysis\n\n")
 cat("Sections: time, pay, class, paga, analysis\n")
 cat("==================================================\n")
+

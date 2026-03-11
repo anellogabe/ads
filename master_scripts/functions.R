@@ -2898,7 +2898,7 @@ denom_functions_pp <- list(
   pp_with_both            = function(dt) dt[has_shift == 1 & has_pay == 1, .N],
   pp_employees            = function(dt) dt[, uniqueN(ID, na.rm = TRUE)],
   pp_pay_periods          = function(dt) dt[, uniqueN(ID_Period_End, na.rm = TRUE)],
-  pp_shifts               = function(dt) dt[, uniqueN(ID_Shift, na.rm = TRUE)],
+  pp_shifts               = function(dt) dt[, sum(shift, na.rm = TRUE)],
   pp_wsv_employees        = function(dt) uniqueN(dt[Period_End > wsv_start_date, ID], na.rm = TRUE),
   pp_wsv_pay_periods      = function(dt) uniqueN(dt[Period_End > wsv_start_date, ID_Period_End], na.rm = TRUE),
   pp_wt_employees         = function(dt) uniqueN(dt[Period_End > wt_start_date & active != 1, ID], na.rm = TRUE),

@@ -166,10 +166,19 @@ load_data <- function() {
   read_if_exists <- function(dir, file) {
     path <- file.path(dir, file)
     if (file.exists(path)) {
-      message("Loading: ", file)
-      readRDS(path)
+      cat(sprintf("[APP] Loading %s ... ", file))
+      flush.console()
+      obj <- readRDS(path)
+      if (is.data.frame(obj) || data.table::is.data.table(obj)) {
+        cat(sprintf("done (%s rows)\n", format(nrow(obj), big.mark = ",")))
+      } else {
+        cat("done\n")
+      }
+      flush.console()
+      obj
     } else {
-      message("Not found (skipping): ", file)
+      cat(sprintf("[APP] Not found (skipping): %s\n", file))
+      flush.console()
       NULL
     }
   }
@@ -257,7 +266,11 @@ load_metric_spec <- function() {
   metrics_spec_path <- file.path(CASE_DIR, "scripts", "metrics_spec.csv")
   if (!file.exists(metrics_spec_path)) stop("Missing metrics_spec.csv at: ", metrics_spec_path)
 
+  cat("[APP] Loading metrics_spec.csv ... ")
+  flush.console()
   spec <- fread(metrics_spec_path)
+  cat(sprintf("done (%s rows)\n", format(nrow(spec), big.mark = ",")))
+  flush.console()
   setDT(spec)
 
   if (!"metric_order" %in% names(spec)) {
@@ -275,7 +288,14 @@ load_metric_spec <- function() {
 load_analysis_table <- function(filename) {
 
   path <- file.path(OUT_DIR, filename)
-  if (!file.exists(path)) return(NULL)
+  if (!file.exists(path)) {
+    cat(sprintf("[APP] Analysis table missing (skipping): %s\n", filename))
+    flush.console()
+    return(NULL)
+  }
+
+  cat(sprintf("[APP] Loading analysis table %s ... ", filename))
+  flush.console()
 
   # Use readRDS for .rds files, fread for .csv
   dt <- if (grepl("\\.rds$", filename, ignore.case = TRUE)) {
@@ -293,6 +313,8 @@ load_analysis_table <- function(filename) {
                  get(first_col) == "0")]
   }
 
+  cat(sprintf("done (%s rows)\n", format(nrow(dt), big.mark = ",")))
+  flush.console()
   dt
 }
 
@@ -823,20 +845,20 @@ normalize_scenario_value <- function(x) {
   out
 }
 
-get_credit_row_mask <- function(dt, spec = NULL) {
-  if (is.null(dt) || nrow(dt) == 0) return(logical(0))
+get_flagged_metric_row_mask <- function(dt, spec = NULL, flag_col) {
+  if (is.null(dt) || nrow(dt) == 0 || is.null(flag_col) || !nzchar(flag_col)) return(logical(0))
 
   mask <- rep(FALSE, nrow(dt))
 
-  if ("other_credit" %in% names(dt)) {
-    mask <- mask | is_truthy_flag(dt$other_credit)
+  if (flag_col %in% names(dt)) {
+    mask <- mask | is_truthy_flag(dt[[flag_col]])
   }
 
   if (!is.null(spec) &&
-      all(c("metric_group", "metric_label", "other_credit") %in% names(spec)) &&
+      all(c("metric_group", "metric_label", flag_col) %in% names(spec)) &&
       all(c("metric_group", "metric_label") %in% names(dt))) {
     spec_dt <- as.data.table(spec)
-    spec_dt <- spec_dt[is_truthy_flag(other_credit), .(metric_group, metric_label)]
+    spec_dt <- spec_dt[is_truthy_flag(get(flag_col)), .(metric_group, metric_label)]
 
     if (nrow(spec_dt) > 0) {
       spec_keys <- unique(paste(spec_dt$metric_group, spec_dt$metric_label, sep = "\r"))
@@ -846,6 +868,14 @@ get_credit_row_mask <- function(dt, spec = NULL) {
   }
 
   mask
+}
+
+get_credit_row_mask <- function(dt, spec = NULL) {
+  get_flagged_metric_row_mask(dt, spec = spec, flag_col = "other_credit")
+}
+
+get_less_prems_row_mask <- function(dt, spec = NULL) {
+  get_flagged_metric_row_mask(dt, spec = spec, flag_col = "meal_rest_prems_credit")
 }
 
 format_metric_value <- function(val, pct = NA) {
@@ -1104,6 +1134,13 @@ filter_sidebar <- function(data_list) {
 
     checkboxInput("toggle_extrap_cols", "Show Extrapolated Values", value = TRUE),
     checkboxInput("show_credits", "Show Credit-Adjusted Metrics", value = TRUE),
+    checkboxInput("show_less_prems", "Show Less-Premiums-Adjusted Metrics", value = TRUE),
+
+    tags$hr(style = "margin-top: 10px; margin-bottom: 10px;"),
+    tags$small(style = "font-size: 11px; color: #6c757d; font-weight: 600;", "Scenario Visibility"),
+    checkboxInput("show_scenario_no_waivers", "Show No-Waivers Scenario", value = TRUE),
+    checkboxInput("show_scenario_waivers", "Show Waivers Scenario", value = TRUE),
+    checkboxInput("show_scenario_hybrid", "Show Hybrid Scenario", value = TRUE),
 
     actionButton("open_pdf_modal", "Generate PDF Report",
                  class = "w-100 mt-2 btn-primary",
@@ -1247,6 +1284,75 @@ ui <- function(data_list, metric_spec) {
               } else {
                 $('body').addClass('hide-extrap-cols');
               }
+            });
+
+            // Show/hide scenario subtabs (Time Meal Violations, Class, PAGA)
+            Shiny.addCustomMessageHandler('toggleScenarioTabs', function(cfg) {
+              if (!cfg || !cfg.tabs) return;
+              var fallbacks = cfg.fallbacks || {};
+
+              var triggerSelector = function(val) {
+                return '.nav-link[data-value=\"' + val + '\"], .dropdown-item[data-value=\"' + val + '\"], a[data-value=\"' + val + '\"], button[data-value=\"' + val + '\"]';
+              };
+
+              var paneSelector = function(val) {
+                return '.tab-pane[data-value=\"' + val + '\"]';
+              };
+
+              var ensureFallbackIfActive = function(val) {
+                var $triggers = $(triggerSelector(val));
+                var $panes = $(paneSelector(val));
+                var isActive = $triggers.filter('.active').length > 0 || $panes.filter('.active, .show').length > 0;
+                if (!isActive) return;
+
+                var fb = fallbacks[val];
+                if (!fb) return;
+
+                var $fb = $(triggerSelector(fb)).first();
+                if ($fb.length) {
+                  $fb.trigger('click');
+                }
+              };
+
+              var setTabVisible = function(val, visible) {
+                var show = !!visible;
+                var $triggers = $(triggerSelector(val));
+                var $panes = $(paneSelector(val));
+
+                if (!show) {
+                  ensureFallbackIfActive(val);
+                }
+
+                $triggers.each(function() {
+                  var $t = $(this);
+                  var $li = $t.closest('li');
+                  if ($li.length) {
+                    $li.toggle(show);
+                  } else {
+                    $t.toggle(show);
+                  }
+
+                  if (!show) {
+                    $t.removeClass('active');
+                    $t.attr('aria-selected', 'false');
+                  }
+                });
+
+                $panes.each(function() {
+                  var $p = $(this);
+                  if (show) {
+                    // Let Bootstrap classes control visibility; don't force display:block.
+                    $p.removeClass('d-none');
+                  } else {
+                    $p.addClass('d-none');
+                    $p.removeClass('show active');
+                  }
+                });
+              };
+
+              Object.keys(cfg.tabs).forEach(function(val) {
+                setTabVisible(val, cfg.tabs[val]);
+              });
             });
           });
         "))
@@ -1402,6 +1508,7 @@ ui <- function(data_list, metric_spec) {
 
       nav_panel(
         "Summary",
+        value = "time_summary_tab",
         withSpinner(DTOutput("table_time_summary"), type = 6, color = "#2c3e50")
       ),
 
@@ -1422,6 +1529,7 @@ ui <- function(data_list, metric_spec) {
 
       if (show_no_waivers) nav_panel(
         "Meal Violations (no waivers)",
+        value = "time_meal_no_waivers_tab",
         navset_card_underline(
           nav_panel(
             "Summary",
@@ -1440,6 +1548,7 @@ ui <- function(data_list, metric_spec) {
 
       if (show_waivers) nav_panel(
         "Meal Violations (waivers)",
+        value = "time_meal_waivers_tab",
         navset_card_underline(
           nav_panel(
             "Summary",
@@ -1458,6 +1567,7 @@ ui <- function(data_list, metric_spec) {
 
       if (show_hybrid) nav_panel(
         "Meal Violations (hybrid)",
+        value = "time_meal_hybrid_tab",
         navset_card_underline(
           nav_panel(
             "Summary",
@@ -1517,21 +1627,25 @@ ui <- function(data_list, metric_spec) {
 
       nav_panel(
         "Overview",
+        value = "class_overview_tab",
         withSpinner(DTOutput("table_damages_class_overview"), type = 6, color = "#2c3e50")
       ),
 
       if (show_no_waivers) nav_panel(
         "No Waivers",
+        value = "class_no_waivers_tab",
         withSpinner(DTOutput("table_damages_class_no_waivers"), type = 6, color = "#2c3e50")
       ),
 
       if (show_waivers) nav_panel(
         "Waivers",
+        value = "class_waivers_tab",
         withSpinner(DTOutput("table_damages_class_waivers"), type = 6, color = "#2c3e50")
       ),
 
       if (show_hybrid) nav_panel(
         "Hybrid",
+        value = "class_hybrid_tab",
         withSpinner(DTOutput("table_damages_class_hybrid"), type = 6, color = "#2c3e50")
       ),
 
@@ -1555,20 +1669,24 @@ ui <- function(data_list, metric_spec) {
 
       nav_panel(
         "Overview",
+        value = "paga_overview_tab",
         withSpinner(DTOutput("table_paga_overview"), type = 6, color = "#2c3e50")
       ),
 
       if (show_no_waivers) nav_panel(
         "No Waivers",
+        value = "paga_no_waivers_tab",
         withSpinner(DTOutput("table_paga_no_waivers"), type = 6, color = "#2c3e50")
       ),
 
       if (show_waivers) nav_panel(
         "Waivers",
+        value = "paga_waivers_tab",
         withSpinner(DTOutput("table_paga_waivers"), type = 6, color = "#2c3e50")
       ),
       if (show_hybrid) nav_panel(
         "Hybrid",
+        value = "paga_hybrid_tab",
         withSpinner(DTOutput("table_paga_hybrid"), type = 6, color = "#2c3e50")
       )
     ),
@@ -1583,43 +1701,6 @@ ui <- function(data_list, metric_spec) {
       div(
         style = "height: calc(100vh - 150px); overflow-y: auto; padding: 10px;",
         # (Instructions removed as requested)
-
-        # Table Viewer - browse core dashboard tables with global filters applied
-        card(
-          card_header("Table Viewer (Global Filters Applied)"),
-          card_body(
-            fluidRow(
-              column(
-                width = 6,
-                selectInput(
-                  "example_table_select",
-                  "Browse Table",
-                  choices = c(
-                    "time1 (Punch Detail)" = "time1",
-                    "pay1 (Pay Detail)" = "pay1",
-                    "shift_data1 (Shift Detail)" = "shift_data1",
-                    "pp_data1 (Period-Level)" = "pp_data1",
-                    "ee_data1 (Employee-Level)" = "ee_data1"
-                  ),
-                  selected = "time1"
-                )
-              ),
-              column(
-                width = 3,
-                checkboxInput("example_table_use_period", "Limit to selected employee-period", value = TRUE)
-              ),
-              column(
-                width = 3,
-                br(),
-                downloadButton("download_example_viewer", "Download Viewed Table", class = "btn-sm")
-              )
-            ),
-            div(style = "overflow-x: auto; width: 100%;",
-                withSpinner(DTOutput("table_example_viewer"), type = 6, color = "#2c3e50")
-            )
-          )
-        ),
-
         # Punch Detail - time1
         card(
           card_header("Punch Detail (time1)"),
@@ -1656,6 +1737,175 @@ ui <- function(data_list, metric_spec) {
           card_body(
             div(style = "overflow-x: auto;",
                 withSpinner(DTOutput("table_example_damages"), type = 6, color = "#2c3e50")
+            )
+          )
+        )
+      )
+    ),
+
+    # =======================================================================
+    # DATA DRILLDOWN TAB
+    # =======================================================================
+    nav_panel(
+      title = "Data Drilldown",
+      icon = icon("search"),
+
+      div(
+        style = "height: calc(100vh - 150px); overflow-y: auto; padding: 10px;",
+
+        card(
+          card_header("Drilldown Selector"),
+          card_body(
+            fluidRow(
+              column(
+                width = 3,
+                selectInput(
+                  "drill_table_select",
+                  "Table",
+                  choices = c(
+                    "time1 (Punch Detail)" = "time1",
+                    "pay1 (Pay Detail)" = "pay1",
+                    "shift_data1 (Shift Detail)" = "shift_data1",
+                    "pp_data1 (Period-Level)" = "pp_data1",
+                    "ee_data1 (Employee-Level)" = "ee_data1"
+                  ),
+                  selected = "time1"
+                )
+              ),
+              column(
+                width = 4,
+                dateRangeInput(
+                  "drill_period_range",
+                  "Period End Date Range",
+                  start = NULL,
+                  end = NULL,
+                  separator = "to"
+                )
+              ),
+              column(
+                width = 3,
+                checkboxInput("drill_allow_large", "Allow large load", value = FALSE),
+                actionButton("drill_apply", "Load Drilldown", class = "btn-primary btn-sm")
+              )
+            ),
+            fluidRow(
+              column(
+                width = 9,
+                fluidRow(
+                  column(
+                    width = 4,
+                    selectizeInput(
+                      "drill_field_select_1",
+                      "Field 1",
+                      choices = character(0),
+                      options = list(placeholder = "Optional field filter")
+                    )
+                  ),
+                  column(
+                    width = 8,
+                    selectizeInput(
+                      "drill_value_select_1",
+                      "Value 1",
+                      choices = character(0),
+                      options = list(placeholder = "Pick value for Field 1", maxOptions = 5000)
+                    )
+                  )
+                ),
+                fluidRow(
+                  column(
+                    width = 4,
+                    selectizeInput(
+                      "drill_field_select_2",
+                      "Field 2",
+                      choices = character(0),
+                      options = list(placeholder = "Optional field filter")
+                    )
+                  ),
+                  column(
+                    width = 8,
+                    selectizeInput(
+                      "drill_value_select_2",
+                      "Value 2",
+                      choices = character(0),
+                      options = list(placeholder = "Pick value for Field 2", maxOptions = 5000)
+                    )
+                  )
+                ),
+                fluidRow(
+                  column(
+                    width = 4,
+                    selectizeInput(
+                      "drill_field_select_3",
+                      "Field 3",
+                      choices = character(0),
+                      options = list(placeholder = "Optional field filter")
+                    )
+                  ),
+                  column(
+                    width = 8,
+                    selectizeInput(
+                      "drill_value_select_3",
+                      "Value 3",
+                      choices = character(0),
+                      options = list(placeholder = "Pick value for Field 3", maxOptions = 5000)
+                    )
+                  )
+                )
+              ),
+              column(
+                width = 3,
+                div(
+                  style = "font-size: 13px; line-height: 1.45; margin-top: 6px;",
+                  uiOutput("drill_filter_counts_ui")
+                )
+              )
+            ),
+            uiOutput("drill_status_ui")
+          )
+        ),
+
+        card(
+          card_header("Selected Table View"),
+          card_body(
+            downloadButton("download_drill_viewer", "Download View", class = "btn-sm"),
+            div(style = "overflow-x: auto; width: 100%; margin-top: 8px;",
+                withSpinner(DTOutput("table_drill_viewer"), type = 6, color = "#2c3e50")
+            )
+          )
+        ),
+
+        card(
+          card_header("Punch Detail (time1)"),
+          card_body(
+            div(style = "overflow-x: auto;",
+                withSpinner(DTOutput("table_drill_punches"), type = 6, color = "#2c3e50")
+            )
+          )
+        ),
+
+        card(
+          card_header("Shift Data (shift_data1)"),
+          card_body(
+            div(style = "overflow-x: auto;",
+                withSpinner(DTOutput("table_drill_shift"), type = 6, color = "#2c3e50")
+            )
+          )
+        ),
+
+        card(
+          card_header("Pay Data (pay1)"),
+          card_body(
+            div(style = "overflow-x: auto;",
+                withSpinner(DTOutput("table_drill_pay"), type = 6, color = "#2c3e50")
+            )
+          )
+        ),
+
+        card(
+          card_header("Damages (pp_data1 / ee_data1)"),
+          card_body(
+            div(style = "overflow-x: auto;",
+                withSpinner(DTOutput("table_drill_damages"), type = 6, color = "#2c3e50")
             )
           )
         )
@@ -1745,6 +1995,13 @@ ui <- function(data_list, metric_spec) {
 
 server <- function(data_list, metric_spec, analysis_tables, metric_group_categories) {
   function(input, output, session) {
+
+    cat("[APP] Shiny server initialized. Waiting for browser session...\n")
+    flush.console()
+    session$onFlushed(function() {
+      cat("[APP] Browser session connected. Rendering dashboard...\n")
+      flush.console()
+    }, once = TRUE)
 
     # Cache storage for expensive operations
     cache <- reactiveValues(
@@ -2100,6 +2357,10 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
           h5(style = "color: #2c3e50; margin-bottom: 15px;", icon("cog"), " Additional Options"),
           checkboxInput("pdf_include_extrap", "Include Extrapolation Column", value = TRUE),
           checkboxInput("pdf_include_credits", "Include Credit-Adjusted Metrics", value = TRUE),
+          checkboxInput("pdf_include_less_prems", "Include Less-Premiums-Adjusted Metrics", value = TRUE),
+          checkboxInput("pdf_include_no_waivers", "Include No-Waivers Scenario", value = "no waivers" %in% available_scenarios),
+          checkboxInput("pdf_include_waivers", "Include Waivers Scenario", value = "waivers" %in% available_scenarios),
+          checkboxInput("pdf_include_hybrid", "Include Hybrid Scenario", value = "hybrid" %in% available_scenarios),
 
           hr(),
 
@@ -2118,6 +2379,10 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       updateCheckboxGroupInput(session, "pdf_sections", selected = all_sections)
       updateCheckboxInput(session, "pdf_include_extrap", value = TRUE)
       updateCheckboxInput(session, "pdf_include_credits", value = TRUE)
+      updateCheckboxInput(session, "pdf_include_less_prems", value = TRUE)
+      updateCheckboxInput(session, "pdf_include_no_waivers", value = "no waivers" %in% available_scenarios)
+      updateCheckboxInput(session, "pdf_include_waivers", value = "waivers" %in% available_scenarios)
+      updateCheckboxInput(session, "pdf_include_hybrid", value = "hybrid" %in% available_scenarios)
     })
 
     # PDF Deselect All button
@@ -2125,6 +2390,10 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       updateCheckboxGroupInput(session, "pdf_sections", selected = character(0))
       updateCheckboxInput(session, "pdf_include_extrap", value = FALSE)
       updateCheckboxInput(session, "pdf_include_credits", value = FALSE)
+      updateCheckboxInput(session, "pdf_include_less_prems", value = FALSE)
+      updateCheckboxInput(session, "pdf_include_no_waivers", value = FALSE)
+      updateCheckboxInput(session, "pdf_include_waivers", value = FALSE)
+      updateCheckboxInput(session, "pdf_include_hybrid", value = FALSE)
     })
 
     observeEvent(input$pdf_download_clicked, {
@@ -2135,6 +2404,38 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     observeEvent(input$toggle_extrap_cols, {
       session$sendCustomMessage('toggleExtrapCols', input$toggle_extrap_cols)
     }, ignoreInit = FALSE)
+
+    # Dynamically show/hide scenario subtabs based on sidebar scenario checkboxes
+    observe({
+      no_waivers_on <- isTRUE(input$show_scenario_no_waivers)
+      waivers_on <- isTRUE(input$show_scenario_waivers)
+      hybrid_on <- isTRUE(input$show_scenario_hybrid)
+
+      session$sendCustomMessage('toggleScenarioTabs', list(
+        tabs = list(
+          time_meal_no_waivers_tab = no_waivers_on,
+          time_meal_waivers_tab = waivers_on,
+          time_meal_hybrid_tab = hybrid_on,
+          class_no_waivers_tab = no_waivers_on,
+          class_waivers_tab = waivers_on,
+          class_hybrid_tab = hybrid_on,
+          paga_no_waivers_tab = no_waivers_on,
+          paga_waivers_tab = waivers_on,
+          paga_hybrid_tab = hybrid_on
+        ),
+        fallbacks = list(
+          time_meal_no_waivers_tab = "time_summary_tab",
+          time_meal_waivers_tab = "time_summary_tab",
+          time_meal_hybrid_tab = "time_summary_tab",
+          class_no_waivers_tab = "class_overview_tab",
+          class_waivers_tab = "class_overview_tab",
+          class_hybrid_tab = "class_overview_tab",
+          paga_no_waivers_tab = "paga_overview_tab",
+          paga_waivers_tab = "paga_overview_tab",
+          paga_hybrid_tab = "paga_overview_tab"
+        )
+      ))
+    })
 
     # Filtered data with precomputed metadata
     filtered_data <- reactive({
@@ -2589,13 +2890,36 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       results
     })
 
-    # Credit-filtered pipeline results for display
-    # When show_credits = FALSE, hide any rows flagged as credit rows.
+    # Credit/scenario-filtered pipeline results for display
+    selected_display_scenarios <- reactive({
+      scenarios <- character(0)
+      if (isTRUE(input$show_scenario_no_waivers)) scenarios <- c(scenarios, "no waivers")
+      if (isTRUE(input$show_scenario_waivers)) scenarios <- c(scenarios, "waivers")
+      if (isTRUE(input$show_scenario_hybrid)) scenarios <- c(scenarios, "hybrid")
+      intersect(unique(scenarios), available_scenarios)
+    })
+
     display_results <- reactive({
       results <- pipeline_results()
+
+      if ("scenario" %in% names(results)) {
+        selected_scenarios <- selected_display_scenarios()
+        sc <- normalize_scenario_value(results$scenario)
+
+        if (length(selected_scenarios) > 0) {
+          results <- results[sc %in% c(selected_scenarios, "all") | is.na(results$scenario) | is.na(sc)]
+        } else {
+          results <- results[is.na(results$scenario) | is.na(sc) | sc == "all"]
+        }
+      }
+
       if (!isTRUE(input$show_credits)) {
         results <- results[!get_credit_row_mask(results, metric_spec)]
       }
+      if (!isTRUE(input$show_less_prems)) {
+        results <- results[!get_less_prems_row_mask(results, metric_spec)]
+      }
+
       results
     })
 
@@ -3976,57 +4300,491 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       )
     })
 
-    # Table Viewer Data Source (globally filtered; optional employee-period scope)
-    example_viewer_data <- reactive({
-      req(input$example_table_select)
-      data <- filtered_data()
+    # ===========================================================================
+    # Data Drilldown Outputs
+    # ===========================================================================
+    DRILLDOWN_WARN_ROWS <- 100000
+    DRILLDOWN_MAX_VALUE_CHOICES <- 5000
+    DRILLDOWN_VALUE_FULL_SCAN_MAX <- 300000
+    DRILLDOWN_VALUE_SCAN_MAX <- 200000
 
-      dt <- switch(
-        input$example_table_select,
+    drill_filter_ids <- 1:3
+    drill_field_ids <- paste0("drill_field_select_", drill_filter_ids)
+    drill_value_ids <- paste0("drill_value_select_", drill_filter_ids)
+
+    drill_value_choice_notes <- reactiveVal(setNames(rep("", length(drill_filter_ids)), drill_field_ids))
+    drill_value_choice_cache <- reactiveValues(values = list())
+
+    as_date_vector <- function(x) {
+      if (inherits(x, "Date")) return(x)
+      if (inherits(x, "POSIXt")) return(as.Date(x))
+      suppressWarnings(as.Date(x))
+    }
+
+    normalize_filter_values <- function(x) {
+      if (inherits(x, "POSIXt")) {
+        format(x, "%Y-%m-%d %H:%M:%S")
+      } else if (inherits(x, "Date")) {
+        format(x, "%Y-%m-%d")
+      } else {
+        as.character(x)
+      }
+    }
+
+    get_picker_values <- function(dt, table_name, field, idx) {
+      cache_key <- paste(table_name, field, nrow(dt), sep = "||")
+      cached <- drill_value_choice_cache$values[[cache_key]]
+      if (!is.null(cached)) return(cached)
+
+      vals_raw <- dt[[field]]
+      vals_raw <- vals_raw[!is.na(vals_raw)]
+      non_missing_n <- length(vals_raw)
+
+      sampled <- FALSE
+      if (non_missing_n > DRILLDOWN_VALUE_FULL_SCAN_MAX) {
+        vals_raw <- vals_raw[seq_len(min(non_missing_n, DRILLDOWN_VALUE_SCAN_MAX))]
+        sampled <- TRUE
+      }
+
+      vals_chr <- normalize_filter_values(vals_raw)
+      vals_chr <- vals_chr[nzchar(vals_chr)]
+      vals_chr <- unique(vals_chr)
+
+      limited <- FALSE
+      if (length(vals_chr) > DRILLDOWN_MAX_VALUE_CHOICES) {
+        vals_chr <- vals_chr[seq_len(DRILLDOWN_MAX_VALUE_CHOICES)]
+        limited <- TRUE
+      }
+
+      note_parts <- character(0)
+      if (sampled) {
+        note_parts <- c(note_parts, sprintf(
+          "Field %s: scanned first %s of %s non-missing rows for speed",
+          idx,
+          format(min(non_missing_n, DRILLDOWN_VALUE_SCAN_MAX), big.mark = ","),
+          format(non_missing_n, big.mark = ",")
+        ))
+      }
+      if (limited) {
+        note_parts <- c(note_parts, sprintf(
+          "Field %s: showing first %s unique values",
+          idx,
+          format(DRILLDOWN_MAX_VALUE_CHOICES, big.mark = ",")
+        ))
+      }
+
+      result <- list(values = vals_chr, note = paste(note_parts, collapse = "; "))
+      drill_value_choice_cache$values[[cache_key]] <- result
+      result
+    }
+
+    period_col_for_table <- function(dt, table_name) {
+      if (is.null(dt) || ncol(dt) == 0) return(NULL)
+
+      if (identical(table_name, "pay1")) {
+        if ("Pay_Period_End" %in% names(dt)) return("Pay_Period_End")
+        return(NULL)
+      }
+
+      if ("Period_End" %in% names(dt)) return("Period_End")
+      NULL
+    }
+
+    apply_drill_filters_to_dt <- function(dt, table_name, filter_specs, date_start, date_end) {
+      if (is.null(dt) || nrow(dt) == 0) return(data.table())
+      out <- copy(dt)
+
+      period_col <- period_col_for_table(out, table_name)
+      if (!is.null(period_col) && (!is.null(date_start) || !is.null(date_end))) {
+        d <- as_date_vector(out[[period_col]])
+        keep <- rep(TRUE, length(d))
+        if (!is.null(date_start)) keep <- keep & !is.na(d) & d >= date_start
+        if (!is.null(date_end)) keep <- keep & !is.na(d) & d <= date_end
+        out <- out[keep]
+      }
+
+      if (length(filter_specs) > 0 && nrow(out) > 0) {
+        for (spec in filter_specs) {
+          if (!is.null(spec$field) && nzchar(spec$field) && spec$field %in% names(out) && !is.null(spec$value) && nzchar(spec$value)) {
+            vals_chr <- normalize_filter_values(out[[spec$field]])
+            out <- out[vals_chr == spec$value]
+          }
+        }
+      }
+
+      out
+    }
+
+    drill_source_table <- reactive({
+      data <- filtered_data()
+      switch(
+        input$drill_table_select,
         "time1" = data$time1,
         "pay1" = data$pay1,
         "shift_data1" = data$shift_data1,
         "pp_data1" = data$pp_data1,
         "ee_data1" = data$ee_data1,
-        NULL
+        data.table()
       )
+    })
 
-      if (is.null(dt) || nrow(dt) == 0) return(data.table())
-      view_dt <- copy(dt)
+    observeEvent(filtered_data(), {
+      drill_value_choice_cache$values <- list()
+    }, ignoreInit = TRUE)
 
-      if (isTRUE(input$example_table_use_period)) {
-        if (is.null(input$example_period_select) || !nzchar(input$example_period_select)) {
-          return(data.table())
-        }
-        selected_period <- as.character(input$example_period_select)
+    observeEvent(input$drill_table_select, {
+      drill_value_choice_cache$values <- list()
+      dt <- drill_source_table()
+      period_col <- period_col_for_table(dt, input$drill_table_select)
 
-        if (input$example_table_select %in% c("time1", "shift_data1", "pp_data1") && "ID_Period_End" %in% names(view_dt)) {
-          view_dt <- view_dt[as.character(ID_Period_End) == selected_period]
-        } else if (input$example_table_select == "pay1" && "Pay_ID_Period_End" %in% names(view_dt)) {
-          view_dt <- view_dt[as.character(Pay_ID_Period_End) == selected_period]
-        } else if (input$example_table_select == "ee_data1" && "ID" %in% names(view_dt)) {
-          selected_id <- sub("_.*", "", selected_period)
-          view_dt <- view_dt[as.character(ID) == selected_id]
+      if (!is.null(period_col) && !is.null(dt) && nrow(dt) > 0) {
+        d <- as_date_vector(dt[[period_col]])
+        d <- d[!is.na(d)]
+        if (length(d) > 0) {
+          updateDateRangeInput(
+            session, "drill_period_range",
+            start = min(d),
+            end = max(d),
+            min = min(d),
+            max = max(d)
+          )
+          return()
         }
       }
 
-      view_dt
+      updateDateRangeInput(session, "drill_period_range", start = NULL, end = NULL)
+    }, ignoreInit = FALSE)
+
+    observe({
+      dt <- drill_source_table()
+      field_choices <- if (!is.null(dt) && ncol(dt) > 0) names(dt) else character(0)
+      choices_with_blank <- c("", field_choices)
+
+      for (i in drill_filter_ids) {
+        field_id <- drill_field_ids[i]
+        value_id <- drill_value_ids[i]
+        current_field <- isolate(input[[field_id]])
+        selected_field <- if (!is.null(current_field) && current_field %in% field_choices) current_field else ""
+
+        updateSelectizeInput(
+          session, field_id,
+          choices = choices_with_blank,
+          selected = selected_field,
+          server = TRUE
+        )
+
+        if (!nzchar(selected_field)) {
+          updateSelectizeInput(session, value_id, choices = "", selected = "", server = TRUE)
+        }
+      }
     })
 
-    output$table_example_viewer <- renderDT({
-      dt <- example_viewer_data()
+    for (i in drill_filter_ids) {
+      local({
+        idx <- i
+        field_id <- drill_field_ids[idx]
+        value_id <- drill_value_ids[idx]
 
-      if (is.null(dt) || nrow(dt) == 0) {
-        msg <- if (isTRUE(input$example_table_use_period) && (is.null(input$example_period_select) || !nzchar(input$example_period_select))) {
-          "Select an employee-period or uncheck 'Limit to selected employee-period'."
-        } else {
-          "No rows available for the current filters/selection"
+        observe({
+          dt <- drill_source_table()
+          field <- input[[field_id]]
+          notes <- drill_value_choice_notes()
+
+          if (is.null(dt) || nrow(dt) == 0 || is.null(field) || !nzchar(field) || !(field %in% names(dt))) {
+            notes[[field_id]] <- ""
+            drill_value_choice_notes(notes)
+            updateSelectizeInput(session, value_id, choices = "", selected = "", server = TRUE)
+            return()
+          }
+
+          picker_vals <- get_picker_values(dt, input$drill_table_select, field, idx)
+          val_chr <- picker_vals$values
+
+          notes[[field_id]] <- picker_vals$note
+          drill_value_choice_notes(notes)
+
+          current_value <- isolate(input[[value_id]])
+          selected_value <- if (!is.null(current_value) && current_value %in% val_chr) current_value else ""
+
+          updateSelectizeInput(
+            session, value_id,
+            choices = c("", val_chr),
+            selected = selected_value,
+            server = TRUE
+          )
+        })
+      })
+    }
+
+    drill_filter_specs <- reactive({
+      specs <- lapply(drill_filter_ids, function(i) {
+        list(
+          field = if (!is.null(input[[drill_field_ids[i]]])) trimws(as.character(input[[drill_field_ids[i]]])) else "",
+          value = if (!is.null(input[[drill_value_ids[i]]])) trimws(as.character(input[[drill_value_ids[i]]])) else ""
+        )
+      })
+      Filter(function(s) nzchar(s$field) && nzchar(s$value), specs)
+    })
+
+    drill_date_start <- reactive({
+      rng <- input$drill_period_range
+      if (is.null(rng) || length(rng) < 1 || is.na(rng[1])) return(NULL)
+      as.Date(rng[1])
+    })
+
+    drill_date_end <- reactive({
+      rng <- input$drill_period_range
+      if (is.null(rng) || length(rng) < 2 || is.na(rng[2])) return(NULL)
+      as.Date(rng[2])
+    })
+
+    empty_drill_counts <- function() {
+      list(
+        time1 = NA_integer_,
+        pay1 = NA_integer_,
+        shift_data1 = NA_integer_,
+        pp_data1 = NA_integer_,
+        ee_data1 = NA_integer_
+      )
+    }
+
+    safe_nrow <- function(dt) {
+      if (is.null(dt)) return(NA_integer_)
+      as.integer(nrow(dt))
+    }
+
+    drill_context <- reactiveVal(list(
+      state = "idle",
+      message = "No drilldown loaded yet. Select table/date/filters, then click 'Load Drilldown'.",
+      counts = empty_drill_counts()
+    ))
+
+    output$drill_filter_counts_ui <- renderUI({
+      ctx <- drill_context()
+      counts <- ctx$counts
+      if (is.null(counts)) counts <- empty_drill_counts()
+
+      notes <- unlist(drill_value_choice_notes(), use.names = FALSE)
+      notes <- notes[nzchar(notes)]
+
+      tags$div(
+        style = "font-size: 13px; line-height: 1.4; margin-top: 4px;",
+        tags$div(style = "font-weight: 700; margin-bottom: 6px;", "Filtered Row Counts"),
+        tags$ul(
+          style = "margin: 0 0 8px 16px; padding: 0;",
+          lapply(names(counts), function(nm) {
+            val <- counts[[nm]]
+            tags$li(
+              tags$span(style = "font-weight: 600;", paste0(nm, ": ")),
+              tags$span(style = "font-family: monospace;", if (is.na(val)) "N/A" else format(val, big.mark = ","))
+            )
+          })
+        ),
+        if (length(notes) > 0) {
+          tagList(
+            tags$div(style = "margin-top: 8px; font-style: italic; font-size: 12px;", "Value Picker Notes"),
+            tags$ul(
+              style = "margin: 0 0 0 16px; padding: 0; font-size: 12px;",
+              lapply(notes, tags$li)
+            )
+          )
         }
-        return(datatable(data.table(Message = msg), rownames = FALSE, options = list(dom = 't')))
+      )
+    })
+
+    observeEvent(list(
+      input$drill_table_select,
+      input$drill_period_range,
+      input$drill_field_select_1, input$drill_value_select_1,
+      input$drill_field_select_2, input$drill_value_select_2,
+      input$drill_field_select_3, input$drill_value_select_3
+    ), {
+      if (isTRUE(input$drill_apply > 0)) {
+        prev_ctx <- drill_context()
+        drill_context(list(
+          state = "idle",
+          message = "Selection changed. Click 'Load Drilldown' to refresh.",
+          counts = if (!is.null(prev_ctx$counts)) prev_ctx$counts else empty_drill_counts()
+        ))
+      }
+    }, ignoreInit = TRUE)
+
+    observeEvent(input$drill_apply, {
+      prev_ctx <- drill_context()
+      drill_context(list(
+        state = "loading",
+        message = "Loading drilldown... please wait.",
+        counts = if (!is.null(prev_ctx$counts)) prev_ctx$counts else empty_drill_counts()
+      ))
+
+      withProgress(message = "Loading drilldown...", value = 0, {
+        incProgress(0.08, detail = "Reading selected table")
+
+        data <- filtered_data()
+        table_name <- input$drill_table_select
+        dt <- drill_source_table()
+        specs <- drill_filter_specs()
+        date_start <- drill_date_start()
+        date_end <- drill_date_end()
+
+        if (is.null(dt) || nrow(dt) == 0) {
+          drill_context(list(
+            state = "empty",
+            message = "Selected table has no rows under current global filters.",
+            counts = empty_drill_counts()
+          ))
+          return()
+        }
+
+        incProgress(0.25, detail = "Applying table/date filters")
+        selected_rows <- apply_drill_filters_to_dt(dt, table_name, specs, date_start, date_end)
+
+        if (is.null(selected_rows) || nrow(selected_rows) == 0) {
+          drill_context(list(
+            state = "empty",
+            message = "No rows matched selected filters.",
+            counts = empty_drill_counts()
+          ))
+          return()
+        }
+
+        if (nrow(selected_rows) > DRILLDOWN_WARN_ROWS && !isTRUE(input$drill_allow_large)) {
+          drill_context(list(
+            state = "large",
+            message = paste0(
+              "Matched ", format(nrow(selected_rows), big.mark = ","),
+              " rows. Check 'Allow large load' and click 'Load Drilldown' again to continue."
+            ),
+            matched_rows = nrow(selected_rows),
+            counts = empty_drill_counts()
+          ))
+          return()
+        }
+
+        incProgress(0.4, detail = "Resolving employee/period keys")
+        id_period_keys <- character(0)
+        pay_period_keys <- character(0)
+        id_keys <- character(0)
+
+        if ("ID_Period_End" %in% names(selected_rows)) id_period_keys <- unique(as.character(selected_rows$ID_Period_End))
+        if ("Period_End" %in% names(selected_rows)) id_period_keys <- unique(c(id_period_keys, as.character(selected_rows$Period_End)))
+        if ("Pay_ID_Period_End" %in% names(selected_rows)) pay_period_keys <- unique(as.character(selected_rows$Pay_ID_Period_End))
+        if ("Pay_Period_End" %in% names(selected_rows)) pay_period_keys <- unique(c(pay_period_keys, as.character(selected_rows$Pay_Period_End)))
+        if ("ID" %in% names(selected_rows)) id_keys <- unique(c(id_keys, as.character(selected_rows$ID)))
+        if ("Pay_ID" %in% names(selected_rows)) id_keys <- unique(c(id_keys, as.character(selected_rows$Pay_ID)))
+
+        if (length(id_keys) > 0) {
+          if (!is.null(data$shift_data1) && all(c("ID", "ID_Period_End") %in% names(data$shift_data1))) {
+            id_period_keys <- unique(c(id_period_keys, as.character(data$shift_data1[as.character(ID) %in% id_keys, ID_Period_End])))
+          }
+          if (!is.null(data$pay1) && all(c("Pay_ID", "Pay_ID_Period_End") %in% names(data$pay1))) {
+            pay_period_keys <- unique(c(pay_period_keys, as.character(data$pay1[as.character(Pay_ID) %in% id_keys, Pay_ID_Period_End])))
+          }
+        }
+
+        if (length(id_period_keys) > 0 && length(pay_period_keys) == 0) pay_period_keys <- id_period_keys
+        if (length(pay_period_keys) > 0 && length(id_period_keys) == 0) id_period_keys <- pay_period_keys
+
+        filter_context_table <- function(dt_in, nm) {
+          if (is.null(dt_in) || nrow(dt_in) == 0) return(data.table())
+          dt_out <- copy(dt_in)
+
+          if (identical(nm, "pay1") && "Pay_ID_Period_End" %in% names(dt_out) && length(pay_period_keys) > 0) {
+            dt_out <- dt_out[as.character(Pay_ID_Period_End) %in% pay_period_keys]
+          } else if ("ID_Period_End" %in% names(dt_out) && length(id_period_keys) > 0) {
+            dt_out <- dt_out[as.character(ID_Period_End) %in% id_period_keys]
+          } else if ("Period_End" %in% names(dt_out) && length(id_period_keys) > 0) {
+            dt_out <- dt_out[as.character(Period_End) %in% id_period_keys]
+          } else if ("ID" %in% names(dt_out) && length(id_keys) > 0) {
+            dt_out <- dt_out[as.character(ID) %in% id_keys]
+          } else if ("Pay_ID" %in% names(dt_out) && length(id_keys) > 0) {
+            dt_out <- dt_out[as.character(Pay_ID) %in% id_keys]
+          } else {
+            dt_out <- data.table()
+          }
+
+          apply_drill_filters_to_dt(dt_out, nm, filter_specs = list(), date_start = date_start, date_end = date_end)
+        }
+
+        incProgress(0.55, detail = "Building time context")
+        drill_time <- if (identical(table_name, "time1")) selected_rows else filter_context_table(data$time1, "time1")
+
+        incProgress(0.68, detail = "Building shift context")
+        drill_shift <- if (identical(table_name, "shift_data1")) selected_rows else filter_context_table(data$shift_data1, "shift_data1")
+
+        incProgress(0.8, detail = "Building pay context")
+        drill_pay <- if (identical(table_name, "pay1")) selected_rows else filter_context_table(data$pay1, "pay1")
+
+        incProgress(0.9, detail = "Building damages context")
+        drill_pp <- if (identical(table_name, "pp_data1")) selected_rows else filter_context_table(data$pp_data1, "pp_data1")
+        drill_ee <- if (identical(table_name, "ee_data1")) selected_rows else filter_context_table(data$ee_data1, "ee_data1")
+        drill_damage <- if (!is.null(drill_pp) && nrow(drill_pp) > 0) drill_pp else drill_ee
+
+        counts <- list(
+          time1 = safe_nrow(drill_time),
+          pay1 = safe_nrow(drill_pay),
+          shift_data1 = safe_nrow(drill_shift),
+          pp_data1 = safe_nrow(drill_pp),
+          ee_data1 = safe_nrow(drill_ee)
+        )
+
+        incProgress(1, detail = "Finalizing")
+        drill_context(list(
+          state = "ready",
+          table_name = table_name,
+          matched_rows = nrow(selected_rows),
+          selected_rows = selected_rows,
+          time_rows = drill_time,
+          shift_rows = drill_shift,
+          pay_rows = drill_pay,
+          damage_rows = drill_damage,
+          pp_rows = drill_pp,
+          ee_rows = drill_ee,
+          counts = counts
+        ))
+      })
+    }, ignoreInit = TRUE)
+
+    output$drill_status_ui <- renderUI({
+      ctx <- drill_context()
+
+      msg_color <- switch(
+        ctx$state,
+        "loading" = "#1f4e79",
+        "large" = "#8a6d3b",
+        "empty" = "#8a6d3b",
+        "idle" = "#8a6d3b",
+        "#8a6d3b"
+      )
+
+      msg_line <- if (!is.null(ctx$message) && nzchar(ctx$message)) {
+        tags$p(style = paste0("margin: 6px 0 0 0; color: ", msg_color, ";"), ctx$message)
+      } else {
+        NULL
+      }
+
+      info_line <- if (!is.null(ctx$matched_rows) && isTRUE(ctx$matched_rows > 0) && identical(ctx$state, "ready")) {
+        tags$p(style = "margin: 6px 0 0 0; color: #2c3e50;",
+               paste0("Loaded ", format(ctx$matched_rows, big.mark = ","), " matching rows from selected table."))
+      } else {
+        NULL
+      }
+
+      tagList(msg_line, info_line)
+    })
+
+    drill_message_table <- function(msg) {
+      datatable(data.table(Message = msg), rownames = FALSE, options = list(dom = 't'))
+    }
+
+    output$table_drill_viewer <- renderDT({
+      ctx <- drill_context()
+      if (!identical(ctx$state, "ready") || is.null(ctx$selected_rows) || nrow(ctx$selected_rows) == 0) {
+        return(drill_message_table(if (!is.null(ctx$message)) ctx$message else "No drilldown loaded."))
       }
 
       datatable(
-        dt,
+        ctx$selected_rows,
         rownames = FALSE,
         filter = "top",
         extensions = c("Buttons"),
@@ -4042,30 +4800,30 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       )
     }, server = TRUE)
 
-    output$download_example_viewer <- downloadHandler(
+    output$download_drill_viewer <- downloadHandler(
       filename = function() {
-        tbl <- if (!is.null(input$example_table_select) && nzchar(input$example_table_select)) input$example_table_select else "table"
-        paste0("example_view_", tbl, "_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv")
+        tbl <- if (!is.null(input$drill_table_select) && nzchar(input$drill_table_select)) input$drill_table_select else "table"
+        paste0("drilldown_view_", tbl, "_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv")
       },
       content = function(file) {
-        dt <- example_viewer_data()
+        ctx <- drill_context()
+        if (!identical(ctx$state, "ready") || is.null(ctx$selected_rows) || nrow(ctx$selected_rows) == 0) {
+          fwrite(data.table(Message = "No rows available for download"), file)
+          return()
+        }
 
-        # Respect current DataTable filtering/sorting state when available
-        rows_all <- input$table_example_viewer_rows_all
+        dt <- copy(ctx$selected_rows)
+        rows_all <- input$table_drill_viewer_rows_all
         if (!is.null(rows_all) && nrow(dt) > 0) {
           if (length(rows_all) == 0) {
             dt <- dt[0]
           } else {
             valid_rows <- rows_all[rows_all >= 1 & rows_all <= nrow(dt)]
-            if (length(valid_rows) > 0) {
-              dt <- dt[valid_rows]
-            } else {
-              dt <- dt[0]
-            }
+            dt <- if (length(valid_rows) > 0) dt[valid_rows] else dt[0]
           }
         }
 
-        if (is.null(dt) || nrow(dt) == 0) {
+        if (nrow(dt) == 0) {
           fwrite(data.table(Message = "No rows available for download"), file)
         } else {
           fwrite(dt, file)
@@ -4073,6 +4831,115 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       }
     )
 
+    output$table_drill_punches <- renderDT({
+      ctx <- drill_context()
+      dt <- ctx$time_rows
+      if (!identical(ctx$state, "ready") || is.null(dt) || nrow(dt) == 0) {
+        return(drill_message_table(if (!is.null(ctx$message)) ctx$message else "No punch rows available for drilldown."))
+      }
+
+      desired_cols <- c("ID", "Date", "Source", "Pay_Source", "punch_time", "r_punch_time", "punch_type", "hrs_wkd", "mp_hrs", "shift_hrs", "r_shift_hrs", "Hours")
+      available_cols <- desired_cols[desired_cols %in% names(dt)]
+      if (length(available_cols) == 0) return(drill_message_table("No punch detail columns available."))
+
+      datatable(
+        dt[, ..available_cols],
+        rownames = FALSE,
+        options = list(paging = FALSE, scrollX = TRUE, scrollY = "300px", dom = 't'),
+        class = 'cell-border stripe hover',
+        style = 'bootstrap4'
+      )
+    })
+
+    output$table_drill_shift <- renderDT({
+      ctx <- drill_context()
+      dt <- ctx$shift_rows
+      if (!identical(ctx$state, "ready") || is.null(dt) || nrow(dt) == 0) {
+        return(drill_message_table(if (!is.null(ctx$message)) ctx$message else "No shift rows available for drilldown."))
+      }
+
+      base_cols <- c("ID", "Date", "shift_hrs", "Hours")
+      mp_cols <- grep("^(mp1|mp2|hrs_to_mp|MissMP|LateMP|ShortMP)", names(dt), value = TRUE)
+      mpv_cols <- grep("mpv", names(dt), value = TRUE, ignore.case = TRUE)
+      rpv_cols <- grep("rpv", names(dt), value = TRUE, ignore.case = TRUE)
+      pp_cols <- grep("^pp_", names(dt), value = TRUE)
+      pp_cols <- pp_cols[!grepl("^prior_pp_", pp_cols)]
+      available_cols <- unique(c(base_cols, mp_cols, mpv_cols, rpv_cols, pp_cols))
+      available_cols <- available_cols[available_cols %in% names(dt)]
+      if (length(available_cols) == 0) return(drill_message_table("No shift detail columns available."))
+
+      datatable(
+        dt[, ..available_cols],
+        rownames = FALSE,
+        options = list(
+          paging = FALSE,
+          scrollX = TRUE,
+          scrollY = "400px",
+          dom = 't',
+          columnDefs = list(list(width = '100px', targets = "_all"))
+        ),
+        class = 'cell-border stripe hover',
+        style = 'bootstrap4'
+      )
+    })
+
+    output$table_drill_pay <- renderDT({
+      ctx <- drill_context()
+      dt <- ctx$pay_rows
+      if (!identical(ctx$state, "ready") || is.null(dt) || nrow(dt) == 0) {
+        return(drill_message_table(if (!is.null(ctx$message)) ctx$message else "No pay rows available for drilldown."))
+      }
+
+      base_cols <- c("Pay_ID", "Pay_Period_End", "Pay_Date", "Source", "Pay_Source", "Pay_Code", "Pay_Hours", "Pay_Rate", "Pay_Amount", "Calc_Rate", "Base_Rate", "RROP")
+      rate_type_cols <- grep("^(Rate_Type|rate_type|Rate_Gp)$", names(dt), value = TRUE)
+      pp_cols <- grep("^pp_", names(dt), value = TRUE)
+      pp_cols <- pp_cols[!grepl("^prior_pp_", pp_cols)]
+      available_cols <- unique(c(base_cols, rate_type_cols, pp_cols))
+      available_cols <- available_cols[available_cols %in% names(dt)]
+      if (length(available_cols) == 0) return(drill_message_table("No pay detail columns available."))
+
+      datatable(
+        dt[, ..available_cols],
+        rownames = FALSE,
+        options = list(
+          paging = FALSE,
+          scrollX = TRUE,
+          scrollY = "400px",
+          dom = 't',
+          columnDefs = list(list(width = '100px', targets = "_all"))
+        ),
+        class = 'cell-border stripe hover',
+        style = 'bootstrap4'
+      )
+    })
+
+    output$table_drill_damages <- renderDT({
+      ctx <- drill_context()
+      dt <- ctx$damage_rows
+      if (!identical(ctx$state, "ready") || is.null(dt) || nrow(dt) == 0) {
+        return(drill_message_table(if (!is.null(ctx$message)) ctx$message else "No damages rows available for drilldown."))
+      }
+
+      all_cols <- names(dt)
+      damage_cols <- all_cols[grepl("dmg|Dmg|penalty|Penalty|PAGA|paga|violation|Violation", all_cols, ignore.case = TRUE)]
+      id_cols <- c("ID", "Name", "Period_End", "ID_Period_End", "Pay_ID_Period_End")
+      final_cols <- unique(c(id_cols[id_cols %in% all_cols], damage_cols))
+      if (length(final_cols) == 0) return(drill_message_table("No damage columns available."))
+
+      datatable(
+        dt[, ..final_cols],
+        rownames = FALSE,
+        options = list(
+          paging = FALSE,
+          scrollX = TRUE,
+          scrollY = "400px",
+          dom = 't',
+          columnDefs = list(list(width = '120px', targets = "_all"))
+        ),
+        class = 'cell-border stripe hover',
+        style = 'bootstrap4'
+      )
+    })
     # ===========================================================================
     # ANALYSIS TABLES (FROM FILES)
     # ===========================================================================
@@ -4318,23 +5185,21 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
       content = function(file) {
         message("PDF export starting via generate_pdf.R...")
 
-        # Source generate_pdf.R from configured master path
-        if (!exists("generate_report")) {
-          pdf_script <- if (exists("PDF_SCRIPT")) {
-            PDF_SCRIPT
-          } else if (exists("MASTER_SCRIPTS_DIR")) {
-            file.path(MASTER_SCRIPTS_DIR, "generate_pdf.R")
-          } else {
-            "D:/Shared/Master_Scripts/generate_pdf.R"
-          }
-
-          if (!file.exists(pdf_script)) {
-            stop("Cannot find generate_pdf.R at configured path: ", pdf_script)
-          }
-
-          message("Loading generate_pdf.R from: ", pdf_script)
-          source(pdf_script, local = FALSE)
+        # Source generate_pdf.R from configured master path (always source to avoid stale functions)
+        pdf_script <- if (exists("PDF_SCRIPT")) {
+          PDF_SCRIPT
+        } else if (exists("MASTER_SCRIPTS_DIR")) {
+          file.path(MASTER_SCRIPTS_DIR, "generate_pdf.R")
+        } else {
+          "D:/Shared/Master_Scripts/generate_pdf.R"
         }
+
+        if (!file.exists(pdf_script)) {
+          stop("Cannot find generate_pdf.R at configured path: ", pdf_script)
+        }
+
+        message("Loading generate_pdf.R from: ", pdf_script)
+        source(pdf_script, local = FALSE)
 
 
         # Get data needed by generate_report() - it checks environment variables
@@ -4342,12 +5207,23 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         shift_data1 <- data$shift_data1  # Make available in environment
         pay1 <- data$pay1               # Make available in environment
         class1 <- data$class1           # Make available in environment
-        results <- pipeline_results()    # Make available as "results"
+        results_raw <- pipeline_results()
         message("Data loaded for generate_report()")
 
         # Get selected sections from checkbox group
         selected <- input$pdf_sections
 
+        # Respect scenario toggles at subsection level as well
+        if (!isTRUE(input$pdf_include_no_waivers)) {
+          selected <- selected[!grepl("no_waivers", selected)]
+        }
+        if (!isTRUE(input$pdf_include_waivers)) {
+          waiver_only <- grepl("waivers", selected) & !grepl("no_waivers", selected)
+          selected <- selected[!waiver_only]
+        }
+        if (!isTRUE(input$pdf_include_hybrid)) {
+          selected <- selected[!grepl("hybrid", selected)]
+        }
         # Map checkbox selections to high-level section categories
         pdf_sections <- c()
 
@@ -4377,19 +5253,53 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
           pdf_sections <- c(pdf_sections, "analysis")
         }
 
-        # Build scenario vectors based on checkbox selections and available case scenarios
-        class_scenarios <- character(0)
-        if (any(grepl("no_waivers", selected))) class_scenarios <- c(class_scenarios, "no waivers")
-        if (any(grepl("waivers", selected) & !grepl("no_waivers", selected))) class_scenarios <- c(class_scenarios, "waivers")
-        if (any(grepl("hybrid", selected))) class_scenarios <- c(class_scenarios, "hybrid")
-        class_scenarios <- intersect(class_scenarios, available_scenarios)
+        # Build scenario vectors from modal scenario checkboxes
+        pdf_enabled_scenarios <- character(0)
+        if (isTRUE(input$pdf_include_no_waivers)) pdf_enabled_scenarios <- c(pdf_enabled_scenarios, "no waivers")
+        if (isTRUE(input$pdf_include_waivers)) pdf_enabled_scenarios <- c(pdf_enabled_scenarios, "waivers")
+        if (isTRUE(input$pdf_include_hybrid)) pdf_enabled_scenarios <- c(pdf_enabled_scenarios, "hybrid")
+        pdf_enabled_scenarios <- intersect(unique(pdf_enabled_scenarios), available_scenarios)
 
-        if (length(class_scenarios) == 0) {
-          class_scenarios <- available_scenarios
+        # Keep subsection intent (if selected), but constrain to enabled scenario toggles.
+        section_scenarios <- character(0)
+        if (any(grepl("no_waivers", selected))) section_scenarios <- c(section_scenarios, "no waivers")
+        if (any(grepl("waivers", selected) & !grepl("no_waivers", selected))) section_scenarios <- c(section_scenarios, "waivers")
+        if (any(grepl("hybrid", selected))) section_scenarios <- c(section_scenarios, "hybrid")
+        section_scenarios <- intersect(unique(section_scenarios), available_scenarios)
+
+        if (length(section_scenarios) == 0) {
+          section_scenarios <- available_scenarios
         }
 
-        paga_scenarios <- available_scenarios
+        class_scenarios <- intersect(section_scenarios, pdf_enabled_scenarios)
+        paga_scenarios <- pdf_enabled_scenarios
 
+        # Pre-filter pipeline results for PDF so export always matches app-style
+        # scenario and credit/less-premiums visibility, regardless of PDF script version.
+        results_pdf <- copy(results_raw)
+
+        if ("scenario" %in% names(results_pdf)) {
+          sc <- normalize_scenario_value(results_pdf$scenario)
+          if (length(pdf_enabled_scenarios) > 0) {
+            results_pdf <- results_pdf[
+              sc %in% c(pdf_enabled_scenarios, "all") | is.na(results_pdf$scenario) | is.na(sc)
+            ]
+          } else {
+            results_pdf <- results_pdf[
+              is.na(results_pdf$scenario) | is.na(sc) | sc == "all"
+            ]
+          }
+        }
+
+        if (!isTRUE(input$pdf_include_credits)) {
+          results_pdf <- results_pdf[!get_credit_row_mask(results_pdf, metric_spec)]
+        }
+        if (!isTRUE(input$pdf_include_less_prems)) {
+          results_pdf <- results_pdf[!get_less_prems_row_mask(results_pdf, metric_spec)]
+        }
+
+        # Make filtered results available to generate_report() via environment
+        results <- results_pdf
         # Determine include flags from selections
         include_data_comparison <- "data_comparison" %in% selected
         include_appendix <- "appendix" %in% selected
@@ -4397,24 +5307,38 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
 
         message("PDF sections selected: ", paste(pdf_sections, collapse = ", "))
         message("Class scenarios: ", paste(class_scenarios, collapse = ", "))
+        message("Enabled PDF scenarios: ", paste(pdf_enabled_scenarios, collapse = ", "))
+        message("PDF results rows after modal filters: ", format(nrow(results), big.mark = ","))
         message("Include data comparison: ", include_data_comparison)
         message("Include appendix: ", include_appendix)
         message("Include assumptions: ", include_assumptions)
 
-        # Call standalone PDF generator
-        generate_report(
+        # Call standalone PDF generator.
+        # Keep backward compatibility if an older generate_pdf.R is sourced.
+        gr_args <- list(
           output_file = file,
           sections = pdf_sections,
           include_extrap = isTRUE(input$pdf_include_extrap),
           include_credits = isTRUE(input$pdf_include_credits),
+          include_less_prems = isTRUE(input$pdf_include_less_prems),
+          include_no_waivers = isTRUE(input$pdf_include_no_waivers),
+          include_waivers = isTRUE(input$pdf_include_waivers),
+          include_hybrid = isTRUE(input$pdf_include_hybrid),
           include_appendix = include_appendix,
           include_data_comparison = include_data_comparison,
           include_assumptions = include_assumptions,
           class_scenarios = class_scenarios,
           paga_scenarios = paga_scenarios,
-          selected_subsections = selected,  # Pass granular checkbox selections
-          verbose = FALSE  # Don't show progress bar in Shiny
+          selected_subsections = selected,
+          verbose = FALSE
         )
+
+        gr_formals <- tryCatch(names(formals(generate_report)), error = function(e) character(0))
+        if (length(gr_formals) > 0) {
+          gr_args <- gr_args[names(gr_args) %in% gr_formals]
+        }
+
+        do.call(generate_report, gr_args)
 
         message("PDF generation complete")
 
@@ -4425,21 +5349,33 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
 
 # ---- RUN APP ----
 
-message("Loading data...")
+app_boot_start <- Sys.time()
+cat("[APP] Starting dashboard bootstrap...\n")
+flush.console()
+
+cat("[APP] Step 1/5: Loading case data files...\n")
+flush.console()
 data_list <- load_data()
+
+cat("[APP] Step 2/5: Loading metric spec...\n")
+flush.console()
 metric_spec <- load_metric_spec()
 
 # Load extrapolation values if they exist
 extrap_values_file <- file.path(OUT_DIR, "extrapolation_values.rds")
 if (file.exists(extrap_values_file)) {
+  cat("[APP] Loading extrapolation values... ")
+  flush.console()
   extrap_values <- readRDS(extrap_values_file)
-  message("Loaded extrapolation values from analysis")
+  cat("done\n")
 } else {
   extrap_values <- NULL
-  message("No extrapolation values found - will calculate from data")
+  cat("[APP] No extrapolation values found - using runtime calculation\n")
 }
+flush.console()
 
-message("Pre-computing metric groups...")
+cat("[APP] Step 3/5: Pre-computing metric groups...\n")
+flush.console()
 # Categorize metric groups for consolidation (done once at startup for performance)
 metric_groups <- unique(metric_spec$metric_group)
 # Build metric_group_categories with static time/pay groups and dynamic damages/PAGA groups
@@ -4485,7 +5421,8 @@ all_damages_groups <- metric_groups[grepl("^Damages - ", metric_groups)]
 damages_detail_unique <- unique(all_damages_groups[!sapply(all_damages_groups, function(g) {
   any(sapply(damages_overview_patterns, function(p) grepl(paste0("^Damages - ", p), g)))
 })])
-message("  Dynamic damages detail groups: ", paste(damages_detail_unique, collapse = ", "))
+cat("[APP]   Dynamic damages detail groups: ", paste(damages_detail_unique, collapse = ", "), "\n", sep = "")
+flush.console()
 
 # Add each damages detail group to metric_group_categories dynamically
 for (dg in damages_detail_unique) {
@@ -4496,7 +5433,8 @@ for (dg in damages_detail_unique) {
 # Dynamically discover PAGA detail groups (everything starting with "PAGA - " except Summary)
 all_paga_groups <- metric_groups[grepl("^PAGA - ", metric_groups)]
 paga_detail_unique <- unique(all_paga_groups[!grepl("^PAGA - Summary$", all_paga_groups)])
-message("  Dynamic PAGA detail groups: ", paste(paga_detail_unique, collapse = ", "))
+cat("[APP]   Dynamic PAGA detail groups: ", paste(paga_detail_unique, collapse = ", "), "\n", sep = "")
+flush.console()
 
 # Add each PAGA detail group to metric_group_categories dynamically
 for (pg in paga_detail_unique) {
@@ -4509,9 +5447,11 @@ metric_group_categories[["damages_detail_unique"]] <- damages_detail_unique
 metric_group_categories[["paga_detail_unique"]] <- paga_detail_unique
 metric_group_categories[["metric_groups"]] <- metric_groups
 
-message("  Total metric group categories: ", length(metric_group_categories))
+cat("[APP]   Total metric group categories: ", length(metric_group_categories), "\n", sep = "")
+flush.console()
 
-message("Loading analysis tables...")
+cat("[APP] Step 4/5: Loading analysis tables...\n")
+flush.console()
 analysis_tables <- list(
   pay_code_summary    = load_analysis_table(PAY_CODE_SUMMARY_FILE),
   rate_type_analysis  = load_analysis_table(RATE_TYPE_ANALYSIS_FILE),
@@ -4523,8 +5463,11 @@ analysis_tables <- list(
   employee_comparison = load_analysis_table(EMPLOYEE_COMPARISON_FILE)
 )
 
-message("Starting dashboard...")
+cat("[APP] Step 5/5: Launching dashboard...\n")
+cat("[APP] Bootstrap completed in ", sprintf("%.1f", as.numeric(difftime(Sys.time(), app_boot_start, units = "secs"))), " seconds\n", sep = "")
+flush.console()
 shinyApp(
   ui = ui(data_list, metric_spec),
   server = server(data_list, metric_spec, analysis_tables, metric_group_categories)
 )
+

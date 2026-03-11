@@ -1800,7 +1800,6 @@ shift_data1[, ee_has_waiver := 1L] # TEMP PLACEHOLDER
 shift_data1[, Waiver_6hr_Sign_Date := class_dmgs_start_date] # TEMP PLACEHOLDER
 shift_data1[, Waiver_12hr_Sign_Date := class_dmgs_start_date] # TEMP PLACEHOLDER
 
-
 shift_data1[, `:=`(
   MissMP1_h  = fifelse(ee_has_waiver == 0L | is.na(Waiver_6hr_Sign_Date), NA_integer_,
                        fifelse(Date < as.Date(Waiver_6hr_Sign_Date), MissMP1, MissMP1_w)),
@@ -4085,7 +4084,7 @@ first_fields_default <- c(
 sum_fields_default <- c(
   
   # --- Shift counts ---
-  "shift", "mp",
+  "Shifts", "shift", "mp",
   "mp_lt_twenty", "mp_lt_thirty", "mp_thirty", "mp_gt_thirty",
   "mp_gt_two_hrs", "mp_gt_four_hrs",
   
@@ -4346,7 +4345,7 @@ max_fields_default <- c(
   "mpv_ee_less_prems", "mpv_ee_less_prems_w", "rpv_ee_less_prems",
   
   # --- Employee-level damages ---
-  "mp_ee_dmgs_less_prems", , "mpv_ee_rate_less_prems_w", "mpv_ee_rate_less_prems_h",
+  "mp_ee_dmgs_less_prems", "mp_ee_dmgs_less_prems_w", "mpv_ee_rate_less_prems_w", "mpv_ee_rate_less_prems_h",
   "rp_ee_dmgs_less_prems", 
   
   # --- Final rates ---
