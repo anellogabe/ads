@@ -1003,25 +1003,56 @@ nrow(time1) #_______
 # Check for missing In or Out punches BEFORE datetime merge
 missing_punches <- time1[is.na(In) | is.na(Out), .N]
 
-if (missing_punches > 0) {
-  cat("\n Found", missing_punches, "rows with missing In or Out punches\n")
-  cat("  Missing In:", time1[is.na(In), .N], "\n")
-  cat("  Missing Out:", time1[is.na(Out), .N], "\n")
+# Check for duplicate In/Out pairs (adjust as necessary)
+matching_punches <- time1[In == Out, .N]
+
+FILTER_PUNCHES <- TRUE  # Set to FALSE to keep problematic rows
+
+if (missing_punches > 0 | matching_punches > 0) {
   
-  FILTER_MISSING_PUNCHES <- TRUE  # Set to FALSE to keep rows with missing punches
-  
-  if (FILTER_MISSING_PUNCHES) {
-    time1_missing_punches <- time1[is.na(In) | is.na(Out)]
-    time1 <- time1[!is.na(In) & !is.na(Out)]
-    cat(" Filtered out", nrow(time1_missing_punches), "rows  saved to 'time1_missing_punches'\n")
-    cat("  Remaining rows:", nrow(time1), "\n")
-  } else {
-    cat("  Keeping rows with missing punches (FILTER_MISSING_PUNCHES = FALSE)\n")
-    time1_missing_punches <- data.table()  # Empty placeholder
+  if (missing_punches > 0) {
+    cat("\n⚠ Found", missing_punches, "rows with missing In or Out punches\n")
+    cat("  Missing In:", time1[is.na(In), .N], "\n")
+    cat("  Missing Out:", time1[is.na(Out), .N], "\n")
   }
+  
+  if (matching_punches > 0) {
+    cat("\n⚠ Found", matching_punches, "rows with matching In/Out punches\n")
+  }
+  
+  if (FILTER_PUNCHES) {
+    
+    # Save removed rows
+    time1_missing_punches <- time1[is.na(In) | is.na(Out)]
+    time1_matching_punches <- time1[In == Out & Hours == 0]
+    
+    # Remove both types
+    time1 <- time1[
+      !is.na(In) &
+        !is.na(Out) &
+        !(In == Out & Hours == 0)
+    ]
+    
+    cat("✓ Filtered rows:\n")
+    cat("  Missing punches:", nrow(time1_missing_punches), "\n")
+    cat("  Matching punches:", nrow(time1_matching_punches), "\n")
+    cat("  Remaining rows:", nrow(time1), "\n")
+    
+  } else {
+    
+    cat("\nKeeping rows with missing or matching punches (FILTER_PUNCHES = FALSE)\n")
+    
+    time1_missing_punches <- data.table()
+    time1_matching_punches <- data.table()
+    
+  }
+  
 } else {
-  cat(" No missing In/Out punches\n")
-  time1_missing_punches <- data.table()  # Empty placeholder
+  
+  cat("✓ No missing or matching In/Out punches\n")
+  
+  time1_missing_punches <- data.table()
+  time1_matching_punches <- data.table()
 }
 
 # Flag rows where In/Out contain a real (non-1899) date
@@ -1814,6 +1845,135 @@ shift_data1[, `:=`(
                        fifelse(Date < as.Date(Waiver_12hr_Sign_Date), LateMP2, LateMP2_w)),
   ShortMP2_h = fifelse(ee_has_waiver == 0L | is.na(Waiver_12hr_Sign_Date), NA_integer_,
                        fifelse(Date < as.Date(Waiver_12hr_Sign_Date), ShortMP2, ShortMP2_w))
+)]
+
+shift_data1[, Meal_Yes := as.integer(Meal_Yes)]
+
+if (!"Meal_Yes_Late" %in% names(shift_data1)) {
+  shift_data1[, Meal_Yes_Late := Meal_Yes]
+}
+
+meal_yes_any  <- shift_data1[, Meal_Yes > 0 | Meal_Yes_Late > 0]
+meal_yes_late  <- shift_data1[, Meal_Yes_Late > 0]
+
+# ATTESTATION ADJUSTMENT W/ FAILSAFE:
+# Apply only when dataset appears filtered to attestation population
+if (isTRUE(ATTESTATION_FILTER)) {
+  
+  # Meal-Yes or Meal-Yes-Late: zero out non-late meal flags (miss/short only)
+  nonlate_cols <- c(
+    "MissMP1","ShortMP1","MissMP2","ShortMP2",
+    "MissMP1_w","ShortMP1_w","MissMP2_w","ShortMP2_w",
+    "MissMP1_h","ShortMP1_h","MissMP2_h","ShortMP2_h"
+  )
+  
+  # Meal-Yes-Late only: credit late meal flags
+  late_cols <- c(
+    "LateMP1","LateMP2",
+    "LateMP1_w","LateMP2_w",
+    "LateMP1_h","LateMP2_h"
+  )
+  
+  # Defensive: only keep columns that exist
+  nonlate_cols <- intersect(nonlate_cols, names(shift_data1))
+  late_cols <- intersect(late_cols, names(shift_data1))
+  
+  meal_yes_any  <- fcoalesce(shift_data1$Meal_Yes, 0L) == 1L | fcoalesce(shift_data1$Meal_Yes_Late, 0L) == 1L
+  meal_yes_late <- fcoalesce(shift_data1$Meal_Yes_Late, 0L) == 1L
+  
+  before_nonlate <- if (length(nonlate_cols)) shift_data1[, lapply(.SD, sum, na.rm = TRUE), .SDcols = nonlate_cols] else NULL
+  before_late    <- if (length(late_cols))    shift_data1[, lapply(.SD, sum, na.rm = TRUE), .SDcols = late_cols]    else NULL
+  
+  # Zero non-late flags when Meal-Yes OR Meal-Yes-Late
+  if (length(nonlate_cols)) {
+    shift_data1[
+      meal_yes_any,
+      (nonlate_cols) := lapply(.SD, function(x) fifelse(x == 1L, 0L, x)),
+      .SDcols = nonlate_cols
+    ]
+  }
+  
+  # Zero late flags only when Meal-Yes-Late
+  if (length(late_cols)) {
+    shift_data1[
+      meal_yes_late,
+      (late_cols) := lapply(.SD, function(x) fifelse(x == 1L, 0L, x)),
+      .SDcols = late_cols
+    ]
+  }
+  
+  after_nonlate <- if (length(nonlate_cols)) shift_data1[, lapply(.SD, sum, na.rm = TRUE), .SDcols = nonlate_cols] else NULL
+  after_late    <- if (length(late_cols))    shift_data1[, lapply(.SD, sum, na.rm = TRUE), .SDcols = late_cols]    else NULL
+  
+  if (!is.null(before_nonlate)) {
+    nonlate_summary <- data.table(
+      metric = nonlate_cols,
+      before = as.numeric(before_nonlate[1]),
+      after  = as.numeric(after_nonlate[1])
+    )[, removed := before - after][]
+    print(nonlate_summary)
+  }
+  
+  if (!is.null(before_late)) {
+    late_summary <- data.table(
+      metric = late_cols,
+      before = as.numeric(before_late[1]),
+      after  = as.numeric(after_late[1])
+    )[, removed := before - after][]
+    print(late_summary)
+  }
+}
+
+# --- VERIFICATION CHECKS ---
+if (isTRUE(ATTESTATION_FILTER)) {
+  has_meal_yes <- shift_data1[, sum(fcoalesce(Meal_Yes, 0L) == 1L, na.rm = TRUE)]
+  has_meal_yes_late <- shift_data1[, sum(fcoalesce(Meal_Yes_Late, 0L) == 1L, na.rm = TRUE)]
+  
+  cat("\n=== Attestation Override Verification ===\n")
+  cat("Rows with Meal_Yes == 1      :", has_meal_yes, "\n")
+  cat("Rows with Meal_Yes_Late == 1 :", has_meal_yes_late, "\n")
+  
+  late_cols <- intersect(c("LateMP1","LateMP2","LateMP1_w","LateMP2_w","LateMP1_h","LateMP2_h"), names(shift_data1))
+  if (length(late_cols)) {
+    late_nonzero_on_late_yes <- shift_data1[
+      fcoalesce(Meal_Yes_Late, 0L) == 1L,
+      sum(Reduce(`+`, lapply(.SD, function(x) as.integer(fcoalesce(x, 0L) == 1L))) > 0L),
+      .SDcols = late_cols
+    ]
+    cat("Late flags still ==1 where Meal_Yes_Late==1 (should be 0):", late_nonzero_on_late_yes, "\n")
+  }
+  
+  nonlate_cols <- intersect(c(
+    "MissMP1","ShortMP1","MissMP2","ShortMP2",
+    "MissMP1_w","ShortMP1_w","MissMP2_w","ShortMP2_w",
+    "MissMP1_h","ShortMP1_h","MissMP2_h","ShortMP2_h"
+  ), names(shift_data1))
+  if (length(nonlate_cols)) {
+    nonlate_nonzero_on_yes_any <- shift_data1[
+      fcoalesce(Meal_Yes, 0L) == 1L | fcoalesce(Meal_Yes_Late, 0L) == 1L,
+      sum(Reduce(`+`, lapply(.SD, function(x) as.integer(fcoalesce(x, 0L) == 1L))) > 0L),
+      .SDcols = nonlate_cols
+    ]
+    cat("Non-late flags still ==1 where Meal_Yes or Meal_Yes_Late==1 (should be 0):", nonlate_nonzero_on_yes_any, "\n")
+  }
+  
+  cat("=== End Verification ===\n\n")
+}
+
+
+# Now, after adjustments for attestations to all scenarios (if any), flag meal violation shifts
+shift_data1[, `:=`(
+  mpv_shift     = as.integer((MissMP1 + LateMP1 + ShortMP1 +
+                                MissMP2 + LateMP2 + ShortMP2) > 0),
+  
+  mp1_violation = as.integer((MissMP1 + LateMP1 + ShortMP1) > 0),
+  mp2_violation = as.integer((MissMP2 + LateMP2 + ShortMP2) > 0)
+)]
+
+shift_data1[, `:=`(
+  mpv_shift_w     = as.integer((MissMP1_w + LateMP1_w + ShortMP1_w + MissMP2_w + LateMP2_w + ShortMP2_w) > 0),
+  mp1_violation_w = as.integer((MissMP1_w + LateMP1_w + ShortMP1_w) > 0),
+  mp2_violation_w = as.integer((MissMP2_w + LateMP2_w + ShortMP2_w) > 0)
 )]
 
 shift_data1[, `:=`(
@@ -2710,16 +2870,19 @@ sum_fields_default <- c(
   "mid_shift_out_hrs_gained", "mid_shift_in_hrs_lost", "mid_shift_in_hrs_gained", "post_shift_hrs_lost", "post_shift_hrs_gained",
   
   "MissMP1", "LateMP1", "ShortMP1", "MissMP2", "LateMP2", "ShortMP2",
-  "mp1_violation", "mp2_violation",
+  "mp1_violation", "mp2_violation", "mpv_shift",
   
   "MissMP1_w", "LateMP1_w", "ShortMP1_w", "MissMP2_w", "LateMP2_w", "ShortMP2_w",
-  "mp1_violation_w", "mp2_violation_w",
+  "mp1_violation_w", "mp2_violation_w", "mpv_shift_w",
   
   "MissMP1_h", "LateMP1_h", "ShortMP1_h", "MissMP2_h", "LateMP2_h", "ShortMP2_h",
-  "mp1_violation_h", "mp2_violation_h",
+  "mp1_violation_h", "mp2_violation_h", "mpv_shift_h",
   
   # Attestation information
-  "Meal_Yes","Meal_No","Rest_Yes","Rest_No"
+  "Meal_Yes", "Meal_Yes_Late", "Meal_No", "Rest_Yes", "Rest_No",
+  
+  # Rest periods
+  "rpv_shift"
 )
 
 max_fields_default <- c(
@@ -3535,397 +3698,264 @@ pp_data1[, `:=`(
 )]
 
 
-# ----- ALL DATA (BY PP):        PAGA analysis -----------------------------------------
+# ----- ALL DATA (BY PP): PAGA analysis (step-based, explicit scenarios) -----
 
-# paga_dmgs_start_date must exist (Date)
-# pp_data1 must have: ID, Period_End, active, and your damages cols used below
+setDT(pp_data1)
+setorder(pp_data1, ID, Period_End)
 
-setorder(pp_data1, ID, Period_End)  # or whatever your PP date column is
+# Global toggles
+PAGA_TOGGLE <- list(
+  meal     = TRUE,
+  rest     = FALSE,   # OFF
+  rounding = TRUE,    # NEW
+  rrop     = TRUE,
+  s226     = TRUE,
+  s558     = TRUE,
+  s1197_1  = TRUE,
+  s1174    = TRUE,
+  s2802    = TRUE,
+  s203     = TRUE
+)
 
+is_on <- function(k) isTRUE(PAGA_TOGGLE[[k]])
+
+# Guardrails
+assert_cols <- function(dt, cols, ctx = "") {
+  miss <- setdiff(cols, names(dt))
+  if (length(miss)) stop("Missing columns", if (nzchar(ctx)) paste0(" [", ctx, "]"), ": ", paste(miss, collapse = ", "))
+}
+
+assert_cols(pp_data1, c("ID", "Period_End", "active"), "base pp_data1")
+
+required_scalars <- c(
+  "paga_dmgs_start_date",
+  "initial_pp_penalty", "subsequent_pp_penalty",
+  "initial_pp_penalty_226", "subsequent_pp_penalty_226",
+  "initial_pp_penalty_558", "subsequent_pp_penalty_558",
+  "penalty_1174"
+)
+missing_scalars <- required_scalars[!vapply(required_scalars, exists, logical(1), inherits = TRUE)]
+if (length(missing_scalars)) stop("Missing required scalar(s): ", paste(missing_scalars, collapse = ", "))
+
+cat("[PAGA] Starting build...\n")
+
+# Period flags
 pp_data1[, paga_ee_flag := 0L]
-pp_data1[, in_PAGA_period := fifelse(Period_End > paga_dmgs_start_date, 1, 0)]
-pp_data1[in_PAGA_period == 1, paga_ee_flag := as.integer(seq_len(.N) == 1L), by = ID]
+pp_data1[, in_PAGA_period := as.integer(Period_End > as.Date(paga_dmgs_start_date))]
+pp_data1[in_PAGA_period == 1L, paga_ee_flag := as.integer(seq_len(.N) == 1L), by = ID]
 
-# --- Helper function (vectorized) ---
+cat("[PAGA] Rows in period:", pp_data1[, sum(in_PAGA_period == 1L)], "\n")
+if (pp_data1[, sum(in_PAGA_period == 1L)] == 0L) cat("[PAGA][WARN] No rows in PAGA period.\n")
+
 calc_paga_penalty <- function(flag_count, initial, subsequent) {
   fcase(
-    flag_count == 0, 0,
+    flag_count <= 0, 0,
     flag_count == 1, initial,
     flag_count > 1,  initial + (flag_count - 1) * subsequent,
     default = 0
   )
 }
 
-# --- PAGA SCENARIOS (8 output suffixes) ---
-# Credits scenarios require: paga damages AND has_dmgs_less_credits{suf} > 0
-# Unreimb exp always requires: unreimb_exp_dmgs > 0 AND has_col > 0
+apply_pp_statute <- function(flag_col, cnt_col, dmg_col, cond, initial, subsequent) {
+  pp_data1[, (flag_col) := as.integer(cond)]
+  pp_data1[, (cnt_col) := fifelse(in_PAGA_period == 1L, sum(get(flag_col), na.rm = TRUE), 0L), by = ID]
+  pp_data1[, (dmg_col) := fifelse(paga_ee_flag == 1L, calc_paga_penalty(get(cnt_col), initial, subsequent), 0)]
+}
 
+apply_ee_statute <- function(flag_col, dmg_col, cond_expr, amount) {
+  cond_expr <- substitute(cond_expr)
+  pp_data1[, (flag_col) := as.integer(eval(cond_expr)), by = ID]
+  pp_data1[, (dmg_col) := fifelse(paga_ee_flag == 1L, get(flag_col) * amount, 0)]
+}
+
+# Scenarios
 paga_scenarios <- list(
-  
-  # Base
-  base = list(
-    suf = "",
-    has = "has_dmgs",
-    mp  = "mp_dmgs",
-    rp  = "rp_dmgs",
-    is_credits = FALSE
-  ),
-  
-  # Less premiums
-  less_prems = list(
-    suf = "_less_prems",
-    has = "has_dmgs_less_prems",
-    mp  = "mp_dmgs_less_prems",
-    rp  = "rp_dmgs_less_prems",
-    is_credits = FALSE
-  ),
-  
-  # Waivers
-  w = list(
-    suf = "_w",
-    has = "has_dmgs_w",
-    mp  = "mp_dmgs_w",
-    rp  = "rp_dmgs",
-    is_credits = FALSE
-  ),
-  
-  # Less premiums + waivers
-  less_prems_w = list(
-    suf = "_less_prems_w",
-    has = "has_dmgs_less_prems_w",
-    mp  = "mp_dmgs_less_prems_w",
-    rp  = "rp_dmgs_less_prems",
-    is_credits = FALSE
-  ),
-  
-  # HYBRID
-  h = list(
-    suf = "_h",
-    has = "has_dmgs_h",
-    mp  = "mp_dmgs_h",
-    rp  = "rp_dmgs",
-    is_credits = FALSE
-  ),
-  
-  # Less premiums + HYBRID
-  less_prems_h = list(
-    suf = "_less_prems_h",
-    has = "has_dmgs_less_prems_h",
-    mp  = "mp_dmgs_less_prems_h",
-    rp  = "rp_dmgs_less_prems",
-    is_credits = FALSE
-  ),
-  
-  # Less credits
-  less_credits = list(
-    suf = "_less_credits",
-    has = "has_dmgs_less_credits",
-    mp  = "mp_dmgs",
-    rp  = "rp_dmgs",
-    is_credits = TRUE
-  ),
-  
-  # Less premiums + credits
-  less_prems_and_credits = list(
-    suf = "_less_prems_and_credits",
-    has = "has_dmgs_less_prems_and_credits",
-    mp  = "mp_dmgs_less_prems",
-    rp  = "rp_dmgs_less_prems",
-    is_credits = TRUE
-  ),
-  
-  # Less credits + waivers
-  less_credits_w = list(
-    suf = "_less_credits_w",
-    has = "has_dmgs_less_credits_w",
-    mp  = "mp_dmgs_w",
-    rp  = "rp_dmgs",
-    is_credits = TRUE
-  ),
-  
-  # Less premiums + credits + waivers
-  less_prems_and_credits_w = list(
-    suf = "_less_prems_and_credits_w",
-    has = "has_dmgs_less_prems_and_credits_w",
-    mp  = "mp_dmgs_less_prems_w",
-    rp  = "rp_dmgs_less_prems",
-    is_credits = TRUE
-  ),
-  
-  # Less credits + HYBRID
-  less_credits_h = list(
-    suf = "_less_credits_h",
-    has = "has_dmgs_less_credits_h",
-    mp  = "mp_dmgs_h",
-    rp  = "rp_dmgs",
-    is_credits = TRUE
-  ),
-  
-  # Less premiums + credits + HYBRID
-  less_prems_and_credits_h = list(
-    suf = "_less_prems_and_credits_h",
-    has = "has_dmgs_less_prems_and_credits_h",
-    mp  = "mp_dmgs_less_prems_h",
-    rp  = "rp_dmgs_less_prems",
-    is_credits = TRUE
-  )
+  base = list(suf = "", has = "has_dmgs", mp = "mp_dmgs", rp = "rp_dmgs", round = "rounding_dmgs", is_credits = FALSE),
+  less_prems = list(suf = "_less_prems", has = "has_dmgs_less_prems", mp = "mp_dmgs_less_prems", rp = "rp_dmgs_less_prems", round = "rounding_dmgs_less_prems", is_credits = FALSE),
+  w = list(suf = "_w", has = "has_dmgs_w", mp = "mp_dmgs_w", rp = "rp_dmgs", round = "rounding_dmgs_w", is_credits = FALSE),
+  less_prems_w = list(suf = "_less_prems_w", has = "has_dmgs_less_prems_w", mp = "mp_dmgs_less_prems_w", rp = "rp_dmgs_less_prems", round = "rounding_dmgs_less_prems_w", is_credits = FALSE),
+  h = list(suf = "_h", has = "has_dmgs_h", mp = "mp_dmgs_h", rp = "rp_dmgs", round = "rounding_dmgs_h", is_credits = FALSE),
+  less_prems_h = list(suf = "_less_prems_h", has = "has_dmgs_less_prems_h", mp = "mp_dmgs_less_prems_h", rp = "rp_dmgs_less_prems", round = "rounding_dmgs_less_prems_h", is_credits = FALSE),
+  less_credits = list(suf = "_less_credits", has = "has_dmgs_less_credits", mp = "mp_dmgs", rp = "rp_dmgs", round = "rounding_dmgs", is_credits = TRUE),
+  less_prems_and_credits = list(suf = "_less_prems_and_credits", has = "has_dmgs_less_prems_and_credits", mp = "mp_dmgs_less_prems", rp = "rp_dmgs_less_prems", round = "rounding_dmgs_less_prems", is_credits = TRUE),
+  less_credits_w = list(suf = "_less_credits_w", has = "has_dmgs_less_credits_w", mp = "mp_dmgs_w", rp = "rp_dmgs", round = "rounding_dmgs_w", is_credits = TRUE),
+  less_prems_and_credits_w = list(suf = "_less_prems_and_credits_w", has = "has_dmgs_less_prems_and_credits_w", mp = "mp_dmgs_less_prems_w", rp = "rp_dmgs_less_prems", round = "rounding_dmgs_less_prems_w", is_credits = TRUE),
+  less_credits_h = list(suf = "_less_credits_h", has = "has_dmgs_less_credits_h", mp = "mp_dmgs_h", rp = "rp_dmgs", round = "rounding_dmgs_h", is_credits = TRUE),
+  less_prems_and_credits_h = list(suf = "_less_prems_and_credits_h", has = "has_dmgs_less_prems_and_credits_h", mp = "mp_dmgs_less_prems_h", rp = "rp_dmgs_less_prems", round = "rounding_dmgs_less_prems_h", is_credits = TRUE)
 )
 
-# ---- PAGA BUILDER FUNCTION 
-
-build_paga_for_scenario <- function(sc) {
+build_paga_for_scenario <- function(name, sc) {
+  suf <- sc$suf
+  has_col <- sc$has
+  mp_col <- sc$mp
+  rp_col <- sc$rp
+  round_col <- sc$round
+  is_credits <- isTRUE(sc$is_credits)
   
-  suf        <- sc$suf
-  has_col    <- sc$has
-  mp_col     <- sc$mp
-  rp_col     <- sc$rp
-  is_credits <- sc$is_credits
+  cat("[PAGA] Scenario:", name, "| suffix:", suf, "\n")
   
-  # ---------------- MEAL PERIODS ----------------
-  flag_meal <- paste0("PAGA_meal_flag", suf)
-  cnt_meal  <- paste0("PAGA_meal_flag_count", suf)
-  dmg_meal  <- paste0("PAGA_meal_penalties", suf)
+  req <- c(has_col, mp_col, rp_col, "in_PAGA_period", "paga_ee_flag", "ID")
+  if (!"pp_lvl_hrs_lost" %in% names(pp_data1)) {
+    cat("[PAGA][WARN]", name, "missing pp_lvl_hrs_lost -> rounding set to zero\n")
+  }
+  assert_cols(pp_data1, req, paste0("scenario ", name))
   
-  pp_data1[, (flag_meal) :=
-             as.integer(
-               in_PAGA_period == 1 &
-                 fcoalesce(get(mp_col), 0) > 0 &
-                 if (is_credits) fcoalesce(get(has_col), 0L) == 1 else TRUE
-             )]
+  # Scenario vectors (no get() scoping issues)
+  has_v   <- fcoalesce(pp_data1[[has_col]], 0L)
+  mp_v    <- fcoalesce(pp_data1[[mp_col]], 0)
+  rp_v    <- fcoalesce(pp_data1[[rp_col]], 0)
+  round_v <- if ("pp_lvl_hrs_lost" %in% names(pp_data1)) fcoalesce(pp_data1[["pp_lvl_hrs_lost"]], 0) else rep(0, nrow(pp_data1))
+  in_v    <- pp_data1$in_PAGA_period == 1L
+  credit_ok <- if (is_credits) (has_v == 1L) else TRUE
   
-  pp_data1[, (cnt_meal) :=
-             fifelse(in_PAGA_period == 1,
-                     sum(get(flag_meal), na.rm = TRUE),
-                     0L),
-           by = ID]
+  # MEAL
+  flag_meal <- paste0("PAGA_meal_flag", suf); cnt_meal <- paste0("PAGA_meal_flag_count", suf); dmg_meal <- paste0("PAGA_meal_penalties", suf)
+  if (is_on("meal")) apply_pp_statute(flag_meal, cnt_meal, dmg_meal, in_v & mp_v > 0 & credit_ok, initial_pp_penalty, subsequent_pp_penalty)
+  else pp_data1[, c(flag_meal, cnt_meal, dmg_meal) := .(0L, 0L, 0)]
   
-  pp_data1[, (dmg_meal) :=
-             fifelse(paga_ee_flag == 1L,
-                     calc_paga_penalty(get(cnt_meal),
-                                       initial_pp_penalty,
-                                       subsequent_pp_penalty),
-                     0)]
+  # REST
+  flag_rest <- paste0("PAGA_rest_flag", suf); cnt_rest <- paste0("PAGA_rest_flag_count", suf); dmg_rest <- paste0("PAGA_rest_penalties", suf)
+  if (is_on("rest")) apply_pp_statute(flag_rest, cnt_rest, dmg_rest, in_v & rp_v > 0 & credit_ok, initial_pp_penalty, subsequent_pp_penalty)
+  else pp_data1[, c(flag_rest, cnt_rest, dmg_rest) := .(0L, 0L, 0)]
   
-  # ---------------- REST PERIODS ----------------
-  flag_rest <- paste0("PAGA_rest_flag", suf)
-  cnt_rest  <- paste0("PAGA_rest_flag_count", suf)
-  dmg_rest  <- paste0("PAGA_rest_penalties", suf)
+  # ROUNDING
+  flag_round <- paste0("PAGA_rounding_flag", suf); cnt_round <- paste0("PAGA_rounding_flag_count", suf); dmg_round <- paste0("PAGA_rounding_penalties", suf)
+  if (is_on("rounding")) {
+    apply_pp_statute(
+      flag_round, cnt_round, dmg_round,
+      in_v & (round_v < 0) & credit_ok,
+      initial_pp_penalty, subsequent_pp_penalty
+    )
+  } else {
+    pp_data1[, c(flag_round, cnt_round, dmg_round) := .(0L, 0L, 0)]
+  }
   
-  pp_data1[, (flag_rest) :=
-             as.integer(
-               in_PAGA_period == 1 &
-                 fcoalesce(get(rp_col), 0) > 0 &
-                 if (is_credits) fcoalesce(get(has_col), 0L) == 1 else TRUE
-             )]
+  # RROP
+  flag_rrop <- paste0("PAGA_rrop_flag", suf); cnt_rrop <- paste0("PAGA_rrop_flag_count", suf); dmg_rrop <- paste0("PAGA_rrop_penalties", suf)
+  if (is_on("rrop")) apply_pp_statute(flag_rrop, cnt_rrop, dmg_rrop, in_v & fcoalesce(pp_data1$rrop_net_underpayment, 0) > 0 & credit_ok, initial_pp_penalty, subsequent_pp_penalty)
+  else pp_data1[, c(flag_rrop, cnt_rrop, dmg_rrop) := .(0L, 0L, 0)]
   
-  pp_data1[, (cnt_rest) :=
-             fifelse(in_PAGA_period == 1,
-                     sum(get(flag_rest), na.rm = TRUE),
-                     0L),
-           by = ID]
+  # 226
+  flag_226 <- paste0("PAGA_226_flag", suf); cnt_226 <- paste0("PAGA_226_flag_count", suf); dmg_226 <- paste0("PAGA_226_penalties", suf)
+  if (is_on("s226")) apply_pp_statute(flag_226, cnt_226, dmg_226, in_v & has_v == 1L, initial_pp_penalty_226, subsequent_pp_penalty_226)
+  else pp_data1[, c(flag_226, cnt_226, dmg_226) := .(0L, 0L, 0)]
   
-  pp_data1[, (dmg_rest) :=
-             fifelse(paga_ee_flag == 1L,
-                     calc_paga_penalty(get(cnt_rest),
-                                       initial_pp_penalty,
-                                       subsequent_pp_penalty),
-                     0)]
+  # 558
+  flag_558 <- paste0("PAGA_558_flag", suf); cnt_558 <- paste0("PAGA_558_flag_count", suf); dmg_558 <- paste0("PAGA_558_penalties", suf)
+  if (is_on("s558")) apply_pp_statute(flag_558, cnt_558, dmg_558, in_v & has_v == 1L, initial_pp_penalty_558, subsequent_pp_penalty_558)
+  else pp_data1[, c(flag_558, cnt_558, dmg_558) := .(0L, 0L, 0)]
   
-  # ---------------- RROP ----------------
-  flag_rrop <- paste0("PAGA_rrop_flag", suf)
-  cnt_rrop  <- paste0("PAGA_rrop_flag_count", suf)
-  dmg_rrop  <- paste0("PAGA_rrop_penalties", suf)
+  # 1197.1
+  flag_1197 <- paste0("PAGA_1197_1_flag", suf); cnt_1197 <- paste0("PAGA_1197_1_flag_count", suf); dmg_1197 <- paste0("PAGA_1197_1_penalties", suf)
+  if (is_on("s1197_1")) apply_pp_statute(flag_1197, cnt_1197, dmg_1197, in_v & fcoalesce(pp_data1$min_wage_dmgs, 0) > 0 & fcoalesce(pp_data1[[flag_558]], 0L) == 0L, initial_pp_penalty, subsequent_pp_penalty)
+  else pp_data1[, c(flag_1197, cnt_1197, dmg_1197) := .(0L, 0L, 0)]
   
-  pp_data1[, (flag_rrop) :=
-             as.integer(
-               in_PAGA_period == 1 &
-                 fcoalesce(Net_rrop_dmgs, 0) > 0 &
-                 if (is_credits) fcoalesce(get(has_col), 0L) == 1 else TRUE
-             )]
+  # 1174 (employee-level)
+  flag_1174 <- paste0("PAGA_1174_flag", suf); dmg_1174 <- paste0("PAGA_1174_penalties", suf)
+  pp_data1[, .has_tmp := has_v]
+  if (is_on("s1174")) {
+    apply_ee_statute(flag_1174, dmg_1174, any(in_PAGA_period == 1L & .has_tmp == 1L), penalty_1174)
+  } else {
+    pp_data1[, c(flag_1174, dmg_1174) := .(0L, 0)]
+  }
   
-  pp_data1[, (cnt_rrop) :=
-             fifelse(in_PAGA_period == 1,
-                     sum(get(flag_rrop), na.rm = TRUE),
-                     0L),
-           by = ID]
+  # 2802
+  flag_2802 <- paste0("PAGA_2802_flag", suf); cnt_2802 <- paste0("PAGA_2802_flag_count", suf); dmg_2802 <- paste0("PAGA_2802_penalties", suf)
+  if (is_on("s2802")) apply_pp_statute(flag_2802, cnt_2802, dmg_2802, in_v & fcoalesce(pp_data1$unreimb_exp_dmgs, 0) > 0 & has_v == 1L, initial_pp_penalty, subsequent_pp_penalty)
+  else pp_data1[, c(flag_2802, cnt_2802, dmg_2802) := .(0L, 0L, 0)]
   
-  pp_data1[, (dmg_rrop) :=
-             fifelse(paga_ee_flag == 1L,
-                     calc_paga_penalty(get(cnt_rrop),
-                                       initial_pp_penalty,
-                                       subsequent_pp_penalty),
-                     0)]
+  # 203 (employee-level)  <-- fixed
+  flag_203 <- paste0("PAGA_203_flag", suf); dmg_203 <- paste0("PAGA_203_penalties", suf)
+  if (is_on("s203")) {
+    apply_ee_statute(flag_203, dmg_203, any(in_PAGA_period == 1L & .has_tmp == 1L) & any(active == 0, na.rm = TRUE), initial_pp_penalty)
+  } else {
+    pp_data1[, c(flag_203, dmg_203) := .(0L, 0)]
+  }
+  pp_data1[, .has_tmp := NULL]
   
-  # ---------------- 226 WAGE STATEMENT ----------------
-  flag_226 <- paste0("PAGA_226_flag", suf)
-  cnt_226  <- paste0("PAGA_226_flag_count", suf)
-  dmg_226  <- paste0("PAGA_226_penalties", suf)
-  
-  pp_data1[, (flag_226) :=
-             as.integer(in_PAGA_period == 1 &
-                          fcoalesce(get(has_col), 0L) == 1)]
-  
-  pp_data1[, (cnt_226) :=
-             fifelse(in_PAGA_period == 1,
-                     sum(get(flag_226), na.rm = TRUE),
-                     0L),
-           by = ID]
-  
-  pp_data1[, (dmg_226) :=
-             fifelse(paga_ee_flag == 1L,
-                     calc_paga_penalty(get(cnt_226),
-                                       initial_pp_penalty_226,
-                                       subsequent_pp_penalty_226),
-                     0)]
-  
-  # ---------------- 558 UNPAID WAGES ----------------
-  flag_558 <- paste0("PAGA_558_flag", suf)
-  cnt_558  <- paste0("PAGA_558_flag_count", suf)
-  dmg_558  <- paste0("PAGA_558_penalties", suf)
-  
-  pp_data1[, (flag_558) :=
-             as.integer(in_PAGA_period == 1 &
-                          fcoalesce(get(has_col), 0L) == 1)]
-  
-  pp_data1[, (cnt_558) :=
-             fifelse(in_PAGA_period == 1,
-                     sum(get(flag_558), na.rm = TRUE),
-                     0L),
-           by = ID]
-  
-  pp_data1[, (dmg_558) :=
-             fifelse(paga_ee_flag == 1L,
-                     calc_paga_penalty(get(cnt_558),
-                                       initial_pp_penalty_558,
-                                       subsequent_pp_penalty_558),
-                     0)]
-  
-  # ---------------- 1197.1 MIN WAGE ----------------
-  flag_1197 <- paste0("PAGA_1197_1_flag", suf)
-  cnt_1197  <- paste0("PAGA_1197_1_flag_count", suf)
-  dmg_1197  <- paste0("PAGA_1197_1_penalties", suf)
-  
-  pp_data1[, (flag_1197) :=
-             as.integer(
-               in_PAGA_period == 1 &
-                 fcoalesce(min_wage_dmgs, 0) > 0 &
-                 get(flag_558) == 0
-             )]
-  
-  pp_data1[, (cnt_1197) :=
-             fifelse(in_PAGA_period == 1,
-                     sum(get(flag_1197), na.rm = TRUE),
-                     0L),
-           by = ID]
-  
-  pp_data1[, (dmg_1197) :=
-             fifelse(paga_ee_flag == 1L,
-                     calc_paga_penalty(get(cnt_1197),
-                                       initial_pp_penalty,
-                                       subsequent_pp_penalty),
-                     0)]
-  
-  # ---------------- 1174 RECORDKEEPING (EMPLOYEE LEVEL) ----------------
-  flag_1174 <- paste0("PAGA_1174_flag", suf)
-  dmg_1174  <- paste0("PAGA_1174_penalties", suf)
-  
-  pp_data1[, (flag_1174) :=
-             as.integer(any(in_PAGA_period == 1 &
-                              fcoalesce(get(has_col), 0L) == 1)),
-           by = ID]
-  
-  pp_data1[, (dmg_1174) :=
-             fifelse(paga_ee_flag == 1L,
-                     get(flag_1174) * penalty_1174,
-                     0)]
-  
-  # ---------------- 2802 UNREIMBURSED EXPENSES ----------------
-  flag_2802 <- paste0("PAGA_2802_flag", suf)
-  cnt_2802  <- paste0("PAGA_2802_flag_count", suf)
-  dmg_2802  <- paste0("PAGA_2802_penalties", suf)
-  
-  pp_data1[, (flag_2802) :=
-             as.integer(
-               in_PAGA_period == 1 &
-                 fcoalesce(unreimb_exp_dmgs, 0) > 0 &
-                 fcoalesce(get(has_col), 0L) == 1
-             )]
-  
-  pp_data1[, (cnt_2802) :=
-             fifelse(in_PAGA_period == 1,
-                     sum(get(flag_2802), na.rm = TRUE),
-                     0L),
-           by = ID]
-  
-  pp_data1[, (dmg_2802) :=
-             fifelse(paga_ee_flag == 1L,
-                     calc_paga_penalty(get(cnt_2802),
-                                       initial_pp_penalty,
-                                       subsequent_pp_penalty),
-                     0)]
-  
-  # ---------------- 203 WAITING TIME (EMPLOYEE LEVEL) ----------------
-  flag_203 <- paste0("PAGA_203_flag", suf)
-  dmg_203  <- paste0("PAGA_203_penalties", suf)
-  
-  pp_data1[, (flag_203) :=
-             as.integer(any(in_PAGA_period == 1 &
-                              fcoalesce(get(has_col), 0L) == 1) &
-                          active == 0),
-           by = ID]
-  
-  pp_data1[, (dmg_203) :=
-             fifelse(paga_ee_flag == 1L,
-                     get(flag_203) * initial_pp_penalty,
-                     0)]
-  
-  # ---------------- HAS ANY PAGA (PAY PERIOD LEVEL) ----------------
-  
+  # HAS ANY PAGA (pp level)
   has_paga_col <- paste0("has_paga_penalties", suf)
+  flag_cols <- c(flag_meal, flag_rest, flag_round, flag_rrop, flag_226, flag_558, flag_1197, flag_2802)
+  pp_data1[, (has_paga_col) := as.integer(in_PAGA_period == 1L & rowSums(.SD, na.rm = TRUE) > 0), .SDcols = flag_cols]
   
-  paga_flag_cols <- paste0(
-    c("PAGA_meal_flag",
-      "PAGA_rest_flag",
-      "PAGA_rrop_flag",
-      "PAGA_226_flag",
-      "PAGA_558_flag",
-      "PAGA_1197_1_flag",
-      "PAGA_2802_flag"),
-    suf
-  )
-  
-  pp_data1[, (has_paga_col) :=
-             as.integer(
-               in_PAGA_period == 1L &
-                 rowSums(.SD, na.rm = TRUE) > 0
-             ),
-           .SDcols = paga_flag_cols
-  ]
-  
-  # ---------------- PAGA TOTAL ----------------
+  # TOTAL
   paga_tot <- paste0("PAGA_tot", suf)
+  pp_data1[, (paga_tot) := fifelse(
+    paga_ee_flag == 1L,
+    fcoalesce(get(dmg_meal), 0) + fcoalesce(get(dmg_rest), 0) + fcoalesce(get(dmg_round), 0) +
+      fcoalesce(get(dmg_rrop), 0) + fcoalesce(get(dmg_226), 0) + fcoalesce(get(dmg_558), 0) +
+      fcoalesce(get(dmg_1197), 0) + fcoalesce(get(dmg_1174), 0) + fcoalesce(get(dmg_2802), 0) +
+      fcoalesce(get(dmg_203), 0),
+    0
+  )]
   
-  pp_data1[, (paga_tot) :=
-             fifelse(
-               paga_ee_flag == 1L,
-               fcoalesce(get(dmg_meal), 0) +
-                 fcoalesce(get(dmg_rest), 0) +
-                 fcoalesce(get(dmg_rrop), 0) +
-                 fcoalesce(get(dmg_226), 0) +
-                 fcoalesce(get(dmg_558), 0) +
-                 fcoalesce(get(dmg_1197), 0) +
-                 fcoalesce(get(dmg_1174), 0) +
-                 fcoalesce(get(dmg_2802), 0) +
-                 fcoalesce(get(dmg_203), 0),
-               0
-             )]
+  cat("[PAGA]", name,
+      "| totals -> meal:", pp_data1[, sum(get(dmg_meal), na.rm = TRUE)],
+      "rest:", pp_data1[, sum(get(dmg_rest), na.rm = TRUE)],
+      "rounding:", pp_data1[, sum(get(dmg_round), na.rm = TRUE)],
+      "226:", pp_data1[, sum(get(dmg_226), na.rm = TRUE)],
+      "558:", pp_data1[, sum(get(dmg_558), na.rm = TRUE)],
+      "203:", pp_data1[, sum(get(dmg_203), na.rm = TRUE)],
+      "ALL:", pp_data1[, sum(get(paga_tot), na.rm = TRUE)], "\n")
 }
 
+# Explicit scenario calls
+build_paga_for_scenario("base", paga_scenarios$base)
+build_paga_for_scenario("less_prems", paga_scenarios$less_prems)
+build_paga_for_scenario("w", paga_scenarios$w)
+build_paga_for_scenario("less_prems_w", paga_scenarios$less_prems_w)
+build_paga_for_scenario("h", paga_scenarios$h)
+build_paga_for_scenario("less_prems_h", paga_scenarios$less_prems_h)
+build_paga_for_scenario("less_credits", paga_scenarios$less_credits)
+build_paga_for_scenario("less_prems_and_credits", paga_scenarios$less_prems_and_credits)
+build_paga_for_scenario("less_credits_w", paga_scenarios$less_credits_w)
+build_paga_for_scenario("less_prems_and_credits_w", paga_scenarios$less_prems_and_credits_w)
+build_paga_for_scenario("less_credits_h", paga_scenarios$less_credits_h)
+build_paga_for_scenario("less_prems_and_credits_h", paga_scenarios$less_prems_and_credits_h)
 
-# --- BUILD FOR ALL PAGA SCENARIOS ---
-for (nm in names(paga_scenarios)) {
-  build_paga_for_scenario(paga_scenarios[[nm]])
+# Scenario summary
+summarize_scenario <- function(label, suf) {
+  data.table(
+    scenario = label,
+    meal_total = pp_data1[, sum(get(paste0("PAGA_meal_penalties", suf)), na.rm = TRUE)],
+    rest_total = pp_data1[, sum(get(paste0("PAGA_rest_penalties", suf)), na.rm = TRUE)],
+    rounding_total = pp_data1[, sum(get(paste0("PAGA_rounding_penalties", suf)), na.rm = TRUE)],
+    rrop_total = pp_data1[, sum(get(paste0("PAGA_rrop_penalties", suf)), na.rm = TRUE)],
+    s226_total = pp_data1[, sum(get(paste0("PAGA_226_penalties", suf)), na.rm = TRUE)],
+    s558_total = pp_data1[, sum(get(paste0("PAGA_558_penalties", suf)), na.rm = TRUE)],
+    s1197_1_total = pp_data1[, sum(get(paste0("PAGA_1197_1_penalties", suf)), na.rm = TRUE)],
+    s1174_total = pp_data1[, sum(get(paste0("PAGA_1174_penalties", suf)), na.rm = TRUE)],
+    s2802_total = pp_data1[, sum(get(paste0("PAGA_2802_penalties", suf)), na.rm = TRUE)],
+    s203_total = pp_data1[, sum(get(paste0("PAGA_203_penalties", suf)), na.rm = TRUE)],
+    paga_total = pp_data1[, sum(get(paste0("PAGA_tot", suf)), na.rm = TRUE)]
+  )
 }
+
+paga_summary <- rbindlist(list(
+  summarize_scenario("base", ""),
+  summarize_scenario("less_prems", "_less_prems"),
+  summarize_scenario("w", "_w"),
+  summarize_scenario("less_prems_w", "_less_prems_w"),
+  summarize_scenario("h", "_h"),
+  summarize_scenario("less_prems_h", "_less_prems_h"),
+  summarize_scenario("less_credits", "_less_credits"),
+  summarize_scenario("less_prems_and_credits", "_less_prems_and_credits"),
+  summarize_scenario("less_credits_w", "_less_credits_w"),
+  summarize_scenario("less_prems_and_credits_w", "_less_prems_and_credits_w"),
+  summarize_scenario("less_credits_h", "_less_credits_h"),
+  summarize_scenario("less_prems_and_credits_h", "_less_prems_and_credits_h")
+), fill = TRUE)
+
+print(paga_summary)
+
+# derivative sameness warning
+for (nm in c("s226_total","s558_total","s1174_total","s203_total")) {
+  if (length(unique(paga_summary[[nm]])) == 1L) {
+    cat("[PAGA][WARN]", nm, "is identical across scenarios. Check scenario has_* columns.\n")
+  }
+}
+
+cat("[PAGA] Build complete.\n")
 
 
 # ----- ALL DATA (BY PP):        Damages Flags (principal -> class penalties -> PAGA) -------------------------
@@ -4027,11 +4057,11 @@ for (nm in names(wt_pen_map)) {
 }
 
 # PAGA FLAGS (separate)
-#    - Employee-level flags for overall + each bucket, per scenario suffix
-
+# Employee-level flags for overall + each bucket, per scenario suffix
 paga_penalty_types <- c(
   meal     = "PAGA_meal_penalties",
   rest     = "PAGA_rest_penalties",
+  rounding = "PAGA_rounding_penalties",
   rrop     = "PAGA_rrop_penalties",
   `226`    = "PAGA_226_penalties",
   `558`    = "PAGA_558_penalties",
@@ -4044,27 +4074,42 @@ paga_penalty_types <- c(
 for (nm in names(paga_scenarios)) {
   suf <- paga_scenarios[[nm]]$suf
   
-  # overall ee_has_paga_penalties{suf} (prefers has_PAGA_penalties{suf})
-  has_paga_col <- paste0("has_PAGA_penalties", suf)
+  # overall employee-level PAGA flag
+  # support both naming styles (you build has_paga_penalties{suf} now)
+  has_paga_candidates <- c(
+    paste0("has_paga_penalties", suf),
+    paste0("has_PAGA_penalties", suf)
+  )
+  has_paga_col <- has_paga_candidates[has_paga_candidates %in% names(pp_data1)][1]
   ee_has_paga  <- paste0("ee_has_paga_penalties", suf)
   
-  if (has_paga_col %in% names(pp_data1)) {
+  if (!is.na(has_paga_col) && nzchar(has_paga_col)) {
     pp_data1[, (ee_has_paga) := as.integer(any(fcoalesce(as.numeric(get(has_paga_col)), 0) > 0)), by = ID]
   } else {
     cols <- paste0(unname(paga_penalty_types), suf)
     cols <- cols[cols %in% names(pp_data1)]
-    if (length(cols)) {
+    
+    if (length(cols) > 0) {
       pp_data1[, (ee_has_paga) :=
-                 as.integer(any(Reduce(`+`, lapply(.SD, \(x) fcoalesce(as.numeric(x), 0))) > 0)),
+                 as.integer(any(Reduce(`+`, lapply(.SD, function(x) fcoalesce(as.numeric(x), 0))) > 0)),
                by = ID, .SDcols = cols]
+    } else {
+      pp_data1[, (ee_has_paga) := 0L]
+      cat("[PAGA][WARN] No penalty columns found for scenario:", nm, "suffix:", suf, "\n")
     }
   }
   
-  # per-bucket ee_has_paga_<bucket>{suf}
+  # per-bucket employee-level flags
   for (typ in names(paga_penalty_types)) {
     pen_col <- paste0(paga_penalty_types[[typ]], suf)
     out_col <- paste0("ee_has_paga_", typ, suf)
-    add_ee_has_flag(pp_data1, pen_col, out_col)
+    
+    if (pen_col %in% names(pp_data1)) {
+      add_ee_has_flag(pp_data1, pen_col, out_col)
+    } else {
+      pp_data1[, (out_col) := 0L]
+      cat("[PAGA][WARN] Missing column:", pen_col, "-> set", out_col, "to 0\n")
+    }
   }
 }
 
@@ -4077,7 +4122,11 @@ setDT(pp_data1)
 
 # FIRST fields
 first_fields_default <- c(
-  "Name", "Pay_Name", "Source", "Pay_Source", "Sheet", "Key_Gps", "active"
+  "Name", "Pay_Name", "Source", "Pay_Source", "Sheet", "Key_Gps", "active",
+  
+  "Waiver_6hr_Type", "Waiver_6hr_Response", "Waiver_6hr_Sign_Date", "Waiver_6hr",
+  "Waiver_12hr_Type", "Waiver_12hr_Response", "Waiver_12hr_Sign_Date", "Waiver_12hr",
+  "Waiver_Any"
 )
 
 # SUM fields
@@ -4736,7 +4785,7 @@ extrap_class_shifts   <- round(mean(shift_data1$Shifts_per_workweek, na.rm = TRU
 
 extrap_wsv_pps        <- round(((uniqueN(pp_data1$ID_Period_End[pp_data1$Period_End > wsv_start_date], na.rm = TRUE) / wsv_data_ees) * extrap_wsv_ees) / wsv_time_extrap_factor, 0)
 
-extrap_wt_former_ees  <- round(((class_data_former_ees / class_data_ees) * extrap_wt_ees) * wt_time_extrap_factor, 0)
+extrap_wt_former_ees  <- round(((class_data_former_ees / class_data_ees) * extrap_wt_ees) / wt_time_extrap_factor, 0)
 
 extrap_paga_pps       <- round(((uniqueN(pp_data1$ID_Period_End[pp_data1$Period_End > paga_dmgs_start_date], na.rm = TRUE) / paga_data_ees) * extrap_paga_ees) / paga_time_extrap_factor, 0)
 
@@ -4865,7 +4914,7 @@ custom_filters <- setNames(lapply(unique_groups, function(g) {
   )
 }), unique_groups)
 
-# # --- TEMPLATE column filters ---
+# # --- TEMPLATE column filters (COLUMN FILTER) ---
 # 
 # s1 <- if ("Sample" %in% names(shift_data1)) unique(shift_data1$Sample) else NULL
 # s2 <- if ("Sample" %in% names(pay1))        unique(pay1$Sample)        else NULL
@@ -4885,7 +4934,57 @@ custom_filters <- setNames(lapply(unique_groups, function(g) {
 # }), paste0("Sample: ", sample_vals))
 # 
 # # Merge with Key_Gps filters
-# custom_filters <- c(custom_filters, sample_filters)
+
+# # --- TEMPLATE Date filters (by date range or bifurcation point in time) ---
+# 
+# period_mode  <- "split"  # "range" or "split"
+# period_begin <- as.Date("2023-01-01")  # range only
+# period_end   <- as.Date("2024-12-31")  # range only
+# split_date   <- as.Date("2024-01-01")  # used only when period_mode == "split" (on or after inputted date)
+# 
+# time_dt_run <- shift_data1
+# pay_dt_run  <- pay1
+# pp_dt_run   <- pp_data1
+# ee_dt_run   <- ee_data1
+# 
+# period_filters <- list()
+# 
+# if (period_mode == "range") {
+#   time_dt_run <- time_dt_run[Period_End >= period_begin & Period_End <= period_end]
+#   pay_dt_run  <- pay_dt_run[Pay_Period_End >= period_begin & Pay_Period_End <= period_end]
+#   pp_dt_run   <- pp_dt_run[Period_End >= period_begin & Period_End <= period_end]
+#   if (!is.null(ee_dt_run) && "Period_End" %in% names(ee_dt_run)) {
+#     ee_dt_run <- ee_dt_run[Period_End >= period_begin & Period_End <= period_end]
+#   }
+# }
+# 
+# if (period_mode == "split") {
+#   period_filters <- setNames(
+#     list(
+#       list(
+#         time_filter = bquote(Period_End < .(split_date)),
+#         pay_filter  = bquote(Pay_Period_End < .(split_date)),
+#         pp_filter   = bquote(Period_End < .(split_date)),
+#         ee_filter   = if (!is.null(ee_dt_run) && "Period_End" %in% names(ee_dt_run)) bquote(Period_End <= .(split_date)) else NULL
+#       ),
+#       list(
+#         time_filter = bquote(Period_End >= .(split_date)),
+#         pay_filter  = bquote(Pay_Period_End >= .(split_date)),
+#         pp_filter   = bquote(Period_End >= .(split_date)),
+#         ee_filter   = if (!is.null(ee_dt_run) && "Period_End" %in% names(ee_dt_run)) bquote(Period_End > .(split_date)) else NULL
+#       )
+#     ),
+#     c(sprintf("Before %s", split_date), sprintf("On or After %s", split_date))
+#   )
+# }
+# 
+# if (!period_mode %in% c("range", "split")) {
+#   stop("period_mode must be 'range' or 'split'")
+# }
+# 
+# # merge with your existing filters
+
+# custom_filters <- c(custom_filters, sample_filters, period_filters)
 
 # Extrapolation environment
 extrap_env <- list(
@@ -4950,14 +5049,14 @@ duration <- difftime(end.time, start.time, units = "secs")
 
 # ----- ALL DATA:                Generate PDF report -------------------------------------------------------------
 
-generate_report(
-  #output_file = "Brown v Cedars Analysis.pdf",
-  #sections = c("class", "paga"),  # Only damages & PAGA
-  #class_scenarios = c("no waivers"),  # Only no-waivers for Class
-  #paga_scenarios = c("waivers"),  # Only waivers for PAGA
-  include_extrap = TRUE,
-  include_appendix = TRUE
-)
+# generate_report(
+#   #output_file = "Brown v Cedars Analysis.pdf",
+#   #sections = c("class", "paga"),  # Only damages & PAGA
+#   #class_scenarios = c("no waivers"),  # Only no-waivers for Class
+#   #paga_scenarios = c("waivers"),  # Only waivers for PAGA
+#   include_extrap = TRUE,
+#   include_appendix = TRUE
+# )
 
 # generate_paga_report(include_extrap = TRUE,
 #                 include_appendix = TRUE,

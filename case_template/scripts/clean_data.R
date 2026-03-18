@@ -33,7 +33,7 @@ library(purrr)
 CASE_DIR <- getwd()
 
 # Optional manual override:
-# CASE_DIR <- "C:/Users/Amnon/OneDrive - Employment Research Corporation/Cases/34000s/34203 Brown v Cedars/Analysis/34203_R"
+# CASE_DIR <- "D:/Cases..."
 
 CASE_DIR <- normalizePath(CASE_DIR, winslash = "/", mustWork = TRUE)
 
@@ -967,12 +967,47 @@ class1[, Class_Key_Gps := key_employees[as.character(Class_ID)]]
 class1[is.na(Class_Key_Gps), Class_Key_Gps := "Everyone Else"]
 unique(class1$Class_Key_Gps)
 
-run_data_comparison(time1, pay1)
+run_data_comparison(
+  time_data = time1,
+  pay_data = pay1,
+  min_time_ees = NA, # NA is no filter
+  min_pay_ees = 100,      
+  filter_plot_only = TRUE,
+  show_plot = TRUE,
+  save_outputs = TRUE
+)
 
 employee_period_comparison(time1, pay1)
 
 all_ids <- all_time_pay_class_ids(time1, pay1, class1)
 
+all_ids_breakdown <- all_ids[, .(
+  `Time total`                = sum(Time_Present == 1),
+  `Pay total`                 = sum(Pay_Present == 1),
+  `Class total`               = sum(Class_Present == 1),
+  `Time and Pay`              = sum(Time_Present == 1 & Pay_Present == 1),
+  `Pay, no Time`              = sum(Pay_Present == 1 & Time_Present == 0),
+  `Time, no Pay`              = sum(Time_Present == 1 & Pay_Present == 0),
+  `Class, no Time`            = sum(Class_Present == 1 & Time_Present == 0),
+  `Class, no Pay`             = sum(Class_Present == 1 & Pay_Present == 0),
+  `Class, no Time and no Pay` = sum(Class_Present == 1 & Time_Present == 0 & Pay_Present == 0),
+  `Time, no Class`            = sum(Time_Present == 1 & Class_Present == 0),
+  `Pay, no Class`             = sum(Pay_Present == 1 & Class_Present == 0),
+  `Time or Pay, no Class`     = sum((Time_Present == 1 | Pay_Present == 1) & Class_Present == 0),
+  `Time and Pay, no Class`    = sum(Time_Present == 1 & Pay_Present == 1 & Class_Present == 0),
+  `Class Only`                = sum(Class_Present == 1 & Time_Present == 0 & Pay_Present == 0),
+  `Pay Only`                  = sum(Pay_Present == 1 & Time_Present == 0 & Class_Present == 0),
+  `Time Only`                 = sum(Time_Present == 1 & Pay_Present == 0 & Class_Present == 0)
+)]
+
+all_ids_breakdown <- data.table::melt(
+  all_ids_breakdown,
+  measure.vars = names(all_ids_breakdown),
+  variable.name = "Category",
+  value.name = "Employees"
+)
+
+all_ids_breakdown
 
 # ----- MEAL WAIVER DATA:  Load & Clean -------------------------------
 
@@ -1048,15 +1083,27 @@ write_csv_and_rds(
   file.path(PROCESSED_DIR, "class_processed.csv")
 )
 
-# write_csv_and_rds(
-#   attestation1,
-#   file.path(PROCESSED_DIR, "attestations_processed.csv")
-# )
-# 
-# write_csv_and_rds(
-#   waiver1,
-#   file.path(PROCESSED_DIR, "waivers_processed.csv")
-# )
+# Write Attestation and/or Waiver Data to processed RDS and CSV files
+  # write_csv_and_rds(
+  #   attestation1,
+  #   file.path(PROCESSED_DIR, "attestations_processed.csv")
+  # )
+  # 
+  # write_csv_and_rds(
+  #   waiver1,
+  #   file.path(PROCESSED_DIR, "waivers_processed.csv")
+  # )
+
+# Write OPTIONAL FILTERED Attestation data to processed RDS and CSV files
+  # write_csv_and_rds(
+  #   time1_attestation,
+  #   file.path(PROCESSED_DIR, "time_attestation_filtered_processed.csv")
+  # )
+  # 
+  # write_csv_and_rds(
+  #   pay1_attestation,
+  #   file.path(PROCESSED_DIR, "pay_attestation_filtered_processed.csv")
+  # )
 
 
 # ----- ALL DATA:   Random sample generator (if needed) -----------------------------------------

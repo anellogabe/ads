@@ -2808,15 +2808,24 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
     extrap_environment <- reactive({
       # If extrapolation values were calculated in analysis.R, use those
       # Otherwise fall back to calculating from filtered data
+      date_drivers <- list(
+        class_dmgs_start_date = get0("class_dmgs_start_date", ifnotfound = NULL, inherits = TRUE),
+        mediation_date = get0("mediation_date", ifnotfound = NULL, inherits = TRUE),
+        wsv_start_date = get0("wsv_start_date", ifnotfound = NULL, inherits = TRUE),
+        wt_start_date = get0("wt_start_date", ifnotfound = NULL, inherits = TRUE),
+        paga_dmgs_start_date = get0("paga_dmgs_start_date", ifnotfound = NULL, inherits = TRUE)
+      )
+      date_drivers <- date_drivers[!vapply(date_drivers, is.null, logical(1))]
+
       if (!is.null(extrap_values)) {
-        return(extrap_values)
+        return(c(extrap_values, date_drivers))
       }
 
       # Fallback: calculate from filtered data (will be wrong if temporal extrapolation applies)
       data <- filtered_data()
       req(data$shift_data1)
 
-      list(
+      c(list(
         # Use full class list for employee count (not filtered data)
         extrap_class_ees = if (!is.null(data$class1) && "Class_ID" %in% names(data$class1)) {
           uniqueN(data$class1$Class_ID, na.rm = TRUE)
@@ -2844,7 +2853,7 @@ server <- function(data_list, metric_spec, analysis_tables, metric_group_categor
         } else {
           0
         }
-      )
+      ), date_drivers)
     })
 
     # Run metrics pipeline once with all data and cache results
@@ -5471,4 +5480,3 @@ shinyApp(
   ui = ui(data_list, metric_spec),
   server = server(data_list, metric_spec, analysis_tables, metric_group_categories)
 )
-

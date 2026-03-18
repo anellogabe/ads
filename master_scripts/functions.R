@@ -861,19 +861,22 @@ group_pay_data <- function(data, group_by = "Pay_ID_Period_End") {
 run_data_comparison <- function(
     time_data,
     pay_data,
-    output_dir = NULL,   # if NULL, tries OUT_DIR; else uses provided path
+    output_dir = NULL,
     period_breakdown = c("default", "weekly", "monthly", "quarterly"),
     save_outputs = TRUE,
     show_plot = TRUE,
-    return_data = TRUE
+    return_data = TRUE,
+    min_time_ees = NA_real_,
+    min_pay_ees = NA_real_,
+    filter_plot_only = TRUE
 ) {
   stopifnot(requireNamespace("data.table", quietly = TRUE))
   stopifnot(requireNamespace("ggplot2", quietly = TRUE))
   stopifnot(requireNamespace("lubridate", quietly = TRUE))
+  stopifnot(requireNamespace("scales", quietly = TRUE))
   
   period_breakdown <- match.arg(period_breakdown)
   
-  # Resolve output_dir (prefer case OUT_DIR if present in environment)
   if (is.null(output_dir) || !nzchar(output_dir)) {
     if (exists("OUT_DIR", inherits = TRUE) && nzchar(get("OUT_DIR", inherits = TRUE))) {
       output_dir <- get("OUT_DIR", inherits = TRUE)
@@ -883,43 +886,47 @@ run_data_comparison <- function(
   }
   output_dir <- normalizePath(output_dir, winslash = "/", mustWork = FALSE)
   
-  # Convert to data.table copies
-  time1 <- as.data.table(copy(time_data))
-  pay1  <- as.data.table(copy(pay_data))
+  message("Starting run_data_comparison()")
+  message("Output dir: ", output_dir)
   
-  # Remove any duplicate columns (defensive)
+  # Convert to data.table copies
+  time1 <- data.table::as.data.table(data.table::copy(time_data))
+  pay1  <- data.table::as.data.table(data.table::copy(pay_data))
+  
+  # Remove any duplicate columns
   time1 <- time1[, .SD, .SDcols = unique(names(time1))]
-  pay1  <- pay1[,  .SD, .SDcols = unique(names(pay1))]
+  pay1  <- pay1[, .SD, .SDcols = unique(names(pay1))]
   
   # Ensure required columns
   req_time <- c("Period_End", "ID")
   req_pay  <- c("Pay_Period_End", "Pay_ID")
   miss_time <- setdiff(req_time, names(time1))
-  miss_pay  <- setdiff(req_pay,  names(pay1))
-  if (length(miss_time)) stop("time_data missing: ", paste(miss_time, collapse = ", "))
-  if (length(miss_pay))  stop("pay_data missing: ",  paste(miss_pay,  collapse = ", "))
+  miss_pay  <- setdiff(req_pay, names(pay1))
   
-  # Coerce dates to Date
+  if (length(miss_time)) stop("time_data missing: ", paste(miss_time, collapse = ", "))
+  if (length(miss_pay))  stop("pay_data missing: ", paste(miss_pay, collapse = ", "))
+  
+  # Coerce dates
   time1[, Period_End := as.Date(Period_End)]
-  pay1[,  Pay_Period_End := as.Date(Pay_Period_End)]
+  pay1[, Pay_Period_End := as.Date(Pay_Period_End)]
   
   # Summaries
   time_summary <- time1[, .(
-    Employees = uniqueN(ID, na.rm = TRUE),
+    Employees = data.table::uniqueN(ID, na.rm = TRUE),
     Records   = .N
   ), by = .(Period_End)]
   time_summary[, Data := "Time Data"]
   
   pay_summary <- pay1[, .(
-    Employees = uniqueN(Pay_ID, na.rm = TRUE),
+    Employees = data.table::uniqueN(Pay_ID, na.rm = TRUE),
     Records   = .N
   ), by = .(Pay_Period_End)]
-  setnames(pay_summary, "Pay_Period_End", "Period_End")
+  data.table::setnames(pay_summary, "Pay_Period_End", "Period_End")
   pay_summary[, Data := "Pay Data"]
   
-  comparison_dt <- rbindlist(list(time_summary, pay_summary), fill = TRUE)
+  comparison_dt <- data.table::rbindlist(list(time_summary, pay_summary), fill = TRUE)
   
-  # Period breakdown grouping
+  # Period grouping
   if (period_breakdown == "weekly") {
     comparison_dt[, Period_Group := lubridate::floor_date(Period_End, "week")]
   } else if (period_breakdown == "monthly") {
@@ -937,34 +944,60 @@ run_data_comparison <- function(
   if (period_breakdown != "default") {
     comparison_dt <- comparison_dt[, .(
       Employees    = sum(Employees, na.rm = TRUE),
-      Records      = sum(Records,   na.rm = TRUE),
+      Records      = sum(Records, na.rm = TRUE),
       Period_Count = .N,
       First_Period = min(Period_End, na.rm = TRUE),
       Last_Period  = max(Period_End, na.rm = TRUE)
     ), by = .(Period_Group, Data)]
-    setnames(comparison_dt, "Period_Group", "Period_End")
+    
+    data.table::setnames(comparison_dt, "Period_Group", "Period_End")
   }
   
-  # Clean + order
   comparison_dt <- comparison_dt[!is.na(Period_End)]
-  setorder(comparison_dt, Period_End, Data)
+  data.table::setorder(comparison_dt, Period_End, Data)
+  
+  comparison_plot_dt <- data.table::copy(comparison_dt)
+  
+  # Filter chart only
+  if (!is.na(min_time_ees)) {
+    comparison_plot_dt <- comparison_plot_dt[
+      Data != "Time Data" | Employees >= min_time_ees
+    ]
+  }
+  
+  if (!is.na(min_pay_ees)) {
+    comparison_plot_dt <- comparison_plot_dt[
+      Data != "Pay Data" | Employees >= min_pay_ees
+    ]
+  }
+  
+  if (!isTRUE(filter_plot_only)) {
+    comparison_dt <- data.table::copy(comparison_plot_dt)
+  }
+  
+  if (nrow(comparison_plot_dt) == 0L) {
+    stop("No rows remain after min_time_ees / min_pay_ees filters.")
+  }
+  
+  message("Rows in comparison_dt: ", nrow(comparison_dt))
+  message("Rows in comparison_plot_dt: ", nrow(comparison_plot_dt))
   
   # Plot
   plot_line <- ggplot2::ggplot(
-    comparison_dt,
+    comparison_plot_dt,
     ggplot2::aes(x = Period_End, y = Employees, color = Data)
   ) +
     ggplot2::geom_line(linewidth = 1.2) +
     ggplot2::geom_point(size = 2.5) +
     ggplot2::labs(
       title = paste(
-        "Time vs Pay Data Comparison",
+        "Time & Pay Data Comparison",
         if (period_breakdown != "default") paste0("(", period_breakdown, ")") else ""
       ),
       subtitle = paste(
         "Date Range:",
-        min(comparison_dt$Period_End, na.rm = TRUE), "to",
-        max(comparison_dt$Period_End, na.rm = TRUE)
+        min(comparison_plot_dt$Period_End, na.rm = TRUE), "to",
+        max(comparison_plot_dt$Period_End, na.rm = TRUE)
       ),
       x = "Period End Date",
       y = "Number of Unique Employees",
@@ -972,69 +1005,74 @@ run_data_comparison <- function(
     ) +
     ggplot2::theme_minimal() +
     ggplot2::theme(
-      axis.text.x   = ggplot2::element_text(angle = 45, hjust = 1),
-      plot.title    = ggplot2::element_text(hjust = 0.5, face = "bold"),
+      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+      plot.title = ggplot2::element_text(hjust = 0.5, face = "bold"),
       plot.subtitle = ggplot2::element_text(hjust = 0.5),
       legend.position = "bottom",
       panel.grid.minor = ggplot2::element_blank()
-    )
-  
-  plot_line <- plot_line +
+    ) +
     ggplot2::scale_color_manual(
       values = c(
-        "Time Data" = "#2E86C1",   # blue
-        "Pay Data"  = "#28B463"    # green
+        "Time Data" = "#2E86C1",
+        "Pay Data"  = "#28B463"
       )
     )
   
-  # Auto x breaks
-  dr <- as.numeric(diff(range(comparison_dt$Period_End, na.rm = TRUE)))
-  if (is.na(dr) || dr == 0) {
-    plot_line <- plot_line + ggplot2::scale_x_date(date_breaks = "1 month", date_labels = "%Y-%m")
+  dr <- as.numeric(diff(range(comparison_plot_dt$Period_End, na.rm = TRUE)))
+  
+  if (is.na(dr) || dr <= 0) {
+    x_breaks <- "2 weeks"; x_labels <- "%Y-%m-%d"; x_minor <- "1 week"
   } else if (dr <= 90) {
-    plot_line <- plot_line + ggplot2::scale_x_date(date_breaks = "1 week", date_labels = "%m/%d")
+    x_breaks <- "1 week"; x_labels <- "%m/%d"; x_minor <- "3 days"
   } else if (dr <= 365) {
-    plot_line <- plot_line + ggplot2::scale_x_date(date_breaks = "1 month", date_labels = "%Y-%m")
+    x_breaks <- "2 weeks"; x_labels <- "%Y-%m-%d"; x_minor <- "1 week"
+  } else if (dr <= 730) {
+    x_breaks <- "1 month"; x_labels <- "%Y-%m"; x_minor <- "2 weeks"
   } else {
-    plot_line <- plot_line + ggplot2::scale_x_date(date_breaks = "3 months", date_labels = "%Y-%m")
+    x_breaks <- "2 months"; x_labels <- "%Y-%m"; x_minor <- "1 month"
   }
   
-  # Show plot in RStudio
+  plot_line <- plot_line +
+    ggplot2::scale_x_date(
+      date_breaks = x_breaks,
+      date_labels = x_labels
+    ) +
+    ggplot2::scale_y_continuous(
+      breaks = scales::breaks_pretty(n = 12),
+      labels = scales::label_comma()
+    )
+  
   if (isTRUE(show_plot)) {
     print(plot_line)
+    message("Plot printed.")
   }
   
-  # Save outputs
   if (isTRUE(save_outputs)) {
     dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
     
-    pdf_path <- file.path(output_dir, "Data Comparison.pdf")
+    pdf_path <- file.path(output_dir, "Data_Comparison.pdf")
     ggplot2::ggsave(pdf_path, plot = plot_line, width = 12, height = 7)
     
-    # Use your helper if available; otherwise fallback to fwrite + saveRDS
-    csv_path <- file.path(output_dir, "Data Comparison.csv")
+    csv_path <- file.path(output_dir, "Data_Comparison.csv")
     
     if (exists("write_csv_and_rds", mode = "function", inherits = TRUE)) {
       write_csv_and_rds(comparison_dt, csv_path)
     } else {
-      fwrite(comparison_dt, csv_path)
+      data.table::fwrite(comparison_dt, csv_path)
       saveRDS(comparison_dt, sub("\\.csv$", ".rds", csv_path))
-      message(" Output status:")
-      message("   CSV: ", csv_path)
-      message("   RDS: ", sub("\\.csv$", ".rds", csv_path))
     }
     
-    message("Files saved to: ", output_dir)
+    message("Saved PDF: ", pdf_path)
+    message("Saved CSV: ", csv_path)
+    message("Saved RDS: ", sub("\\.csv$", ".rds", csv_path))
   }
-  output_dir <- normalizePath(output_dir, winslash = "/", mustWork = FALSE)
   
   if (isTRUE(return_data)) {
-    return(invisible(comparison_dt))
+    return(comparison_dt)
   }
   
   invisible(NULL)
 }
-
 
 # # Basic usage
 # run_data_comparison(time1, pay1)
@@ -2899,6 +2937,11 @@ denom_functions_pp <- list(
   pp_employees            = function(dt) dt[, uniqueN(ID, na.rm = TRUE)],
   pp_pay_periods          = function(dt) dt[, uniqueN(ID_Period_End, na.rm = TRUE)],
   pp_shifts               = function(dt) dt[, sum(shift, na.rm = TRUE)],
+  pp_shifts_gt_3_5        = function(dt) dt[, sum(Shifts_gt_3_5, na.rm = TRUE)],
+  pp_shifts_gt_5          = function(dt) dt[, sum(Shifts_gt_5, na.rm = TRUE)],
+  pp_shifts_gt_6          = function(dt) dt[, sum(Shifts_gt_6, na.rm = TRUE)],
+  pp_shifts_gt_10         = function(dt) dt[, sum(Shifts_gt_10, na.rm = TRUE)],
+  pp_shifts_gt_12         = function(dt) dt[, sum(Shifts_gt_12, na.rm = TRUE)],
   pp_wsv_employees        = function(dt) uniqueN(dt[Period_End > wsv_start_date, ID], na.rm = TRUE),
   pp_wsv_pay_periods      = function(dt) uniqueN(dt[Period_End > wsv_start_date, ID_Period_End], na.rm = TRUE),
   pp_wt_employees         = function(dt) uniqueN(dt[Period_End > wt_start_date & active != 1, ID], na.rm = TRUE),

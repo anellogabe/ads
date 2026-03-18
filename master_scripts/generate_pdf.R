@@ -559,6 +559,35 @@ generate_report <- function(
   app_version <- get_case_version_label()
   report_timestamp <- format(Sys.time(), "%B %d, %Y %I:%M %p")
   footer_text <- paste0(if (exists("contract_footer") && !is.na(contract_footer) && nzchar(contract_footer)) paste0(contract_footer, " | ") else "", "Anello Data Solutions LLC | ", app_version, " | Generated: ", report_timestamp)
+
+  # Prefer the computed metric date shown in tables so case header matches extrapolated output.
+  get_header_date <- function(label) {
+    if (is.null(results_table) || nrow(results_table) == 0 || !"metric_label" %in% names(results_table)) return(NA_character_)
+    rows <- results_table[tolower(trimws(metric_label)) == tolower(trimws(label))]
+    if (nrow(rows) == 0) return(NA_character_)
+    val <- NA_character_
+    if ("Extrapolated" %in% names(rows)) {
+      ex <- rows$Extrapolated[which(!is.na(rows$Extrapolated) & nzchar(trimws(as.character(rows$Extrapolated))))]
+      if (length(ex) > 0) val <- as.character(ex[1])
+    }
+    if (is.na(val) && "All Data" %in% names(rows)) {
+      ad <- rows[["All Data"]][which(!is.na(rows[["All Data"]]) & nzchar(trimws(as.character(rows[["All Data"]]))))]
+      if (length(ad) > 0) val <- as.character(ad[1])
+    }
+    if (is.na(val)) return(NA_character_)
+    d <- suppressWarnings(as.Date(val))
+    if (is.na(d)) return(val)
+    format(d, "%B %d, %Y")
+  }
+
+  relevant_period_start <- get_header_date("Begin date of damages period")
+  if (is.na(relevant_period_start)) {
+    if (exists("class_dmgs_start_date") && !is.null(class_dmgs_start_date)) {
+      relevant_period_start <- format(as.Date(class_dmgs_start_date), "%B %d, %Y")
+    } else {
+      relevant_period_start <- "N/A"
+    }
+  }
   
   html <- paste0('<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
@@ -597,7 +626,7 @@ table.pay-code-table td:last-child { text-align: left; }
 <tr><td>Case Name</td><td>', rpt, '</td></tr>
 <tr><td>Case Number</td><td>', if(exists("case_no") && !is.null(case_no)) case_no else "N/A", '</td></tr>
 <tr><td>Date Filed</td><td>', if(exists("date_filed") && !is.null(date_filed)) format(as.Date(date_filed), "%B %d, %Y") else "N/A", '</td></tr>
-<tr><td>Relevant Period</td><td>', if(exists("class_dmgs_start_date") && !is.null(class_dmgs_start_date)) paste0(format(as.Date(class_dmgs_start_date), "%B %d, %Y"), " to present") else "N/A", '</td></tr>
+<tr><td>Relevant Period</td><td>', paste0(relevant_period_start, " to present"), '</td></tr>
 <tr><td>Mediation Date</td><td>', if(exists("mediation_date") && !is.null(mediation_date)) format(as.Date(mediation_date), "%B %d, %Y") else "N/A", '</td></tr>
 <tr><td>Sample Information</td><td>', sample_info, '</td></tr>
 <tr><td>Analysis Version</td><td>', app_version, '</td></tr>
@@ -977,4 +1006,3 @@ cat("  generate_pay_report()        # Pay section only\n")
 cat("  generate_time_pay_report()   # Time + Pay + Analysis\n\n")
 cat("Sections: time, pay, class, paga, analysis\n")
 cat("==================================================\n")
-
