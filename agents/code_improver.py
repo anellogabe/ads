@@ -559,6 +559,114 @@ def format_results_markdown(results: list[ScanResult]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Auto-fixable rules (safe to apply automatically)
+# ---------------------------------------------------------------------------
+
+AUTOFIXABLE_RULES = {"r-paste0", "r-duplicate-library"}
+
+
+def can_autofix(issue: Issue) -> bool:
+    """Check if an issue has a simple line-level auto-fix."""
+    return issue.rule in AUTOFIXABLE_RULES and bool(issue.current_code) and bool(issue.improved_code)
+
+
+def apply_fix(filepath: str, issue: Issue) -> bool:
+    """Apply a single fix by replacing the exact line in the file."""
+    try:
+        with open(filepath, encoding="utf-8") as f:
+            lines = f.readlines()
+        idx = issue.line - 1
+        if idx < 0 or idx >= len(lines):
+            return False
+        # Verify the line still matches
+        if lines[idx].rstrip() != issue.current_code.rstrip():
+            return False
+        lines[idx] = issue.improved_code + "\n"
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.writelines(lines)
+        return True
+    except OSError:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Interactive mode
+# ---------------------------------------------------------------------------
+
+def run_interactive(results: list[ScanResult]) -> None:
+    """Walk through each issue interactively: accept, skip, or quit."""
+    if not results:
+        print("No issues found.")
+        return
+
+    total = sum(len(r.issues) for r in results)
+    print("=" * 72)
+    print("  INTERACTIVE CODE REVIEW")
+    print("=" * 72)
+    print(f"  {total} suggestion(s) across {len(results)} file(s)")
+    print("  Commands:  [a]pply fix  [s]kip  [q]uit  [A]pply all remaining in file")
+    print("=" * 72)
+    print()
+
+    applied = 0
+    skipped = 0
+
+    for res in results:
+        print(f"\n--- {res.file} ({len(res.issues)} issue(s)) ---\n")
+        apply_all_file = False
+
+        for issue in res.issues:
+            sym = SEVERITY_SYMBOL.get(issue.severity, "[?]")
+            cat = CATEGORY_LABEL.get(issue.category, issue.category)
+            fixable = can_autofix(issue)
+
+            print(f"  {sym} Line {issue.line} [{cat}] ({issue.rule})")
+            print(f"      {issue.message}")
+            if issue.current_code:
+                print(f"      Current:  {issue.current_code}")
+            if issue.improved_code:
+                for j, imp_line in enumerate(issue.improved_code.split("\n")):
+                    prefix = "      Improved: " if j == 0 else "                "
+                    print(f"{prefix}{imp_line}")
+
+            if not fixable:
+                print("      [not auto-fixable — manual change needed]")
+                skipped += 1
+                print()
+                continue
+
+            if apply_all_file:
+                choice = "a"
+            else:
+                try:
+                    choice = input("\n  >>> [a]pply / [s]kip / [q]uit / [A]pply all in file? ").strip().lower()
+                except (EOFError, KeyboardInterrupt):
+                    choice = "q"
+
+            if choice == "q":
+                print(f"\n  Stopped. Applied {applied}, skipped {skipped}.")
+                return
+            elif choice == "a" or choice == "apply all" or (apply_all_file and choice != "s"):
+                if choice.startswith("a") and choice == "A" or choice == "apply all":
+                    apply_all_file = True
+                if apply_fix(res.file, issue):
+                    print("      >> APPLIED")
+                    applied += 1
+                else:
+                    print("      >> FAILED (line may have changed)")
+                    skipped += 1
+            else:
+                print("      >> skipped")
+                skipped += 1
+
+            print()
+
+    print("-" * 72)
+    print(f"  Done. Applied: {applied}  Skipped: {skipped}")
+    print("-" * 72)
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -588,6 +696,11 @@ def main():
         default=None,
         help="Output format (default: text for terminal, markdown for --output).",
     )
+    parser.add_argument(
+        "--interactive", "-i",
+        action="store_true",
+        help="Walk through each issue interactively (apply/skip/quit).",
+    )
     args = parser.parse_args()
 
     target = os.path.abspath(args.target)
@@ -600,6 +713,10 @@ def main():
     else:
         print(f"Error: '{args.target}' is not a valid file or directory.", file=sys.stderr)
         sys.exit(1)
+
+    if args.interactive:
+        run_interactive(results)
+        sys.exit(0)
 
     fmt = args.format
     if fmt is None:
