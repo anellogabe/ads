@@ -1737,7 +1737,7 @@ sum_fields_default <- c("mp", "mp_lt_twenty", "mp_lt_thirty", "mp_thirty", "mp_g
                         #,"Meal_Yes","Meal_No","Rest_Yes","Rest_No"
                         )
 
-max_fields_default <- c("shift_hrs", "mp1_hrs", "mp2_hrs", "shift_mps", "hrs_to_mp1", "hrs_to_mp2", 
+max_fields_default <- c("shift_hrs", "mp1_hrs", "mp2_hrs", "shift_mps", "hrs_to_mp1", "hrs_to_mp2", "mp1_hrs", "mp2_hrs",
                         "mp1_mins_short", "mp2_mins_short", "mp1_mins_late", "mp2_mins_late"
                         
                         # Auto-deducted meal periods in data? Add:
@@ -3608,12 +3608,19 @@ wt_scenarios <- list(
 # Helper: compute WT penalty for one scenario
 calc_wt <- function(suffix, has_flag_col) {
   
-  pen_col <- paste0("wt_penalty_", suffix)
+  pen_col     <- paste0("wt_penalty_", suffix)
+  ee_flag_col <- paste0("ee_", has_flag_col)
   
+  # Employee-level eligibility for WT
+  pp_data1[, (ee_flag_col) := as.integer(
+    any(fcoalesce(get(has_flag_col), 0L) == 1L, na.rm = TRUE)
+  ), by = ID]
+  
+  # WT penalty repeated across all rows for that employee
   pp_data1[, (pen_col) := fifelse(
     has_wt_period == 1L &
       active == 0L &
-      fcoalesce(get(has_flag_col), 0L) == 1L,
+      get(ee_flag_col) == 1L,
     fcoalesce(wt_rate, 0) * fcoalesce(Avg_Shift_Length, 0) * 30,
     0
   )]
@@ -3706,8 +3713,8 @@ setorder(pp_data1, ID, Period_End)
 # Global toggles
 PAGA_TOGGLE <- list(
   meal     = TRUE,
-  rest     = FALSE,   # OFF
-  rounding = TRUE,    # NEW
+  rest     = TRUE,   
+  rounding = FALSE,   
   rrop     = TRUE,
   s226     = TRUE,
   s558     = TRUE,
