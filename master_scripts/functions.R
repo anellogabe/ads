@@ -1288,12 +1288,12 @@ all_time_pay_class_ids <- function(
   pay1  <- as.data.table(copy(pay_data))
   
   # ---- TIME IDS ----
-  if (!all(c("ID", "Name") %chin% names(time1))) stop("time_data must contain columns: ID, Name")
+  if (!all(c("ID") %chin% names(time1))) stop("time_data must contain columns: ID")
   time_ids <- unique(time1[, .(ID, Name)])
   time_ids <- time_ids[, .(Name = first(Name), Time_Present = 1L), by = ID]
   
   # ---- PAY IDS ----
-  if (!all(c("Pay_ID", "Pay_Name") %chin% names(pay1))) stop("pay_data must contain columns: Pay_ID, Pay_Name")
+  if (!all(c("Pay_ID") %chin% names(pay1))) stop("pay_data must contain columns: Pay_ID")
   pay_ids <- unique(pay1[, .(ID = Pay_ID, Pay_Name)])
   pay_ids <- pay_ids[, .(Pay_Name = first(Pay_Name), Pay_Present = 1L), by = ID]
   
