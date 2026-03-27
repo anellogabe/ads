@@ -3713,8 +3713,9 @@ setorder(pp_data1, ID, Period_End)
 # Global toggles
 PAGA_TOGGLE <- list(
   meal     = TRUE,
-  rest     = TRUE,   
-  rounding = FALSE,   
+  rest     = TRUE,
+  rounding = FALSE,
+  rounding_meals = FALSE,
   rrop     = TRUE,
   s226     = TRUE,
   s558     = TRUE,
@@ -3836,7 +3837,19 @@ build_paga_for_scenario <- function(name, sc) {
   } else {
     pp_data1[, c(flag_round, cnt_round, dmg_round) := .(0L, 0L, 0)]
   }
-  
+
+  # ROUNDING MEAL PERIODS
+  flag_round_meals <- paste0("PAGA_rounding_meals_flag", suf); cnt_round_meals <- paste0("PAGA_rounding_meals_flag_count", suf); dmg_round_meals <- paste0("PAGA_rounding_meals_penalties", suf)
+  if (is_on("rounding_meals")) {
+    apply_pp_statute(
+      flag_round_meals, cnt_round_meals, dmg_round_meals,
+      in_v & (round_v < 0) & (mp_v > 0) & credit_ok,
+      initial_pp_penalty, subsequent_pp_penalty
+    )
+  } else {
+    pp_data1[, c(flag_round_meals, cnt_round_meals, dmg_round_meals) := .(0L, 0L, 0)]
+  }
+
   # RROP
   flag_rrop <- paste0("PAGA_rrop_flag", suf); cnt_rrop <- paste0("PAGA_rrop_flag_count", suf); dmg_rrop <- paste0("PAGA_rrop_penalties", suf)
   if (is_on("rrop")) apply_pp_statute(flag_rrop, cnt_rrop, dmg_rrop, in_v & fcoalesce(pp_data1$rrop_net_underpayment, 0) > 0 & credit_ok, initial_pp_penalty, subsequent_pp_penalty)
@@ -3882,7 +3895,7 @@ build_paga_for_scenario <- function(name, sc) {
   
   # HAS ANY PAGA (pp level)
   has_paga_col <- paste0("has_paga_penalties", suf)
-  flag_cols <- c(flag_meal, flag_rest, flag_round, flag_rrop, flag_226, flag_558, flag_1197, flag_2802)
+  flag_cols <- c(flag_meal, flag_rest, flag_round, flag_round_meals, flag_rrop, flag_226, flag_558, flag_1197, flag_2802)
   pp_data1[, (has_paga_col) := as.integer(in_PAGA_period == 1L & rowSums(.SD, na.rm = TRUE) > 0), .SDcols = flag_cols]
   
   # TOTAL
@@ -3890,9 +3903,9 @@ build_paga_for_scenario <- function(name, sc) {
   pp_data1[, (paga_tot) := fifelse(
     paga_ee_flag == 1L,
     fcoalesce(get(dmg_meal), 0) + fcoalesce(get(dmg_rest), 0) + fcoalesce(get(dmg_round), 0) +
-      fcoalesce(get(dmg_rrop), 0) + fcoalesce(get(dmg_226), 0) + fcoalesce(get(dmg_558), 0) +
-      fcoalesce(get(dmg_1197), 0) + fcoalesce(get(dmg_1174), 0) + fcoalesce(get(dmg_2802), 0) +
-      fcoalesce(get(dmg_203), 0),
+      fcoalesce(get(dmg_round_meals), 0) + fcoalesce(get(dmg_rrop), 0) + fcoalesce(get(dmg_226), 0) +
+      fcoalesce(get(dmg_558), 0) + fcoalesce(get(dmg_1197), 0) + fcoalesce(get(dmg_1174), 0) +
+      fcoalesce(get(dmg_2802), 0) + fcoalesce(get(dmg_203), 0),
     0
   )]
   
@@ -3900,6 +3913,7 @@ build_paga_for_scenario <- function(name, sc) {
       "| totals -> meal:", pp_data1[, sum(get(dmg_meal), na.rm = TRUE)],
       "rest:", pp_data1[, sum(get(dmg_rest), na.rm = TRUE)],
       "rounding:", pp_data1[, sum(get(dmg_round), na.rm = TRUE)],
+      "rounding meals:", pp_data1[, sum(get(dmg_round_meals), na.rm = TRUE)],
       "226:", pp_data1[, sum(get(dmg_226), na.rm = TRUE)],
       "558:", pp_data1[, sum(get(dmg_558), na.rm = TRUE)],
       "203:", pp_data1[, sum(get(dmg_203), na.rm = TRUE)],
@@ -3927,6 +3941,7 @@ summarize_scenario <- function(label, suf) {
     meal_total = pp_data1[, sum(get(paste0("PAGA_meal_penalties", suf)), na.rm = TRUE)],
     rest_total = pp_data1[, sum(get(paste0("PAGA_rest_penalties", suf)), na.rm = TRUE)],
     rounding_total = pp_data1[, sum(get(paste0("PAGA_rounding_penalties", suf)), na.rm = TRUE)],
+    rounding_meals_total = pp_data1[, sum(get(paste0("PAGA_rounding_meals_penalties", suf)), na.rm = TRUE)],
     rrop_total = pp_data1[, sum(get(paste0("PAGA_rrop_penalties", suf)), na.rm = TRUE)],
     s226_total = pp_data1[, sum(get(paste0("PAGA_226_penalties", suf)), na.rm = TRUE)],
     s558_total = pp_data1[, sum(get(paste0("PAGA_558_penalties", suf)), na.rm = TRUE)],
