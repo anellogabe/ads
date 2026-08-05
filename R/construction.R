@@ -57,8 +57,8 @@ read_tasks <- function(path = TASK_LOG) {
 }
 
 # Budget vs actual by phase and category
-budget_vs_actual <- function(rehab_budget, spend = read_spend()) {
-  budget <- rehab_budget[, .(budget = sum(budget)), by = .(phase, category)]
+budget_vs_actual <- function(build_budget, spend = read_spend()) {
+  budget <- build_budget[, .(budget = sum(budget)), by = .(phase, category)]
   actual <- if (nrow(spend)) {
     spend[, .(actual = sum(amount)), by = .(phase, category)]
   } else {
@@ -73,7 +73,7 @@ budget_vs_actual <- function(rehab_budget, spend = read_spend()) {
 
 # Phase-level rollup joined to phase definitions and gates
 phase_summary <- function(p, spend = read_spend()) {
-  bva <- budget_vs_actual(p$rehab, spend)
+  bva <- budget_vs_actual(p$build, spend)
   roll <- bva[, .(budget = sum(budget), actual = sum(actual)), by = phase]
   out <- merge(p$phases, roll, by = "phase", all.x = TRUE)
   out[is.na(budget), budget := 0][is.na(actual), actual := 0]

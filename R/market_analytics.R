@@ -46,13 +46,13 @@ demo_comps <- function(seed = 42L) {
     comp_id = paste0("S", seq_len(n_sale)), source = "demo", type = "sale",
     address = paste(sample(100:999, n_sale), "Demo St, Vestal NY"),
     close_date = sample(months, n_sale, replace = TRUE),
-    sqft = round(rnorm(n_sale, 1650, 300)),
-    beds = sample(2:4, n_sale, replace = TRUE),
+    sqft = round(rnorm(n_sale, 2400, 900)),
+    beds = sample(3:5, n_sale, replace = TRUE),
     baths = sample(c(1, 1.5, 2), n_sale, replace = TRUE),
     year_built = sample(1950:1995, n_sale, replace = TRUE),
     dom = pmax(5L, round(rnorm(n_sale, 38, 15)))
   )
-  sales[, price := round(sqft * rnorm(n_sale, 118, 14))]
+  sales[, price := round(sqft * rnorm(n_sale, 135, 20))]
   sales[, list_date := close_date - dom]
   rents <- data.table(
     comp_id = paste0("R", seq_len(n_rent)), source = "demo", type = "rent",
@@ -91,4 +91,27 @@ basis_percentile <- function(comps, basis, subject_sqft) {
   ppsf <- comps[type == "sale" & sqft > 0, price / sqft]
   if (!length(ppsf)) return(NA_real_)
   mean(ppsf <= basis / subject_sqft)
+}
+
+# Comp-based value estimate for the finished home, appraisal-style:
+# above-grade finished sqft x sale-comp median $/sqft x new-construction
+# premium, plus a partial contribution for finished basement space.
+# Uses the upper-half of sale comps by $/sqft when enough comps exist,
+# since a luxury new build competes with the top of the market.
+estimate_value <- function(comps, p, basement_finished = FALSE) {
+  ppsf <- comps[type == "sale" & sqft > 0, price / sqft]
+  if (!length(ppsf)) return(NA_real_)
+  base_ppsf <- if (length(ppsf) >= 10) median(ppsf[ppsf >= median(ppsf)]) else median(ppsf)
+  v <- base_ppsf * p$property$sqft_finished * p$value$new_construction_premium
+  if (basement_finished) {
+    v <- v + p$property$sqft_basement * p$value$basement_contrib_per_sqft
+  }
+  round(v, -3)
+}
+
+# Market index series produced by scripts/fetch_market_data.R
+# (ZHVI/ZORI/FRED HPI), long format: source, region, date, value
+load_market_indices <- function(path = "data/processed/market_indices.rds") {
+  if (!file.exists(path)) return(NULL)
+  readRDS(path)
 }

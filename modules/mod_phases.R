@@ -36,7 +36,7 @@ mod_phases_server <- function(id, p) {
     })
 
     output$detail <- renderDT({
-      dt <- copy(p$rehab)[order(phase, category)]
+      dt <- copy(p$build)[order(phase, category)]
       dt[, budget := fmt_dollar(budget)]
       datatable(dt, rownames = FALSE, filter = "top",
                 options = list(pageLength = 20))

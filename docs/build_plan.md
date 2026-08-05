@@ -1,75 +1,105 @@
-# Vestal House — Incremental Build Plan
+# Anello Residence — Build Plan
 
-The build is phased so each phase is small enough to self-fund and each ends with a
-**gate review** in the dashboard (Overview + Phases tabs) before any money is committed
-to the next. Budgets below mirror `config/params.R` — that file is the source of truth;
-this document explains sequencing and reasoning.
+New-construction plan for 117 Red Fox Run, Vestal NY, per the Griffiths
+Engineering & Architecture SD set dated 2026-07-31 (project 2026-106). Each
+phase ends with a **gate review** in the dashboard (Overview + Phases tabs)
+before money is committed to the next. Budgets mirror `config/params.R` —
+that file is the source of truth; this document explains sequencing and
+reasoning. Cost basis and sources: `docs/cost_research.md`.
 
 ## Principles
 
-1. **Systems before surfaces.** No cosmetic dollar is spent until electrical, plumbing,
-   HVAC, and the envelope are sound — cosmetic work over bad systems gets torn out.
-2. **Self-funded phases.** No construction loan. Each phase's cash must be on hand
-   before it starts; a phase never begins on the assumption the next dollar arrives.
-3. **Gates are numeric.** A gate passes when the dashboard shows it passing (budget
-   variance, rent estimate, DSCR) — not when it feels done.
-4. **Rent impact ranks the backlog.** When scope must be cut, keep the items with the
-   highest rent-per-dollar impact (kitchen, baths, flooring) and defer the rest.
+1. **Bid before build.** No ground is broken until GC bids confirm the model
+   within 10% — pricing surprises are cheapest at Phase 0.
+2. **Gates are numeric.** A gate passes when the dashboard shows it passing
+   (inspection status, phase budget variance, appraisal support) — not when
+   it feels done.
+3. **Every dollar is logged.** All spend goes through `log_spend()` so budget
+   vs. actual is live, auditable, and argument-ready with contractors.
+4. **The basement is optional until it isn't.** Phase 6 is deliberately
+   last and gated on marginal cost vs. value contribution — it can be
+   deferred years without blocking occupancy.
 
-## Phase 0 — Acquisition & Stabilization
+## Phase 0 — Pre-Construction
 
-**Scope:** Close on the property; immediately address safety items (locks, smoke/CO,
-hazards); commission full mechanical/electrical/plumbing inspection; patch roof and
-gutters so the envelope sheds water.
+**Scope:** Building permit (Town of Vestal), survey and geotech, utility
+availability confirmation (water/sewer vs. well/septic on Red Fox Run),
+construction-to-perm financing, 2-3 GC bids on the plan set, contingency
+funded.
 
-**Gate:** Systems baseline documented; total actual basis (purchase + closing + phase-0
-spend) at or under the model's basis.
+**Gate:** Signed bid (or cost-confirmed budget) within 10% of model;
+financing closed.
 
-**Risk to watch:** Inspection surprises. Anything found here re-prices Phase 1 before
-it starts — update `params$rehab` and re-check the model.
+**Risk to watch:** SD-stage pricing. Bids off schematic drawings carry wide
+allowances — consider funding Griffiths through DD/CD for tighter bids
+before committing.
 
-## Phase 1 — Core Systems
+## Phase 1 — Site & Foundation
 
-**Scope:** Electrical panel/circuit remediation, plumbing supply and drain remediation,
-water heater, furnace service or replacement.
+**Scope:** Clearing, excavation, footings, 10-ft foundation walls (per A201
+basement section), slab, waterproofing, drainage, backfill, utilities to the
+building.
 
-**Gate:** All systems pass inspection; phase budget variance under 10%.
+**Gate:** Foundation passes municipal inspection; phase variance < 10%.
 
-**Risk to watch:** Hidden knob-and-tube or galvanized supply lines in a house of this
-era. Get fixed quotes, not T&M, wherever possible.
+**Risk to watch:** Rock or groundwater at 10-ft depth. The geotech report in
+Phase 0 exists precisely to price this before the excavator finds it.
 
-## Phase 2 — Kitchen & Baths
+## Phase 2 — Shell
 
-**Scope:** Kitchen (cabinets, counters, appliances, associated plumbing), full bath
-renovation, half bath refresh. The highest rent-per-dollar phase.
+**Scope:** Full structural framing including the three-car garage, roof
+trusses and roofing, sheathing, windows and exterior doors, siding. Ends
+weather-tight.
 
-**Gate:** Post-phase rent estimate (Market tab, comp-based) supports the model's rent
-assumption.
+**Gate:** Building is weather-tight ("dried in"); phase variance < 10%.
 
-## Phase 3 — Interior Finish
+**Risk to watch:** Lumber and window lead times — lock pricing at contract
+where possible; long-lead windows ordered at Phase 1 start.
 
-**Scope:** LVP in main areas, carpet in bedrooms, full interior paint, doors, trim,
-hardware, lighting.
+## Phase 3 — Systems Rough-In
 
-**Gate:** Unit is rent-ready — punch list clear, photos taken for listing.
+**Scope:** Electrical service and circuits, plumbing supply/waste, HVAC
+(size for ~6,000 SF + optional basement zone from day one).
 
-## Phase 4 — Exterior & Curb
+**Gate:** All rough-in inspections passed.
 
-**Scope:** Siding repair and exterior paint, landscaping, driveway seal.
+**Risk to watch:** Change orders. The kitchen/outside kitchen/butler's
+pantry gas-electric-vent layout should be final before rough-in starts —
+moving a gas line after drywall is triple the cost.
 
-**Gate:** Appraisal/refinance package assembled (photos, rent roll or lease, spend
-history from the dashboard's spend log).
+## Phase 4 — Interior Finish
 
-## Phase 5 — Stabilized Operation
+**Scope:** Insulation, drywall, kitchen and butler's pantry, all baths,
+flooring, interior doors/trim, paint, fixtures, appliances.
 
-**Scope:** Lease-up at the modeled rent; evaluate refinance once seasoned.
+**Gate:** Certificate of occupancy issued.
 
-**Gate (ongoing):** DSCR and cash-on-cash meet the targets in `config/params.R`.
+**Risk to watch:** This is the largest budget line (NAHB: ~24% of
+construction) and where scope creep lives. Finish allowances are decided in
+writing at Phase 0 bid time; upgrades come out of contingency, visibly.
+
+## Phase 5 — Exterior & Site Finish
+
+**Scope:** Covered porches and decks, outside kitchen, driveway,
+landscaping, final grading, punch list.
+
+**Gate:** Punch list clear; final appraisal supports the model's projected
+value (Market tab).
+
+## Phase 6 — Basement Finish (optional)
+
+**Scope:** Finish basement rooms 1-3, bath, and half bath per A100
+(~2,685 SF at 10-ft ceilings).
+
+**Gate:** Go/no-go on marginal cost (~$150k at $55/sqft) vs. value
+contribution (`params$value$basement_contrib_per_sqft`) and actual need.
 
 ## Operating the plan
 
-- Log every dollar with `log_spend()` and every task with `log_task()`
+- Log every payment with `log_spend()` and every milestone with `log_task()`
   (see `R/construction.R`) — the dashboard reads these logs directly.
-- Before each gate review, update comps in `data/raw/` so the rent estimate is current.
-- If a gate fails, the next phase does not start: fix the variance, re-quote, or
-  re-scope, then re-review.
+- Refresh market data monthly (`scripts/fetch_market_data.R`) and comps
+  quarterly (`docs/market_data.md`) so the Cost-to-Value KPI stays honest.
+- Before each gate review, reconcile the spend log against bank/loan draws.
+- If a gate fails, the next phase does not start: fix the variance, re-bid,
+  or re-scope, then re-review.

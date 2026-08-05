@@ -27,9 +27,9 @@ mod_construction_server <- function(id, p) {
   moduleServer(id, function(input, output, session) {
     spend <- reactive(read_spend())
     tasks <- reactive(read_tasks())
-    bva   <- reactive(budget_vs_actual(p$rehab, spend()))
+    bva   <- reactive(budget_vs_actual(p$build, spend()))
 
-    output$budget <- renderText(fmt_dollar(sum(p$rehab$budget)))
+    output$budget <- renderText(fmt_dollar(sum(p$build$budget)))
     output$spent  <- renderText(fmt_dollar(sum(spend()$amount)))
     output$open_tasks <- renderText({
       t <- tasks()

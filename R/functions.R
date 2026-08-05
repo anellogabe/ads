@@ -41,13 +41,13 @@ read_log <- function(path, col_types) {
 
 # Validate params structure early so config mistakes fail loudly at startup
 validate_params <- function(p) {
-  required <- c("property", "acquisition", "financing", "operating", "rehab", "phases")
+  required <- c("property", "acquisition", "financing", "operating", "build", "cost_basis", "value", "phases")
   missing <- setdiff(required, names(p))
   if (length(missing)) stop("params missing sections: ", paste(missing, collapse = ", "))
   stopifnot(
-    p$financing$ltv >= 0, p$financing$ltv < 1,
+    p$financing$ltc >= 0, p$financing$ltc < 1,
     p$operating$vacancy_rate >= 0, p$operating$vacancy_rate < 1,
-    is.data.table(p$rehab), is.data.table(p$phases)
+    is.data.table(p$build), is.data.table(p$phases)
   )
   invisible(TRUE)
 }
